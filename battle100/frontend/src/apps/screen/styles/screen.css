@@ -1,0 +1,191 @@
+/* 4K 作战大屏全局多主题样式 - 设计大师重塑版 */
+
+:root, .theme-light-red {
+  /* 🌞 责任状白天红金主题 (殿堂级红金) */
+  --screen-bg-image: radial-gradient(circle at 50% 50%, #9e1010 0%, #4a0000 100%);
+  --card-bg: linear-gradient(135deg, #fffef5 0%, #fefcf0 100%);
+  --border-color: #d4af37; /* 纯金色 */
+  --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 0 30px rgba(212, 175, 55, 0.15);
+  --text-primary: #3c1515;
+  --text-secondary: #8c6b6b;
+  --accent-color: #b71c1c; /* 朱砂印章红 */
+  --glow-color: rgba(212, 175, 55, 0.4);
+  --header-bg: linear-gradient(180deg, #b71c1c 0%, #7f0000 70%, rgba(74, 0, 0, 0) 100%);
+  --header-border: #ffd700;
+  --kpi-title-color: #ffd700; /* 金黄色 */
+  --kpi-header-bg: linear-gradient(90deg, #b71c1c 0%, #7f0000 100%);
+  --track-bg: rgba(0, 0, 0, 0.05);
+  --chart-text: #4a2a2a;
+  --chart-grid: rgba(212, 175, 55, 0.12);
+  --shaft-color: #d4af37;
+}
+
+/* 移除不需要的暗黑主题和凯旋金主题变量，保持极致白天激昂红 */
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--screen-bg-image);
+  color: var(--text-primary);
+  font-family: 'STKaiti', 'KaiTi', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  transition: background 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.3s ease;
+}
+
+/* 4K 大屏卡片设计 */
+.screen-card {
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 中式卷轴宣纸装饰：在白天模式（红金/凯旋金）下渲染极致中式包边 */
+.scroll-paper {
+  position: relative;
+}
+
+/* 四角金色金属回纹/祥云包边装饰 */
+.scroll-paper::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 14px; height: 14px;
+  border-top: 3px solid var(--shaft-color);
+  border-left: 3px solid var(--shaft-color);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.scroll-paper::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0; width: 14px; height: 14px;
+  border-bottom: 3px solid var(--shaft-color);
+  border-right: 3px solid var(--shaft-color);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* 另外两角利用内部容器或在卡片上增加四个小角 */
+.scroll-corner-decor-top-right {
+  position: absolute;
+  top: 0; right: 0; width: 14px; height: 14px;
+  border-top: 3px solid var(--shaft-color);
+  border-right: 3px solid var(--shaft-color);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.scroll-corner-decor-bottom-left {
+  position: absolute;
+  bottom: 0; left: 0; width: 14px; height: 14px;
+  border-bottom: 3px solid var(--shaft-color);
+  border-left: 3px solid var(--shaft-color);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* 移除夜战模式特有的发光动画 */
+
+/* 稳定的CSS渐变标题类 - 彻底规避 inline style 裁剪失败问题 */
+.screen-title-glow {
+  background: linear-gradient(90deg, #ffffff 0%, #ffe600 50%, #ffb300 100%);
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  display: inline-block;
+}
+
+/* 移除不必要的凯旋金特殊处理 */
+
+/* 科技/责任状大字与数字 */
+.glow-number {
+  font-family: 'D-DIN', 'Impact', 'Georgia', sans-serif;
+  color: var(--accent-color);
+  font-weight: 800;
+  transition: color 0.3s ease;
+}
+
+/* 数字发光处理：因为是白天主题，采用较柔和的高光阴影，避免脏乱 */
+.glow-number {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.glow-text-gold {
+  color: #d4af37;
+  text-shadow: 0 0 6px rgba(212, 175, 55, 0.4);
+}
+
+/* 赛马竞速进度条 */
+.progress-track {
+  width: 100%;
+  height: 24px;
+  background: var(--track-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* 移除不再需要的暗黑边框处理 */
+
+.progress-bar-glow {
+  height: 100%;
+  border-radius: 12px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+/* 跑马灯滚动战报 */
+.feed-container {
+  height: 100%;
+  overflow: hidden;
+}
+
+.feed-item {
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  border-left: 4px solid var(--accent-color);
+  border-top: 1px solid rgba(0,0,0,0.02);
+  animation: feed-slide-in 0.5s ease-out;
+  color: var(--text-primary);
+}
+
+/* 移除多余的暗黑跑马灯适配 */
+
+@keyframes feed-slide-in {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* 责任状红头标题 */
+.card-header-red {
+  background: var(--kpi-header-bg);
+  color: var(--kpi-title-color);
+  font-weight: bold;
+  padding: 0.6rem 1rem;
+  border-bottom: 2px solid var(--border-color);
+  font-family: 'STKaiti', 'KaiTi', sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 自定义滚动条样式 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}

@@ -1,0 +1,27 @@
+# 忽略本地环境与敏感配置文件
+battle100/backend/.env
+battle100/backend/.venv/
+battle100/backend/__pycache__/
+battle100/backend/*.pyc
+
+# 忽略前端依赖包与打包输出
+battle100/frontend/node_modules/
+battle100/frontend/dist/
+battle100/frontend/.eslintcache
+
+# 忽略系统与临时文件
+.DS_Store
+Thumbs.db
+
+# 忽略临时数据转换文件与截图
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.txt
+*.xlsx
+*.xls
+~$*
+
+# 忽略CRM独立系统的源码（避免体积过大与保密要求）
+zdcrm/

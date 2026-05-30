@@ -1,0 +1,87 @@
+# 百日奋战管理系统 - Docker Compose 部署编排
+version: '3.8'
+
+services:
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: battle100-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - battle100-network
+
+  # FastAPI 后端
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: battle100-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://battle100:battle100pass@postgres:5432/battle100
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=battle100-jwt-secret-key-change-in-production
+      - CRM_BASE_URL=http://10.50.0.137:9294
+      - DINGTALK_APP_KEY=dingcdmb2imuqdcoqrdf
+      - DINGTALK_APP_SECRET=XMKCOJ1toY6xQlbLX9uzxEUiVVqcdxo10T6ceFoPdQODgH9EOMOeTV9CH-WtkCJZ
+      - DINGTALK_CORP_ID=dingdaec913f1d2b741235c2f4657eb6378f
+      - DINGTALK_AGENT_ID=807511396
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - battle100-network
+
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: battle100-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=battle100
+      - POSTGRES_USER=battle100
+      - POSTGRES_PASSWORD=battle100pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U battle100"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - battle100-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: battle100-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    networks:
+      - battle100-network
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+
+networks:
+  battle100-network:
+    driver: bridge
