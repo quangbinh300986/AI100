@@ -64,9 +64,13 @@ class Settings(BaseSettings):
     CRM_DB_PASSWORD: str = ""
 
     # ===== 钉钉集成配置 =====
-    DINGTALK_APP_KEY: str = "dingupkfibdwrzlbqmvf"
-    DINGTALK_APP_SECRET: str = "LeY3KaBLnaPkplaxiowhzpai1oVQQmrj5pUDqzdnj205LCCJosclpU8GVKL0iaW8"
+    DINGTALK_APP_KEY: str = "dingkbksgliafwkuhymm"
+    DINGTALK_APP_SECRET: str = "4ix04ToPBsSafjLFdydEq2iYQoVu71czrXNSYIQOyRmA4secmgCbjgR-4mT7eH4d"
     DINGTALK_CORP_ID: str = "dingdaec913f1d2b741235c2f4657eb6378f"
+    DINGTALK_AGENT_ID: Optional[str] = "4630403498"
+    DINGTALK_WEBHOOK_URL: Optional[str] = None
+    DINGTALK_WEBHOOK_SECRET: Optional[str] = None
+    DINGTALK_CHAT_ID: Optional[str] = None
 
     # ===== Supabase 配置 =====
     SUPABASE_URL: str = "http://localhost:8000"

@@ -91,3 +91,35 @@ def require_roles(*roles: UserRole):
         return current_user
 
     return role_checker
+
+
+def require_permission(perm_name: str):
+    """
+    基于数据库 role_permissions 表的动态权限校验依赖工厂
+    使用方式：Depends(require_permission("goals"))
+    :param perm_name: 需要的权限 Key (dashboard, reports, goals, settings)
+    """
+    async def permission_checker(
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        # 系统管理员默认拥有所有权限，规避因权限配置失误导致管理员账号被锁死
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+
+        from app.models.user import RolePermission
+        result = await db.execute(
+            select(RolePermission).where(
+                RolePermission.role == current_user.role,
+                RolePermission.menu_key == perm_name
+            )
+        )
+        perm = result.scalar_one_or_none()
+        if not perm:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"操作权限不足，当前角色无权限操作该模块：{perm_name}",
+            )
+        return current_user
+
+    return permission_checker

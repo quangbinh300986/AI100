@@ -12,12 +12,18 @@ from app.models.base import BaseModel
 
 class EventType(str, enum.Enum):
     """事件类型枚举"""
-    CONTRACT_SIGNED = "contract_signed"    # 签约播报
-    GOAL_ACHIEVED = "goal_achieved"        # 目标达成
-    DAILY_SUMMARY = "daily_summary"        # 每日汇总
-    WEEKLY_SUMMARY = "weekly_summary"      # 周度汇总
-    RANKING_UPDATE = "ranking_update"      # 排名变动
+    LEAD_25 = "lead_25"                    # 有效线索确定
+    LEAD_75 = "lead_75"                    # 中标确定
+    CONTRACT_SIGNED = "contract_signed"    # 已完成合同签订（双方盖章）
+    TRIANGLE = "triangle"                  # 铁三角联动
+    HAPPINESS = "happiness"                # 客户幸福动作
     CUSTOM = "custom"                      # 自定义播报
+    
+    # 兼容历史数据类型
+    GOAL_ACHIEVED = "goal_achieved"
+    DAILY_SUMMARY = "daily_summary"
+    WEEKLY_SUMMARY = "weekly_summary"
+    RANKING_UPDATE = "ranking_update"
 
 
 class PushStatus(str, enum.Enum):
@@ -39,7 +45,7 @@ class BroadcastEvent(BaseModel):
     __tablename__ = "broadcast_events"
 
     event_type: Mapped[str] = mapped_column(
-        Enum(EventType), nullable=False, comment="事件类型"
+        String(50), nullable=False, comment="事件类型"
     )
     user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True, comment="关联用户ID"
@@ -67,6 +73,9 @@ class BroadcastEvent(BaseModel):
     )
     push_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="推送时间"
+    )
+    crm_opportunity_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, comment="关联CRM商机ID"
     )
 
     # ===== 关联关系 =====

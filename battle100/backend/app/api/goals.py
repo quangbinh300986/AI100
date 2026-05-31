@@ -25,7 +25,39 @@ from app.schemas.goal import (
     WeeklyTargetUpdate,
     WeeklyTargetResponse,
 )
-from app.api.deps import get_current_user, require_roles
+from fastapi import Request
+from app.api.deps import get_current_user, require_permission
+from app.services.audit_service import log_action, to_dict
+
+# 动态权限代理拦截：依据 HTTP 请求路径与方法，智能分流到目标的细粒度权限上
+def dynamic_require_roles(*roles):
+    async def goals_permission_dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+            
+        path = request.url.path
+        method = request.method
+        
+        # 1. 一键清空/批量删除目标映射为 clear_targets
+        if "batch-delete" in path or method == "DELETE":
+            perm = "clear_targets"
+        # 2. 修改保底或编辑目标映射为 manage_base_targets
+        elif method in ["POST", "PUT"]:
+            perm = "manage_base_targets"
+        # 3. 其它读操作映射为 view_goals
+        else:
+            perm = "view_goals"
+            
+        checker = require_permission(perm)
+        return await checker(current_user, db)
+        
+    return goals_permission_dependency
+
+require_roles = dynamic_require_roles
 
 router = APIRouter(prefix="/goals", tags=["目标管理"])
 
@@ -292,7 +324,7 @@ async def update_personal_goal(
     goal_id: int,
     goal_in: PersonalGoalUpdateIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER, UserRole.DIGITAL_SPECIALIST)),
 ):
     goal_res = await db.execute(select(PersonalGoal).where(PersonalGoal.id == goal_id))
     goal = goal_res.scalar_one_or_none()
@@ -321,8 +353,18 @@ async def delete_personal_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="目标未找到")
         
+    before_state = to_dict(goal)
+
     await db.delete(goal)
     await db.flush()
+
+    await log_action(
+        db, current_user, "DELETE", "personal_goal", str(goal_id),
+        f"删除了个人目标，用户ID: {goal.user_id}, 目标类型: {goal.goal_type}",
+        before_state=before_state,
+        after_state=None
+    )
+
     return {"code": 200, "message": "删除成功"}
 
 
@@ -335,6 +377,11 @@ async def batch_delete_personal_goals(
     if not req.ids:
         return {"code": 200, "message": "未选中任何记录"}
         
+    # 0. 备份原数据状态
+    goals_res = await db.execute(select(PersonalGoal).where(PersonalGoal.id.in_(req.ids)))
+    goals = goals_res.scalars().all()
+    before_state = [to_dict(g) for g in goals]
+
     for gid in req.ids:
         goal_res = await db.execute(select(PersonalGoal).where(PersonalGoal.id == gid))
         goal = goal_res.scalar_one_or_none()
@@ -342,6 +389,14 @@ async def batch_delete_personal_goals(
             await db.delete(goal)
             
     await db.flush()
+
+    await log_action(
+        db, current_user, "DELETE", "personal_goal", ",".join(map(str, req.ids)),
+        f"批量清空/删除了 {len(before_state)} 条个人目标记录",
+        before_state=before_state,
+        after_state=None
+    )
+
     return {"code": 200, "message": f"成功批量删除 {len(req.ids)} 条个人目标记录"}
 
 
@@ -358,12 +413,19 @@ class PersonalRecordUpdate(BaseModel):
 async def batch_update_user_goals(
     records: List[PersonalRecordUpdate],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER, UserRole.DIGITAL_SPECIALIST)),
 ):
     """批量修改或新建某个用户下的多个目标指标值"""
     if not records:
         return {"code": 200, "message": "没有需要修改的数据"}
         
+    target_user_ids = list(set(r.user_id for r in records))
+    
+    # 0. 备份更新前的目标数据
+    old_goals_res = await db.execute(select(PersonalGoal).where(PersonalGoal.user_id.in_(target_user_ids)))
+    old_goals = old_goals_res.scalars().all()
+    before_state = [to_dict(g) for g in old_goals]
+
     for r in records:
         pg_res = await db.execute(
             select(PersonalGoal).where(
@@ -386,6 +448,18 @@ async def batch_update_user_goals(
         db.add(pg)
         
     await db.flush()
+
+    # 1. 备份更新后的目标数据
+    new_goals_res = await db.execute(select(PersonalGoal).where(PersonalGoal.user_id.in_(target_user_ids)))
+    new_goals = new_goals_res.scalars().all()
+    after_state = [to_dict(g) for g in new_goals]
+
+    await log_action(
+        db, current_user, "UPDATE", "personal_goal", ",".join(map(str, target_user_ids)),
+        f"批量创建或更新了员工【IDs:{target_user_ids}】的个人多维目标",
+        before_state=before_state,
+        after_state=after_state
+    )
     await db.commit()
     return {"code": 200, "message": "批量保存个人多维目标成功"}
 
@@ -493,6 +567,14 @@ async def create_team_goal_direct(
     )
     db.add(goal)
     await db.flush()
+
+    await log_action(
+        db, current_user, "CREATE", "team_goal", str(goal.id),
+        f"创建了战队【ID:{goal.team_id}】的{goal.category}总目标",
+        before_state=None,
+        after_state=to_dict(goal)
+    )
+
     return {"code": 200, "message": "创建战队总目标成功", "id": goal.id}
 
 
@@ -508,6 +590,8 @@ async def update_team_goal_direct(
     if not goal:
         raise HTTPException(status_code=404, detail="目标未找到")
         
+    before_state = to_dict(goal)
+
     goal.team_id = goal_in.team_id
     goal.category = goal_in.category
     goal.base_target = goal_in.base_target
@@ -517,6 +601,14 @@ async def update_team_goal_direct(
     
     db.add(goal)
     await db.flush()
+
+    await log_action(
+        db, current_user, "UPDATE", "team_goal", str(goal_id),
+        f"编辑了战队【ID:{goal.team_id}】的战队目标",
+        before_state=before_state,
+        after_state=to_dict(goal)
+    )
+
     return {"code": 200, "message": "修改成功"}
 
 
@@ -531,8 +623,18 @@ async def delete_team_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="目标未找到")
         
+    before_state = to_dict(goal)
+
     await db.delete(goal)
     await db.flush()
+
+    await log_action(
+        db, current_user, "DELETE", "team_goal", str(goal_id),
+        f"删除了战队【ID:{goal.team_id}】的战队目标",
+        before_state=before_state,
+        after_state=None
+    )
+
     return {"code": 200, "message": "删除成功"}
 
 
@@ -545,6 +647,10 @@ async def batch_delete_team_goals(
     if not req.ids:
         return {"code": 200, "message": "未选中任何记录"}
         
+    goals_res = await db.execute(select(TeamGoal).where(TeamGoal.id.in_(req.ids)))
+    goals = goals_res.scalars().all()
+    before_state = [to_dict(g) for g in goals]
+
     for gid in req.ids:
         goal_res = await db.execute(select(TeamGoal).where(TeamGoal.id == gid))
         goal = goal_res.scalar_one_or_none()
@@ -552,6 +658,14 @@ async def batch_delete_team_goals(
             await db.delete(goal)
             
     await db.flush()
+
+    await log_action(
+        db, current_user, "DELETE", "team_goal", ",".join(map(str, req.ids)),
+        f"批量删除了 {len(before_state)} 条战队目标记录",
+        before_state=before_state,
+        after_state=None
+    )
+
     return {"code": 200, "message": f"成功批量删除 {len(req.ids)} 条战队目标记录"}
 
 
@@ -711,7 +825,7 @@ async def update_weekly_target_detail(
     target_id: int,
     target_in: WeeklyTargetUpdateIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER, UserRole.DIGITAL_SPECIALIST)),
 ):
     wt_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id == target_id))
     wt = wt_res.scalar_one_or_none()
@@ -771,6 +885,11 @@ async def batch_delete_weekly_targets(
     if not req.ids:
         return {"code": 200, "message": "未选中任何记录"}
         
+    # 0. 备份原记录状态
+    wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(req.ids)))
+    wts = wts_res.scalars().all()
+    before_state = [to_dict(w) for w in wts]
+
     affected_teams = set()
     for gid in req.ids:
         wt_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id == gid))
@@ -785,6 +904,13 @@ async def batch_delete_weekly_targets(
     for tid in affected_teams:
         await sync_team_goals_from_weekly(db, tid)
         
+    await log_action(
+        db, current_user, "DELETE", "weekly_target", ",".join(map(str, req.ids)),
+        f"批量清空/删除了 {len(before_state)} 条周度目标分解记录",
+        before_state=before_state,
+        after_state=None
+    )
+
     return {"code": 200, "message": f"成功批量删除 {len(req.ids)} 条周分解记录，已重新聚合受影响战队的目标值"}
 
 
@@ -800,12 +926,19 @@ class WeeklyRecordUpdate(BaseModel):
 async def batch_update_weekly_records(
     records: List[WeeklyRecordUpdate],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER, UserRole.DIGITAL_SPECIALIST)),
 ):
     """批量修改多个周分解记录的值，并联动更新受影响战队的目标值"""
     if not records:
         return {"code": 200, "message": "没有需要修改的数据"}
         
+    record_ids = [r.id for r in records]
+
+    # 0. 备份修改前的周记录
+    old_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
+    old_wts = old_wts_res.scalars().all()
+    before_state = [to_dict(w) for w in old_wts]
+
     affected_teams = set()
     for r in records:
         wt_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id == r.id))
@@ -824,6 +957,18 @@ async def batch_update_weekly_records(
     for tid in affected_teams:
         await sync_team_goals_from_weekly(db, tid)
         
+    # 1. 备份修改后的周记录
+    new_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
+    new_wts = new_wts_res.scalars().all()
+    after_state = [to_dict(w) for w in new_wts]
+
+    await log_action(
+        db, current_user, "UPDATE", "weekly_target", ",".join(map(str, record_ids)),
+        f"批量更新了 {len(records)} 条周分解记录的目标值",
+        before_state=before_state,
+        after_state=after_state
+    )
+
     await db.commit()
     return {"code": 200, "message": "批量修改成功，战队总目标额已自动重算并刷新！"}
 

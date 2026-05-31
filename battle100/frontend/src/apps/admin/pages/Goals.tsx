@@ -35,6 +35,7 @@ import {
 } from '@ant-design/icons'
 import { get, put, post, del } from '@shared/api/client'
 import dayjs from 'dayjs'
+import { useAuthStore } from '@shared/stores/authStore'
 
 const { Title, Paragraph } = Typography
 const { TabPane } = Tabs
@@ -243,7 +244,18 @@ interface PersonalPivotRow {
 }
 
 const Goals: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('users')
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
+  const isTargetOfficer = user?.role === 'target_officer'
+  const isDigitalSpecialist = user?.role === 'digital_specialist'
+
+  // 统一权限判定函数，超级管理员默认拥有所有权限，无 permissions 字段时兜底为 true
+  const hasPerm = (p: string) => {
+    if (isAdmin) return true
+    return user?.permissions?.includes(p) ?? true
+  }
+
+  const [activeTab, setActiveTab] = useState(isAdmin ? 'users' : 'personal')
 
   // 全局共享的所有人员下拉列表（新增个人目标时检索用）
   const [allUsers, setAllUsers] = useState<{ label: string; value: number }[]>([])
@@ -1298,8 +1310,10 @@ const Goals: React.FC = () => {
       fixed: 'right' as const,
       render: (_: any, record: PersonalPivotRow) => (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditPersonalClick(record)}>编辑</Button>
-          <Button type="link" size="small" danger onClick={() => handleDeletePersonalRow(record)}>清空</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={!hasPerm('manage_base_targets')} onClick={() => handleEditPersonalClick(record)}>编辑</Button>
+          {(isAdmin || isTargetOfficer) && (
+            <Button type="link" size="small" danger disabled={!hasPerm('clear_targets')} onClick={() => handleDeletePersonalRow(record)}>清空</Button>
+          )}
         </Space>
       )
     }
@@ -1449,7 +1463,7 @@ const Goals: React.FC = () => {
           return <span style={{ color: '#999', fontSize: '12px' }}>汇总数据</span>
         }
         return (
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditPivotRowClick(rec)}>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={!hasPerm('manage_base_targets')} onClick={() => handleEditPivotRowClick(rec)}>
             编辑
           </Button>
         )
@@ -1566,61 +1580,65 @@ const Goals: React.FC = () => {
       <h3 style={{ fontSize: 20, marginBottom: 24, fontWeight: 'bold' }}>🎯 目标导入与战区/目标配置中心</h3>
 
       {/* 导入卡片区 */}
-      <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-        {/* 用户名单导入 */}
-        <Col xs={24} md={12}>
-          <Card title="📂 批量导入300+员工名单" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <Paragraph>
-              请先准备好包含姓名、手机号、岗位、岗位类型、角色等基础数据的 Excel 文件。
-            </Paragraph>
-            <Upload {...userUploadProps} showUploadList={false}>
-              <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#1890ff' }}>
-                选择 Excel 导入员工
-              </Button>
-            </Upload>
-            <Divider type="vertical" style={{ margin: '0 12px' }} />
-            <Button 
-              icon={<FileExcelOutlined />} 
-              href={`/api/v1/import-export/users/export?token=${localStorage.getItem('battle100_token') || ''}`} 
-              target="_blank"
-            >
-              导出当前名单
-            </Button>
-            <div style={{ marginTop: 16 }}>
-              <Button
-                type="dashed"
-                icon={<SyncOutlined spin={syncing} />}
-                onClick={handleSyncFromCrm}
-                loading={syncing}
-                block
-              >
-                从钉钉通讯录一键同步最新员工
-              </Button>
-            </div>
-          </Card>
-        </Col>
+      {(isAdmin || isTargetOfficer) && (
+        <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
+          {/* 用户名单导入 */}
+          {isAdmin && (
+            <Col xs={24} md={12}>
+              <Card title="📂 批量导入300+员工名单" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <Paragraph>
+                  请先准备好包含姓名、手机号、岗位、岗位类型、角色等基础数据的 Excel 文件。
+                </Paragraph>
+                <Upload {...userUploadProps} showUploadList={false}>
+                  <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#1890ff' }}>
+                    选择 Excel 导入员工
+                  </Button>
+                </Upload>
+                <Divider type="vertical" style={{ margin: '0 12px' }} />
+                <Button 
+                  icon={<FileExcelOutlined />} 
+                  href={`/api/v1/import-export/users/export?token=${localStorage.getItem('battle100_token') || ''}`} 
+                  target="_blank"
+                >
+                  导出当前名单
+                </Button>
+                <div style={{ marginTop: 16 }}>
+                  <Button
+                    type="dashed"
+                    icon={<SyncOutlined spin={syncing} />}
+                    onClick={handleSyncFromCrm}
+                    loading={syncing}
+                    block
+                  >
+                    从钉钉通讯录一键同步最新员工
+                  </Button>
+                </div>
+              </Card>
+            </Col>
+          )}
 
-        {/* 目标表导入 */}
-        <Col xs={24} md={12}>
-          <Card title="📊 批量导入战队及个人奋斗目标" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <Paragraph>
-              系统提供双通道目标导入。请分别选择“周度目标分解”和“个人多维度目标”的 Excel 附件进行上传。
-            </Paragraph>
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Upload {...weeklyGoalUploadProps} showUploadList={false}>
-                <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#52c41a', borderColor: '#52c41a', width: '100%' }}>
-                  导入周度目标分解 Excel (附件1)
-                </Button>
-              </Upload>
-              <Upload {...personalGoalUploadProps} showUploadList={false}>
-                <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#722ed1', borderColor: '#722ed1', width: '100%' }}>
-                  导入个人与战队目标 Excel (附件2, 3, 4)
-                </Button>
-              </Upload>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+          {/* 目标表导入 */}
+          <Col xs={24} md={isAdmin ? 12 : 24}>
+            <Card title="📊 批量导入战队及个人奋斗目标" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              <Paragraph>
+                系统提供双通道目标导入。请分别选择“周度目标分解”和“个人多维度目标”的 Excel 附件进行上传。
+              </Paragraph>
+              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                <Upload {...weeklyGoalUploadProps} showUploadList={false} disabled={!hasPerm('import_weekly_targets')}>
+                  <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#52c41a', borderColor: '#52c41a', width: '100%' }} disabled={!hasPerm('import_weekly_targets')}>
+                    导入周度目标分解 Excel (附件1)
+                  </Button>
+                </Upload>
+                <Upload {...personalGoalUploadProps} showUploadList={false} disabled={!hasPerm('import_weekly_targets')}>
+                  <Button type="primary" icon={<UploadOutlined />} size="large" style={{ background: '#722ed1', borderColor: '#722ed1', width: '100%' }} disabled={!hasPerm('import_weekly_targets')}>
+                    导入个人与战队目标 Excel (附件2, 3, 4)
+                  </Button>
+                </Upload>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* 五大维度数据管理 Tab 架构 */}
       <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key)} type="card" size="large">
@@ -1628,7 +1646,8 @@ const Goals: React.FC = () => {
         {/* ================================================================= */}
         {/* TAB 1: 员工与权限配置 */}
         {/* ================================================================= */}
-        <TabPane tab="👥 员工与权限配置" key="users">
+        {isAdmin ? (
+          <TabPane tab="👥 员工与权限配置" key="users">
           <Card 
             title={`员工列表与目标官配置（共 ${usersTotal} 人）`}
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
@@ -1711,6 +1730,7 @@ const Goals: React.FC = () => {
             />
           </Card>
         </TabPane>
+      ) : null}
 
         {/* ================================================================= */}
         {/* TAB 2: 个人多维奋斗目标 */}
@@ -1721,11 +1741,13 @@ const Goals: React.FC = () => {
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             extra={
               <Space>
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleCreatePersonalClick}>
-                  手动新增个人目标
-                </Button>
-                {selectedPersonalRowKeys.length > 0 && (
-                  <Button danger icon={<DeleteOutlined />} onClick={handleBatchDeletePersonal}>
+                {(isAdmin || isTargetOfficer) && (
+                  <Button type="primary" icon={<PlusOutlined />} disabled={!hasPerm('manage_base_targets')} onClick={handleCreatePersonalClick}>
+                    手动新增个人目标
+                  </Button>
+                )}
+                {(isAdmin || isTargetOfficer) && selectedPersonalRowKeys.length > 0 && (
+                  <Button danger icon={<DeleteOutlined />} disabled={!hasPerm('clear_targets')} onClick={handleBatchDeletePersonal}>
                     批量清空目标 ({selectedPersonalRowKeys.length})
                   </Button>
                 )}
@@ -1788,9 +1810,11 @@ const Goals: React.FC = () => {
             title="每周滚动分解「基础」奋斗目标透视大盘（单位: 万元）"
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             extra={
-              <Button danger icon={<DeleteOutlined />} onClick={handleClearAllWeekly}>
-                一键清空所有周目标
-              </Button>
+              (isAdmin || isTargetOfficer) && (
+                <Button danger icon={<DeleteOutlined />} disabled={!hasPerm('clear_targets')} onClick={handleClearAllWeekly}>
+                  一键清空所有周目标
+                </Button>
+              )
             }
           >
             <Table
@@ -1814,9 +1838,11 @@ const Goals: React.FC = () => {
             title="每周滚动分解「挑战」奋斗目标透视大盘（单位: 万元）"
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             extra={
-              <Button danger icon={<DeleteOutlined />} onClick={handleClearAllWeekly}>
-                一键清空所有周目标
-              </Button>
+              (isAdmin || isTargetOfficer) && (
+                <Button danger icon={<DeleteOutlined />} disabled={!hasPerm('clear_targets')} onClick={handleClearAllWeekly}>
+                  一键清空所有周目标
+                </Button>
+              )
             }
           >
             <Table
@@ -1965,6 +1991,7 @@ const Goals: React.FC = () => {
         }}
         okText="保存"
         cancelText="取消"
+        okButtonProps={{ disabled: !hasPerm('manage_base_targets') }}
         width={650}
         destroyOnClose
       >
@@ -2080,6 +2107,7 @@ const Goals: React.FC = () => {
         }}
         okText="保存并同步"
         cancelText="取消"
+        okButtonProps={{ disabled: !hasPerm('manage_base_targets') }}
         width={750}
         destroyOnClose
       >

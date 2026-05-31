@@ -30,10 +30,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=battle100-jwt-secret-key-change-in-production
       - CRM_BASE_URL=http://10.50.0.137:9294
-      - DINGTALK_APP_KEY=dingcdmb2imuqdcoqrdf
-      - DINGTALK_APP_SECRET=XMKCOJ1toY6xQlbLX9uzxEUiVVqcdxo10T6ceFoPdQODgH9EOMOeTV9CH-WtkCJZ
+      - DINGTALK_APP_KEY=dingkbksgliafwkuhymm
+      - DINGTALK_APP_SECRET=4ix04ToPBsSafjLFdydEq2iYQoVu71czrXNSYIQOyRmA4secmgCbjgR-4mT7eH4d
       - DINGTALK_CORP_ID=dingdaec913f1d2b741235c2f4657eb6378f
-      - DINGTALK_AGENT_ID=807511396
+      - DINGTALK_AGENT_ID=4630403498
     depends_on:
       postgres:
         condition: service_healthy

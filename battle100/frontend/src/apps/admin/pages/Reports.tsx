@@ -1,197 +1,925 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Tag, Space, Button, Modal, Input, Form, Badge, Card, Typography, message } from 'antd'
-import { CheckOutlined, CloseOutlined, EyeOutlined } from '@ant-design/icons'
-import { get, post } from '@shared/api/client'
+import {
+  Table,
+  Tag,
+  Space,
+  Button,
+  Modal,
+  Input,
+  Form,
+  Card,
+  Typography,
+  message,
+  Select,
+  Row,
+  Col,
+  Switch,
+  InputNumber,
+  Divider,
+  Popconfirm,
+  Statistic,
+  Tooltip
+} from 'antd'
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  SyncOutlined,
+  FilterOutlined,
+  CopyOutlined,
+  WarningOutlined,
+  InfoCircleOutlined,
+  DingtalkOutlined,
+  GlobalOutlined,
+  DesktopOutlined
+} from '@ant-design/icons'
+import { get, post, put, del } from '@shared/api/client'
+import { useAuthStore } from '@shared/stores/authStore'
+import dayjs from 'dayjs'
 
 const { Text } = Typography
 
-interface ReportItem {
+// 战队选项定义 (与本地数据库同步)
+const TEAM_OPTIONS = [
+  { label: '全部战队', value: 'all' },
+  { label: '清远战队', value: '1' },
+  { label: '广州一战队', value: '2' },
+  { label: '广州二战队', value: '3' },
+  { label: '广州三战队（大数据）', value: '4' },
+  { label: '佛山战队', value: '5' },
+  { label: '湛江战队', value: '6' },
+  { label: '云浮战队', value: '7' },
+  { label: '东莞战队', value: '8' },
+  { label: '茂名战队', value: '9' },
+]
+
+// 播报与动作类型定义 (严格限制为这 5 种核心动作 + 自定义文本播报)
+const EVENT_TYPE_OPTIONS = [
+  { label: '有效线索确定 (25%)', value: 'lead_25' },
+  { label: '中标确定 (75%)', value: 'lead_75' },
+  { label: '已完成合同签订 (90%)', value: 'contract_signed' },
+  { label: '铁三角联动', value: 'triangle' },
+  { label: '客户幸福动作', value: 'happiness' },
+  { label: '自定义播报', value: 'custom' },
+]
+
+// 推送状态定义
+const PUSH_STATUS_OPTIONS = [
+  { label: '待推送', value: 'pending' },
+  { label: '已发送', value: 'sent' },
+  { label: '发送失败', value: 'failed' },
+]
+
+// 推送渠道定义
+const PUSH_CHANNEL_OPTIONS = [
+  { label: '钉钉群推送', value: 'dingtalk' },
+  { label: '系统通知', value: 'system' },
+  { label: '全渠道推送', value: 'all' },
+]
+
+// 播报数据结构
+interface BroadcastItem {
   id: number
-  user_id: number
+  event_type: string
+  user_id?: number
+  team_id?: number
+  content: string
+  push_status: string
+  push_channel: string
+  event_time?: string
+  created_at: string
+  crm_opportunity_id?: string
   user_name?: string
-  report_date: string
-  contract_amount: number
-  contract_count: number
-  happiness_actions: number
-  triangle_count: number
-  leads_count: number
-  work_summary?: string
-  work_reflection?: string
-  next_day_plan?: string
-  standup_notes?: string
-  status: string
-  submitted_at?: string
-  details?: any[]
+  team_name?: string
+  delivery_allocations?: any[]
+  marketing_allocations?: any[]
+}
+
+// 本地系统用户结构
+interface UserItem {
+  id: number
+  name: string
+  role: string
+  teamId?: number
+}
+
+// CRM 商机项目结构
+interface CRMProject {
+  id: string
+  name: string
+  customer_name: string
+  budget_money: number
+  expect_money: number
+  progress: number
+  marketing_users: {
+    crm_user_id: string
+    name: string
+    local_user_id?: number
+  }[]
 }
 
 const Reports: React.FC = () => {
-  const [reports, setReports] = useState<ReportItem[]>([])
+  const { user } = useAuthStore()
+  const isTeamLeader = user?.role === 'team_leader'
+
+  const [broadcasts, setBroadcasts] = useState<BroadcastItem[]>([])
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  
-  // 审核相关的模态框状态
-  const [detailVisible, setDetailVisible] = useState(false)
-  const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null)
-  const [rejectVisible, setRejectVisible] = useState(false)
-  const [rejectForm] = Form.useForm()
 
-  // 加载数据
-  const loadReports = async () => {
+  // 筛选项状态
+  const [filterTeamId, setFilterTeamId] = useState<string | undefined>(
+    isTeamLeader && user?.teamId ? String(user.teamId) : undefined
+  )
+  const [filterEventType, setFilterEventType] = useState<string | undefined>(undefined)
+  const [filterKeyword, setFilterKeyword] = useState<string>('')
+
+  // 选中的行键值 (用于批量删除)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+
+  // 表单与模态框状态
+  const [createVisible, setCreateVisible] = useState(false)
+  const [editVisible, setEditVisible] = useState(false)
+  const [selectedBroadcast, setSelectedBroadcast] = useState<BroadcastItem | null>(null)
+  const [editEventType, setEditEventType] = useState<string>('custom')
+  
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+
+  // 伴随指标与 CRM 数据状态
+  const [withIndicator, setWithIndicator] = useState(false)
+  const [actionType, setActionType] = useState<string>('contract')
+  const [crmLoading, setCrmLoading] = useState(false)
+  const [crmProjects, setCrmProjects] = useState<CRMProject[]>([])
+  const [crmCustomers, setCrmCustomers] = useState<string[]>([])
+  const [users, setUsers] = useState<UserItem[]>([])
+
+  // 看板汇总数据
+  const [summaryData, setSummaryData] = useState({
+    todayCount: 0,
+    pendingCount: 0,
+    sentCount: 0,
+    totalCount: 0,
+  })
+
+  // 确保战队长只查看本战队
+  useEffect(() => {
+    if (isTeamLeader && user?.teamId) {
+      setFilterTeamId(String(user.teamId))
+    }
+  }, [user, isTeamLeader])
+
+  // 加载系统用户列表 (分摊选择使用)
+  const loadUsers = async () => {
+    try {
+      const res = await get<any>('/users?page_size=1000')
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        setUsers(data.items || [])
+      }
+    } catch (err) {
+      console.error('加载系统员工列表失败', err)
+    }
+  }
+
+  // 加载 CRM 客户名称列表
+  const loadCrmCustomers = async () => {
+    try {
+      const res = await get<any>('/broadcast/crm-customers')
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setCrmCustomers(data)
+      }
+    } catch (err) {
+      console.error('加载 CRM 客户列表失败', err)
+    }
+  }
+
+  // 加载战报数据
+  const loadBroadcasts = async () => {
     setLoading(true)
     try {
-      const res = await get<any>(`/reports?page=${page}&page_size=${pageSize}`)
-      if (res && res.data) {
-        const items = res.data.items || []
-        const formatted = items.map((x: any) => ({
-          ...x,
-          user_name: x.user_name || `员工ID:${x.user_id}`
-        }))
-        setReports(formatted)
-        setTotal(res.data.total || 0)
+      let url = `/broadcast?page=${page}&page_size=${pageSize}`
+      
+      const targetTeam = isTeamLeader && user?.teamId ? String(user.teamId) : filterTeamId
+      if (targetTeam && targetTeam !== 'all') {
+        url += `&team_id=${targetTeam}`
+      }
+      if (filterEventType && filterEventType !== 'all') {
+        url += `&event_type=${filterEventType}`
+      }
+      if (filterKeyword) {
+        url += `&keyword=${encodeURIComponent(filterKeyword)}`
+      }
+
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && (data.items || data.total !== undefined)) {
+        setBroadcasts(data.items || [])
+        setTotal(data.total || 0)
       } else {
-        // Fallback Mock 数据
-        const mockReports: ReportItem[] = [
-          {
-            id: 1,
-            user_id: 101,
-            user_name: '苏志辉',
-            report_date: '2026-05-30',
-            contract_amount: 85.0,
-            contract_count: 1,
-            happiness_actions: 1,
-            triangle_count: 2,
-            leads_count: 1,
-            work_summary: '今日完成广州分部项目洽谈，签订合同。拜访重点大客户进行铁三角协同工作。',
-            work_reflection: '线索跟进时效性还可以再提高。',
-            next_day_plan: '明日开展回款对接。',
-            status: 'submitted',
-            submitted_at: '2026-05-30 18:30:00',
-            details: [
-              {
-                id: 10,
-                detail_type: 'contract',
-                customer_name: '广州市自然资源局',
-                amount: 85.0,
-                description: '完成了年度规划设计合同签约。'
-              },
-              {
-                id: 11,
-                detail_type: 'happiness',
-                customer_name: '清远规划局',
-                happiness_level: 50,
-                description: '提供政策解读中地课堂讲座，客户对此极为满意并公开表示感谢。'
-              }
-            ]
-          },
-          {
-            id: 2,
-            user_id: 102,
-            user_name: '陈露',
-            report_date: '2026-05-30',
-            contract_amount: 0,
-            contract_count: 0,
-            happiness_actions: 2,
-            triangle_count: 0,
-            leads_count: 0,
-            work_summary: '进行日常客户拜访和维护。解决客户在使用系统中的部分咨询。',
-            status: 'submitted',
-            submitted_at: '2026-05-30 17:45:00',
-            details: [
-              {
-                id: 12,
-                detail_type: 'happiness',
-                customer_name: '中山国土局',
-                happiness_level: 20,
-                description: '提前两天交付了分析成果，并提出了对应的风险预防方案。'
-              }
-            ]
-          }
-        ]
-        setReports(mockReports)
-        setTotal(2)
+        setBroadcasts([])
+        setTotal(0)
       }
     } catch (err) {
       console.error(err)
-      message.error('加载填报列表失败，显示演示数据')
+      message.error('加载战报列表失败')
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadReports()
-  }, [page, pageSize])
-
-  // 执行审核
-  const handleReview = async (reportId: number, action: 'approved' | 'rejected', reason?: string) => {
+  // 计算看板指标统计
+  const loadSummaryStats = async () => {
     try {
-      const res = await post(`/reports/${reportId}/review`, {
-        action: action,
-        reason: reason || ''
-      })
-      if (res) {
-        message.success(action === 'approved' ? '审核已通过' : '已成功驳回')
-        setDetailVisible(false)
-        setRejectVisible(false)
-        loadReports()
+      // 简易抓取最近的100条用于本地聚合计算今日、待推送等指标
+      const res = await get<any>('/broadcast?page=1&page_size=100')
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        const items: BroadcastItem[] = data.items || []
+        const todayStr = dayjs().format('YYYY-MM-DD')
+        
+        const todayCount = items.filter(x => dayjs(x.created_at).format('YYYY-MM-DD') === todayStr).length
+        const pendingCount = items.filter(x => x.push_status === 'pending').length
+        const sentCount = items.filter(x => x.push_status === 'sent').length
+        
+        setSummaryData({
+          todayCount,
+          pendingCount,
+          sentCount,
+          totalCount: data.total || 0,
+        })
       }
     } catch (err) {
-      message.error('审核提交失败')
+      console.error('获取统计看板失败', err)
     }
   }
 
-  const columns = [
-    { title: '日期', dataIndex: 'report_date', key: 'report_date' },
-    { title: '填报人', dataIndex: 'user_name', key: 'user_name' },
-    { title: '新签金额(万)', dataIndex: 'contract_amount', key: 'contract_amount', render: (val: number) => <span style={{ color: '#f5222d', fontWeight: 'bold' }}>{val}</span> },
-    { title: '幸福动作(次)', dataIndex: 'happiness_actions', key: 'happiness_actions' },
-    { title: '铁三角联动(次)', dataIndex: 'triangle_count', key: 'triangle_count' },
-    { title: '有效线索(条)', dataIndex: 'leads_count', key: 'leads_count' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (val: string) => {
-        if (val === 'submitted') return <Tag color="warning">待审核</Tag>
-        if (val === 'approved') return <Tag color="success">已通过</Tag>
-        return <Tag color="default">已驳回</Tag>
+  useEffect(() => {
+    loadBroadcasts()
+    loadSummaryStats()
+  }, [page, pageSize, filterTeamId, filterEventType, user])
+
+  useEffect(() => {
+    loadUsers()
+    loadCrmCustomers()
+  }, [])
+
+  // 复制 CRM 商机 ID 提示
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    message.success('商机ID已成功复制到剪贴板')
+  }
+
+  // 执行单条删除 (含级联扣减)
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await del<any>(`/broadcast/${id}`)
+      if (res) {
+        message.success('战报已成功删除，关联业绩明细与日报完成额已级联回滚')
+        loadBroadcasts()
+        loadSummaryStats()
+        setSelectedRowKeys(prev => prev.filter(k => k !== id))
       }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '删除失败')
+    }
+  }
+
+  // 执行批量删除 (含级联扣减)
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) return
+    try {
+      const res = await post<any>('/broadcast/batch-delete', {
+        ids: selectedRowKeys
+      })
+      if (res) {
+        message.success(`已成功批量删除 ${selectedRowKeys.length} 条战报，对应业绩已被级联清退`)
+        setSelectedRowKeys([])
+        loadBroadcasts()
+        loadSummaryStats()
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '批量删除失败')
+    }
+  }
+
+  // 触发获取特定拓展进度的 CRM 项目
+  const fetchCRMProjects = async (progress: number) => {
+    setCrmLoading(true)
+    try {
+      const res = await get<any>(`/broadcast/crm-projects?progress=${progress}`)
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setCrmProjects(data)
+      } else {
+        setCrmProjects([])
+      }
+    } catch (err) {
+      message.error('无法直连获取 CRM 对应进度的项目数据')
+      setCrmProjects([])
+    } finally {
+      setCrmLoading(false)
+    }
+  }
+
+  // 监听创建弹窗里的动作类型变化
+  const handleActionTypeChange = (type: string) => {
+    setActionType(type)
+    createForm.setFieldsValue({
+      crm_opportunity_id: undefined,
+      customer_name: '',
+      amount: 0,
+      expect_money: 0,
+      budget_money: 0,
+      delivery_allocations: [],
+      marketing_allocations: []
+    })
+
+    if (type === 'contract') {
+      fetchCRMProjects(90) // 合同阶段为 90%
+    } else if (type === 'lead_75') {
+      fetchCRMProjects(75) // 已中标阶段为 75%
+    } else if (type === 'lead_25') {
+      fetchCRMProjects(25) // 有效线索阶段为 25%
+    }
+  }
+
+  // 选中某条 CRM 商机后的数据带入逻辑
+  const handleCRMProjectSelect = (oppId: string) => {
+    const proj = crmProjects.find(p => p.id === oppId)
+    if (!proj) return
+
+    const defaultAmount = proj.expect_money > 0 ? proj.expect_money : proj.budget_money
+
+    createForm.setFieldsValue({
+      customer_name: proj.customer_name,
+      amount: defaultAmount,
+      expect_money: proj.expect_money,
+      budget_money: proj.budget_money
+    })
+
+    const currentDelivery = [{
+      user_id: user?.id || 0,
+      ratio: 100,
+      amount: defaultAmount
+    }]
+    createForm.setFieldsValue({ delivery_allocations: currentDelivery })
+
+    if (proj.marketing_users && proj.marketing_users.length > 0) {
+      const marketingUsersCount = proj.marketing_users.length
+      const avgRatio = Math.round((100 / marketingUsersCount) * 100) / 100
+      
+      const initMarketingAlloc = proj.marketing_users.map((mu, index) => {
+        const matchedLocalId = mu.local_user_id || 0
+        const allocRatio = index === marketingUsersCount - 1 
+          ? Math.round((100 - avgRatio * (marketingUsersCount - 1)) * 100) / 100 
+          : avgRatio
+
+        return {
+          user_id: matchedLocalId,
+          ratio: allocRatio,
+          amount: Math.round((defaultAmount * (allocRatio / 100)) * 100) / 100
+        }
+      })
+      createForm.setFieldsValue({ marketing_allocations: initMarketingAlloc })
+    } else {
+      createForm.setFieldsValue({ marketing_allocations: [] })
+    }
+
+    let progressText = '90%'
+    if (actionType === 'lead_75') progressText = '75%'
+    if (actionType === 'lead_25') progressText = '25%'
+
+    const generatedContent = `【战报播报】恭喜【${user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
+    createForm.setFieldsValue({ content: generatedContent })
+  }
+
+  // 重新根据输入框的总金额与分摊比例计算每个员工的分摊具体金额 (新建表单)
+  const recalculateAllocations = () => {
+    const formVals = createForm.getFieldsValue()
+    const totalAmt = formVals.amount || 0
+
+    if (formVals.delivery_allocations) {
+      const updated = formVals.delivery_allocations.map((item: any) => ({
+        ...item,
+        amount: Math.round((totalAmt * ((item.ratio || 0) / 100)) * 100) / 100
+      }))
+      createForm.setFieldsValue({ delivery_allocations: updated })
+    }
+
+    if (formVals.marketing_allocations) {
+      const updated = formVals.marketing_allocations.map((item: any) => ({
+        ...item,
+        amount: Math.round((totalAmt * ((item.ratio || 0) / 100)) * 100) / 100
+      }))
+      createForm.setFieldsValue({ marketing_allocations: updated })
+    }
+  }
+
+  // 重新根据编辑表单中的总金额和比例计算分摊具体金额 (编辑表单)
+  const recalculateEditAllocations = () => {
+    const formVals = editForm.getFieldsValue()
+    const totalAmt = formVals.amount || 0
+
+    if (formVals.delivery_allocations) {
+      const updated = formVals.delivery_allocations.map((item: any) => ({
+        ...item,
+        amount: Math.round((totalAmt * ((item.ratio || 0) / 100)) * 100) / 100
+      }))
+      editForm.setFieldsValue({ delivery_allocations: updated })
+    }
+
+    if (formVals.marketing_allocations) {
+      const updated = formVals.marketing_allocations.map((item: any) => ({
+        ...item,
+        amount: Math.round((totalAmt * ((item.ratio || 0) / 100)) * 100) / 100
+      }))
+      editForm.setFieldsValue({ marketing_allocations: updated })
+    }
+  }
+
+  // 提交创建新战报
+  const handleCreateSubmit = async (values: any) => {
+    // 校验比例和
+    if (withIndicator && (actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25')) {
+      const dAllocs = values.delivery_allocations || []
+      if (dAllocs.length > 0) {
+        const dSum = dAllocs.reduce((sum: number, item: any) => sum + (Number(item.ratio) || 0), 0)
+        if (Math.abs(dSum - 100) > 0.1) {
+          message.error(`提交失败：交付分摊比例之和必须为 100% (当前为 ${dSum}%)`)
+          return
+        }
+        if (dAllocs.some((item: any) => !item.user_id)) {
+          message.error('提交失败：交付分摊存在未选择员工的记录')
+          return
+        }
+      }
+
+      const mAllocs = values.marketing_allocations || []
+      if (mAllocs.length > 0) {
+        const mSum = mAllocs.reduce((sum: number, item: any) => sum + (Number(item.ratio) || 0), 0)
+        if (Math.abs(mSum - 100) > 0.1) {
+          message.error(`提交失败：营销分摊比例之和必须为 100% (当前为 ${mSum}%)`)
+          return
+        }
+        if (mAllocs.some((item: any) => !item.user_id)) {
+          message.error('提交失败：营销分摊存在未选择员工的记录')
+          return
+        }
+      }
+    }
+
+    try {
+      const payload: any = {
+        event_type: values.event_type,
+        team_id: values.team_id === 'all' || !values.team_id ? null : Number(values.team_id),
+        content: values.content,
+        push_channel: values.push_channel,
+        // 伴随指标填报
+        action_type: withIndicator ? values.action_type : null,
+        customer_name: withIndicator ? values.customer_name : null,
+        amount: withIndicator ? Number(values.amount) : null,
+        crm_opportunity_id: withIndicator ? values.crm_opportunity_id : null,
+        // 分摊
+        delivery_allocations: withIndicator ? values.delivery_allocations : null,
+        marketing_allocations: withIndicator ? values.marketing_allocations : null,
+        happiness_score: withIndicator && values.action_type === 'happiness' ? values.happiness_score : null,
+        action_description: withIndicator ? values.action_description : null,
+      }
+
+      const res = await post<any>('/broadcast', payload)
+      if (res) {
+        message.success('战报创建成功！已自动广播推送并重算大屏数据')
+        setCreateVisible(false)
+        createForm.resetFields()
+        setWithIndicator(false)
+        loadBroadcasts()
+        loadSummaryStats()
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '手动录入战报失败')
+    }
+  }
+
+  // 提交修改战报
+  const handleEditSubmit = async (values: any) => {
+    if (!selectedBroadcast) return
+
+    // 针对合同新签类型的分摊和进行校验
+    if (editEventType === 'contract_signed') {
+      const dAllocs = values.delivery_allocations || []
+      if (dAllocs.length > 0) {
+        const dSum = dAllocs.reduce((sum: number, item: any) => sum + (Number(item.ratio) || 0), 0)
+        if (Math.abs(dSum - 100) > 0.1) {
+          message.error(`保存失败：交付分摊比例之和必须为 100% (当前为 ${dSum}%)`)
+          return
+        }
+      }
+
+      const mAllocs = values.marketing_allocations || []
+      if (mAllocs.length > 0) {
+        const mSum = mAllocs.reduce((sum: number, item: any) => sum + (Number(item.ratio) || 0), 0)
+        if (Math.abs(mSum - 100) > 0.1) {
+          message.error(`保存失败：营销分摊比例之和必须为 100% (当前为 ${mSum}%)`)
+          return
+        }
+      }
+    }
+
+    try {
+      const payload: any = {
+        content: values.content,
+        push_status: values.push_status,
+        push_channel: values.push_channel,
+        crm_opportunity_id: values.crm_opportunity_id || ''
+      }
+
+      // 如果是前三种(关联 CRM) 或 铁三角/幸福动作，将对应的客户名称、金额及分摊发送回写
+      if (editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25') {
+        payload.customer_name = values.customer_name
+      }
+      if (editEventType === 'contract_signed') {
+        payload.amount = Number(values.amount)
+        payload.delivery_allocations = values.delivery_allocations
+        payload.marketing_allocations = values.marketing_allocations
+      }
+      if (editEventType === 'triangle' || editEventType === 'happiness') {
+        payload.customer_name = values.customer_name
+      }
+      if (editEventType === 'happiness') {
+        payload.happiness_score = values.happiness_score
+      }
+
+      const res = await put<any>(`/broadcast/${selectedBroadcast.id}`, payload)
+      if (res) {
+        message.success('战报修改成功，已联动级联同步重算业绩数据')
+        setEditVisible(false)
+        loadBroadcasts()
+        loadSummaryStats()
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '编辑保存失败')
+    }
+  }
+
+  // 表格列定义
+  const columns = [
+    {
+      title: '事件类型',
+      dataIndex: 'event_type',
+      key: 'event_type',
+      width: 145,
+      render: (val: string) => {
+        let label = '自定义播报'
+        let color = 'default'
+        if (val === 'contract_signed') {
+          label = '已完成合同签订'
+          color = 'volcano'
+        } else if (val === 'lead_75') {
+          label = '中标确定'
+          color = 'gold'
+        } else if (val === 'lead_25') {
+          label = '有效线索确定'
+          color = 'green'
+        } else if (val === 'triangle') {
+          label = '铁三角联动'
+          color = 'blue'
+        } else if (val === 'happiness') {
+          label = '客户幸福动作'
+          color = 'purple'
+        }
+        return <Tag color={color} style={{ fontWeight: 'bold', padding: '3px 8px', borderRadius: 4 }}>{label}</Tag>
+      }
+    },
+    {
+      title: '播报内容',
+      dataIndex: 'content',
+      key: 'content',
+      render: (val: string) => (
+        <Tooltip title={val} placement="topLeft" overlayStyle={{ maxWidth: 400 }}>
+          <div style={{
+            maxHeight: 50,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            color: '#333',
+            fontSize: '13.5px',
+            lineHeight: '1.5'
+          }}>
+            {val}
+          </div>
+        </Tooltip>
+      )
+    },
+    {
+      title: '发布人',
+      dataIndex: 'user_name',
+      key: 'user_name',
+      width: 90,
+      render: (val: string) => <span style={{ fontWeight: 500 }}>{val || '系统'}</span>
+    },
+    {
+      title: '所属战队',
+      dataIndex: 'team_name',
+      key: 'team_name',
+      width: 110,
+      render: (val: string) => val ? <Tag color="cyan">{val}</Tag> : <span style={{ color: '#aaa' }}>-</span>
+    },
+    {
+      title: '推送状态',
+      dataIndex: 'push_status',
+      key: 'push_status',
+      width: 95,
+      render: (val: string) => {
+        if (val === 'sent') return <Tag color="success">已发送</Tag>
+        if (val === 'pending') return <Tag color="warning">待推送</Tag>
+        return <Tag color="error">发送失败</Tag>
+      }
+    },
+    {
+      title: '推送渠道',
+      dataIndex: 'push_channel',
+      key: 'push_channel',
+      width: 105,
+      render: (val: string) => {
+        if (val === 'dingtalk') return <Space><DingtalkOutlined style={{ color: '#1890ff' }} />钉钉</Space>
+        if (val === 'system') return <Space><DesktopOutlined style={{ color: '#52c41a' }} />系统</Space>
+        return <Space><GlobalOutlined style={{ color: '#722ed1' }} />全渠道</Space>
+      }
+    },
+    {
+      title: 'CRM商机关联',
+      dataIndex: 'crm_opportunity_id',
+      key: 'crm_opportunity_id',
+      width: 140,
+      render: (val: string) => {
+        if (!val) return <span style={{ color: '#ccc' }}>未关联</span>
+        return (
+          <Space>
+            <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#666' }}>{val}</span>
+            <Button 
+              type="text" 
+              size="small" 
+              icon={<CopyOutlined style={{ fontSize: 11, color: '#1890ff' }} />} 
+              onClick={() => copyToClipboard(val)} 
+            />
+          </Space>
+        )
+      }
+    },
+    {
+      title: '播报时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      render: (val: string) => dayjs(val).format('YYYY-MM-DD HH:mm:ss')
     },
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: ReportItem) => (
-        <Space>
+      width: 130,
+      fixed: 'right' as const,
+      render: (_: any, record: BroadcastItem) => (
+        <Space size="middle">
           <Button
-            type="primary"
-            icon={<EyeOutlined />}
+            type="text"
+            icon={<EditOutlined style={{ color: '#1890ff' }} />}
             onClick={() => {
-              setSelectedReport(record)
-              setDetailVisible(true)
+              setSelectedBroadcast(record)
+              setEditEventType(record.event_type)
+
+              // 自动通过正则或分摊和提炼已有的合同总金额与客户名称回填
+              const totalAllocAmount = record.delivery_allocations 
+                ? record.delivery_allocations.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
+                : 0;
+
+              // 从 content 中提取客户单位名称以兜底
+              const matchCustomer = record.content.match(/业主单位：([^，!；]+)/)?.[1] || 
+                                    record.content.match(/客户分别为([^，!；]+)/)?.[1] || 
+                                    record.content.match(/客户为([^，!；]+)/)?.[1] || 
+                                    '';
+
+              editForm.setFieldsValue({
+                content: record.content,
+                push_status: record.push_status,
+                push_channel: record.push_channel,
+                crm_opportunity_id: record.crm_opportunity_id,
+                customer_name: matchCustomer,
+                amount: totalAllocAmount,
+                delivery_allocations: record.delivery_allocations || [],
+                marketing_allocations: record.marketing_allocations || []
+              })
+              setEditVisible(true)
             }}
           >
-            详情与审核
+            编辑
           </Button>
+          <Popconfirm
+            title={
+              <div style={{ maxWidth: 260 }}>
+                <span style={{ color: '#f5222d', fontWeight: 'bold' }}>⚠️ 级联扣减警告</span>
+                <p style={{ margin: '4px 0 0 0', fontSize: 12 }}>该操作将清除战报！若有关联的 CRM 项目，对应用户的日报新签金额及明细业绩将被自动回滚清退。确定删除吗？</p>
+              </div>
+            }
+            onConfirm={() => handleDelete(record.id)}
+            okText="狠心删除"
+            cancelText="保留"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       )
     }
   ]
 
+  // 表格多选配置
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+  }
+
   return (
-    <div>
-      <h3 style={{ fontSize: 20, marginBottom: 24, fontWeight: 'bold' }}>📋 员工每日填报审核面板</h3>
-      <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+    <div style={{ padding: '0px' }}>
+      {/* 头部微型渐变统计卡片 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={6}>
+          <Card bordered={false} style={{ background: 'linear-gradient(135deg, #e0f7fa 0%, #80deea 100%)', borderRadius: 8, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+            <Statistic title={<span style={{ color: '#006064', fontWeight: 500 }}>今日播报数</span>} value={summaryData.todayCount} valueStyle={{ color: '#006064', fontWeight: 'bold' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card bordered={false} style={{ background: 'linear-gradient(135deg, #fff3e0 0%, #ffcc80 100%)', borderRadius: 8, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+            <Statistic title={<span style={{ color: '#e65100', fontWeight: 500 }}>待推送消息</span>} value={summaryData.pendingCount} valueStyle={{ color: '#e65100', fontWeight: 'bold' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card bordered={false} style={{ background: 'linear-gradient(135deg, #e8f5e9 0%, #a5d6a7 100%)', borderRadius: 8, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+            <Statistic title={<span style={{ color: '#1b5e20', fontWeight: 500 }}>成功已发送</span>} value={summaryData.sentCount} valueStyle={{ color: '#1b5e20', fontWeight: 'bold' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card bordered={false} style={{ background: 'linear-gradient(135deg, #f3e5f5 0%, #ce93d8 100%)', borderRadius: 8, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+            <Statistic title={<span style={{ color: '#4a148c', fontWeight: 500 }}>历史累计战报</span>} value={summaryData.totalCount} valueStyle={{ color: '#4a148c', fontWeight: 'bold' }} />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 头部标题与控制按钮 */}
+      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+        <Col>
+          <h3 style={{ fontSize: 20, margin: 0, fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+            📢 实时战报与广播管理控制台
+          </h3>
+        </Col>
+        <Col>
+          <Space>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                createForm.resetFields()
+                setWithIndicator(false)
+                setCreateVisible(true)
+              }}
+              style={{ borderRadius: 4 }}
+            >
+              手动新建战报
+            </Button>
+            <Button
+              icon={<SyncOutlined />}
+              onClick={() => {
+                loadBroadcasts()
+                loadSummaryStats()
+                message.success('战报数据已刷新')
+              }}
+            >
+              刷新
+            </Button>
+          </Space>
+        </Col>
+      </Row>
+
+      {/* 筛选面板 */}
+      <Card bordered={false} style={{ marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }} bodyStyle={{ padding: '16px' }}>
+        <Row gutter={[16, 16]} align="middle">
+          <Col>
+            <Space>
+              <FilterOutlined style={{ color: '#1890ff' }} />
+              <strong>类型过滤：</strong>
+            </Space>
+          </Col>
+          <Col xs={24} sm={6} md={5}>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="按战队筛选"
+              value={filterTeamId || (isTeamLeader ? String(user?.teamId) : 'all')}
+              onChange={(val) => {
+                setFilterTeamId(val)
+                setPage(1)
+              }}
+              disabled={isTeamLeader}
+              options={TEAM_OPTIONS}
+            />
+          </Col>
+          <Col xs={24} sm={6} md={5}>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="按类型筛选"
+              value={filterEventType || 'all'}
+              onChange={(val) => {
+                setFilterEventType(val)
+                setPage(1)
+              }}
+              options={[{ label: '全部战报动作类型', value: 'all' }, ...EVENT_TYPE_OPTIONS]}
+            />
+          </Col>
+          <Col xs={24} sm={8} md={6}>
+            <Input
+              placeholder="关键字检索播报文本..."
+              value={filterKeyword}
+              onChange={(e) => setFilterKeyword(e.target.value)}
+              onPressEnter={() => setPage(1)}
+              allowClear
+            />
+          </Col>
+          <Col>
+            <Space>
+              <Button type="primary" onClick={() => setPage(1)}>搜索</Button>
+              <Button
+                onClick={() => {
+                  if (!isTeamLeader) {
+                    setFilterTeamId(undefined)
+                  }
+                  setFilterEventType(undefined)
+                  setFilterKeyword('')
+                  setPage(1)
+                }}
+              >
+                重置
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* 批量操作提示栏 */}
+      {selectedRowKeys.length > 0 && (
+        <Card size="small" style={{ marginBottom: 12, background: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
+          <Row justify="space-between" align="middle">
+            <Col>
+              <Space>
+                <WarningOutlined style={{ color: '#fa541c' }} />
+                <span>已选中 <strong style={{ color: '#fa541c' }}>{selectedRowKeys.length}</strong> 项战报广播事件。</span>
+                <span style={{ fontSize: 12, color: '#8c8c8c' }}>（执行批量删除将级联清除已关联的 CRM 业绩日报数据并重新扣减，请务必核实！）</span>
+              </Space>
+            </Col>
+            <Col>
+              <Space>
+                <Popconfirm
+                  title={
+                    <div style={{ maxWidth: 280 }}>
+                      <span style={{ color: '#f5222d', fontWeight: 'bold' }}>⚠️ 确认批量清退吗？</span>
+                      <p style={{ margin: '4px 0 0 0', fontSize: 12 }}>该操作将彻底物理删除选中的 {selectedRowKeys.length} 条战报，扣回所有关联业绩和日报明细，此过程无法恢复！</p>
+                    </div>
+                  }
+                  onConfirm={handleBatchDelete}
+                  okText="确定批量删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button type="primary" danger size="small" icon={<DeleteOutlined />}>
+                    批量删除所选
+                  </Button>
+                </Popconfirm>
+                <Button size="small" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* 数据表格主体 */}
+      <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)', borderRadius: 8 }}>
         <Table
-          dataSource={reports}
+          rowSelection={rowSelection}
+          dataSource={broadcasts}
           columns={columns}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1100 }}
           pagination={{
             current: page,
             pageSize: pageSize,
             total: total,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条战报记录`,
             onChange: (p, ps) => {
               setPage(p)
               setPageSize(ps)
@@ -200,100 +928,635 @@ const Reports: React.FC = () => {
         />
       </Card>
 
-      {/* 详情与审核Modal */}
+      {/* 手动新建战报Modal */}
       <Modal
-        title={selectedReport ? `${selectedReport.user_name} 的每日填报详情` : '填报详情'}
-        open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
-        width={700}
-        footer={
-          selectedReport && selectedReport.status === 'submitted' ? (
-            <Space>
-              <Button
-                type="dashed"
-                danger
-                icon={<CloseOutlined />}
-                onClick={() => setRejectVisible(true)}
-              >
-                驳回
-              </Button>
-              <Button
-                type="primary"
-                icon={<CheckOutlined />}
-                style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
-                onClick={() => handleReview(selectedReport.id, 'approved')}
-              >
-                审核通过
-              </Button>
-            </Space>
-          ) : null
-        }
-      >
-        {selectedReport && (
-          <div style={{ padding: '12px 0' }}>
-            <p><strong>填报日期：</strong>{selectedReport.report_date}</p>
-            <p><strong>提交时间：</strong>{selectedReport.submitted_at || '无'}</p>
-            
-            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 16 }}>
-              <p style={{ margin: '0 0 8px 0' }}><strong>今日工作小结：</strong></p>
-              <p style={{ margin: 0, color: '#555' }}>{selectedReport.work_summary || '无'}</p>
-            </div>
-
-            {selectedReport.work_reflection && (
-              <div style={{ background: '#fff2e8', padding: 12, borderRadius: 6, marginBottom: 16 }}>
-                <p style={{ margin: '0 0 8px 0', color: '#d4380d' }}><strong>今日工作反思：</strong></p>
-                <p style={{ margin: 0, color: '#a6331b' }}>{selectedReport.work_reflection}</p>
-              </div>
-            )}
-
-            {/* 明细动作 */}
-            <h4 style={{ margin: '16px 0 8px 0' }}>💡 指标填报动作明细：</h4>
-            {selectedReport.details && selectedReport.details.length > 0 ? (
-              selectedReport.details.map((detail: any, idx: number) => (
-                <Card size="small" key={detail.id || idx} style={{ marginBottom: 12, borderLeft: '4px solid #1890ff' }}>
-                  <p style={{ margin: 0 }}>
-                    <strong>类型：</strong>
-                    <Tag color={detail.detail_type === 'contract' ? 'error' : detail.detail_type === 'happiness' ? 'success' : 'processing'}>
-                      {detail.detail_type === 'contract' ? '合同新签' : detail.detail_type === 'happiness' ? '幸福动作' : '有效线索'}
-                    </Tag>
-                  </p>
-                  <p style={{ margin: '4px 0 0 0' }}><strong>业主单位：</strong>{detail.customer_name}</p>
-                  {detail.amount && <p style={{ margin: '4px 0 0 0' }}><strong>金额：</strong>{detail.amount} 万元</p>}
-                  {detail.happiness_level !== undefined && (
-                    <p style={{ margin: '4px 0 0 0' }}><strong>客户幸福等级分值：</strong><span style={{ color: '#389e0d', fontWeight: 'bold' }}>{detail.happiness_level} 分</span></p>
-                  )}
-                  <p style={{ margin: '4px 0 0 0' }}><strong>具体说明：</strong>{detail.description}</p>
-                </Card>
-              ))
-            ) : (
-              <p style={{ color: '#999' }}>无明细数据</p>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* 驳回意见Modal */}
-      <Modal
-        title="填写驳回原因"
-        open={rejectVisible}
-        onCancel={() => setRejectVisible(false)}
-        onOk={() => rejectForm.submit()}
+        title={<strong>📢 新建实时战报与广播事件</strong>}
+        open={createVisible}
+        onCancel={() => setCreateVisible(false)}
+        width={720}
+        onOk={() => createForm.submit()}
+        destroyOnClose
       >
         <Form
-          form={rejectForm}
-          onFinish={(values) => {
-            if (selectedReport) {
-              handleReview(selectedReport.id, 'rejected', values.reason)
-            }
+          form={createForm}
+          layout="vertical"
+          initialValues={{
+            event_type: 'custom',
+            push_channel: 'all',
+            team_id: isTeamLeader ? String(user?.teamId) : undefined
           }}
+          onFinish={handleCreateSubmit}
+          style={{ marginTop: 12 }}
         >
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="event_type"
+                label="事件类型"
+                rules={[{ required: true, message: '请选择事件类型' }]}
+              >
+                <Select options={EVENT_TYPE_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="team_id"
+                label="关联战队 (可选)"
+              >
+                <Select disabled={isTeamLeader} options={[{ label: '不关联特定战队', value: 'all' }, ...TEAM_OPTIONS.filter(o => o.value !== 'all')]} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="push_channel"
+                label="推送渠道"
+                rules={[{ required: true, message: '请选择推送渠道' }]}
+              >
+                <Select options={PUSH_CHANNEL_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col span={12} style={{ display: 'flex', alignItems: 'center', paddingTop: 24 }}>
+              <Space>
+                <Switch 
+                  checked={withIndicator} 
+                  onChange={(val) => {
+                    setWithIndicator(val)
+                    if (val) {
+                      handleActionTypeChange('contract')
+                    }
+                  }} 
+                />
+                <strong>伴随录入日报指标</strong>
+                <Tooltip title="开启后，允许同时为录入员工落库已通过审核的日报业绩，并支持业绩分摊。">
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+            </Col>
+          </Row>
+
+          {/* 伴随录入板块 */}
+          {withIndicator && (
+            <div style={{ background: '#f9f9f9', padding: '16px', borderRadius: 8, marginBottom: 16, borderLeft: '4px solid #1890ff' }}>
+              <h4 style={{ margin: '0 0 16px 0', color: '#1890ff', fontWeight: 'bold' }}>💡 日报业绩指标伴随录入</h4>
+              
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="action_type"
+                    label="指标动作类型"
+                    initialValue="contract"
+                  >
+                    <Select 
+                      onChange={handleActionTypeChange}
+                      options={[
+                        { label: '已完成合同签订 (90%)', value: 'contract' },
+                        { label: '中标确定 (75%)', value: 'lead_75' },
+                        { label: '有效线索确定 (25%)', value: 'lead_25' },
+                        { label: '铁三角联动', value: 'triangle' },
+                        { label: '客户幸福动作', value: 'happiness' },
+                      ]} 
+                    />
+                  </Form.Item>
+                </Col>
+                
+                {/* 25%/75%/90% 提供直连 CRM */}
+                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25') && (
+                  <Col span={12}>
+                    <Form.Item
+                      name="crm_opportunity_id"
+                      label="直连 CRM 匹配商机"
+                      rules={[{ required: true, message: '请选择关联的 CRM 商机' }]}
+                    >
+                      <Select
+                        showSearch
+                        placeholder="选择或搜索未绑定的 CRM 商机"
+                        loading={crmLoading}
+                        onSelect={handleCRMProjectSelect}
+                        filterOption={(input, option) =>
+                          (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                        options={crmProjects.map(p => ({
+                          label: `[CRM] ${p.name} (${p.customer_name})`,
+                          value: p.id
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+
+              {/* 业主单位与合同价格 */}
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="customer_name"
+                    label="业主/客户名称"
+                    rules={[{ required: true, message: '请选择业主/客户名称' }]}
+                  >
+                    <Select
+                      showSearch
+                      placeholder="搜索选择 CRM 客户名称"
+                      filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={crmCustomers.map(c => ({ label: c, value: c }))}
+                    />
+                  </Form.Item>
+                </Col>
+                
+                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25') && (
+                  <Col span={12}>
+                    <Form.Item
+                      name="amount"
+                      label="合同价格 / 预计金额 (万元)"
+                      rules={[{ required: true, message: '请输入金额' }]}
+                    >
+                      <InputNumber 
+                        style={{ width: '100%' }} 
+                        min={0} 
+                        onChange={() => setTimeout(recalculateAllocations, 100)} 
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+
+                {actionType === 'happiness' && (
+                  <Col span={12}>
+                    <Form.Item
+                      name="happiness_score"
+                      label="幸福得分 (分值)"
+                      initialValue={20}
+                    >
+                      <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+
+              {actionType === 'happiness' && (
+                <Form.Item
+                  name="action_description"
+                  label="具体幸福关怀动作说明"
+                >
+                  <Input.TextArea placeholder="请输入具体执行的关怀动作说明..." rows={2} />
+                </Form.Item>
+              )}
+
+              {/* 业绩比例分摊部分 */}
+              {(actionType === 'contract') && (
+                <>
+                  <Divider style={{ margin: '12px 0' }} />
+                  
+                  {/* 交付分摊 */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <strong style={{ fontSize: 13 }}>🛠️ 交付业绩分配分摊 (比例之和必须为 100%)</strong>
+                      <Button 
+                        size="small" 
+                        type="dashed" 
+                        onClick={() => {
+                          const currentVals = createForm.getFieldValue('delivery_allocations') || []
+                          createForm.setFieldsValue({
+                            delivery_allocations: [...currentVals, { user_id: undefined, ratio: 0, amount: 0 }]
+                          })
+                        }}
+                      >
+                        + 添加交付成员
+                      </Button>
+                    </div>
+                    
+                    <Form.List name="delivery_allocations">
+                      {(fields, { remove }) => (
+                        <>
+                          {fields.map(({ key, name, ...restField }) => (
+                            <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                              <Col span={10}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'user_id']}
+                                  rules={[{ required: true, message: '必填' }]}
+                                  style={{ margin: 0 }}
+                                >
+                                  <Select
+                                    showSearch
+                                    placeholder="选择交付人员"
+                                    options={users.map(u => ({ label: `${u.name}`, value: u.id }))}
+                                    filterOption={(input, option) =>
+                                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                    }
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'ratio']}
+                                  rules={[{ required: true, message: '必填' }]}
+                                  style={{ margin: 0 }}
+                                >
+                                  <InputNumber
+                                    placeholder="比例 (%)"
+                                    min={0}
+                                    max={100}
+                                    style={{ width: '100%' }}
+                                    formatter={value => `${value}%`}
+                                    parser={value => value!.replace('%', '')}
+                                    onChange={() => setTimeout(recalculateAllocations, 100)}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'amount']}
+                                  style={{ margin: 0 }}
+                                >
+                                  <InputNumber placeholder="分摊金额(万)" disabled style={{ width: '100%' }} />
+                                </Form.Item>
+                              </Col>
+                              <Col span={2}>
+                                <Button type="link" danger onClick={() => { remove(name); setTimeout(recalculateAllocations, 100); }}>删除</Button>
+                              </Col>
+                            </Row>
+                          ))}
+                        </>
+                      )}
+                    </Form.List>
+                  </div>
+
+                  {/* 营销分摊 */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <strong style={{ fontSize: 13 }}>💰 营销业绩分配分摊 (比例之和必须为 100%)</strong>
+                      <Button 
+                        size="small" 
+                        type="dashed" 
+                        onClick={() => {
+                          const currentVals = createForm.getFieldValue('marketing_allocations') || []
+                          createForm.setFieldsValue({
+                            marketing_allocations: [...currentVals, { user_id: undefined, ratio: 0, amount: 0 }]
+                          })
+                        }}
+                      >
+                        + 添加营销成员
+                      </Button>
+                    </div>
+
+                    <Form.List name="marketing_allocations">
+                      {(fields, { remove }) => (
+                        <>
+                          {fields.map(({ key, name, ...restField }) => (
+                            <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                              <Col span={10}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'user_id']}
+                                  rules={[{ required: true, message: '必填' }]}
+                                  style={{ margin: 0 }}
+                                >
+                                  <Select
+                                    showSearch
+                                    placeholder="选择营销人员"
+                                    options={users.map(u => ({ label: `${u.name}`, value: u.id }))}
+                                    filterOption={(input, option) =>
+                                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                    }
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'ratio']}
+                                  rules={[{ required: true, message: '必填' }]}
+                                  style={{ margin: 0 }}
+                                >
+                                  <InputNumber
+                                    placeholder="比例 (%)"
+                                    min={0}
+                                    max={100}
+                                    style={{ width: '100%' }}
+                                    formatter={value => `${value}%`}
+                                    parser={value => value!.replace('%', '')}
+                                    onChange={() => setTimeout(recalculateAllocations, 100)}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'amount']}
+                                  style={{ margin: 0 }}
+                                >
+                                  <InputNumber placeholder="分摊金额(万)" disabled style={{ width: '100%' }} />
+                                </Form.Item>
+                              </Col>
+                              <Col span={2}>
+                                <Button type="link" danger onClick={() => { remove(name); setTimeout(recalculateAllocations, 100); }}>删除</Button>
+                              </Col>
+                            </Row>
+                          ))}
+                        </>
+                      )}
+                    </Form.List>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <Form.Item
-            name="reason"
-            label="驳回原因说明"
-            rules={[{ required: true, message: '请填写驳回原因' }]}
+            name="content"
+            label="战报广播文本内容"
+            rules={[{ required: true, message: '请输入战报播报内容' }]}
           >
-            <Input.TextArea placeholder="请输入驳回具体原因，方便员工修改后重新提交..." rows={4} />
+            <Input.TextArea placeholder="写入推送到大屏及钉钉群的战报词..." rows={4} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑战报Modal (根据选择的播报类型差异化展示字段) */}
+      <Modal
+        title={<strong>✏️ 编辑战报播报内容与实绩关联</strong>}
+        open={editVisible}
+        onCancel={() => setEditVisible(false)}
+        onOk={() => editForm.submit()}
+        destroyOnClose
+        width={editEventType === 'contract_signed' ? 720 : 520}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleEditSubmit}
+          style={{ marginTop: 12 }}
+        >
+          {/* 基本文本和通道 */}
+          <Form.Item
+            name="content"
+            label="播报文本内容"
+            rules={[{ required: true, message: '请输入播报内容' }]}
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+
+          {/* 前三种 (lead_25, lead_75, contract_signed) 显示和 CRM 潜力库相关属性 */}
+          {(editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25') && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="crm_opportunity_id"
+                  label="关联 CRM 商机 ID"
+                  rules={[{ required: true, message: '请输入 CRM 关联商机 ID' }]}
+                >
+                  <Input placeholder="输入商机 ID..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="customer_name"
+                  label="业主 / 客户单位"
+                  rules={[{ required: true, message: '请选择业主/客户单位' }]}
+                >
+                  <Select
+                    showSearch
+                    placeholder="搜索选择 CRM 客户名称"
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={crmCustomers.map(c => ({ label: c, value: c }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+
+          {/* 后两种 (triangle, happiness) 显示和客户相关属性 */}
+          {(editEventType === 'triangle' || editEventType === 'happiness') && (
+            <Form.Item
+              name="customer_name"
+              label="客户 / 业主名称"
+              rules={[{ required: true, message: '请选择客户/业主名称' }]}
+            >
+              <Select
+                showSearch
+                placeholder="搜索选择 CRM 客户名称"
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={crmCustomers.map(c => ({ label: c, value: c }))}
+              />
+            </Form.Item>
+          )}
+
+          {/* 第五种幸福动作显示数量/得分 */}
+          {editEventType === 'happiness' && (
+            <Form.Item
+              name="happiness_score"
+              label="客户幸福得分分值"
+              initialValue={20}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} max={100} />
+            </Form.Item>
+          )}
+
+          {/* 第三种已完成合同签订显示金额和分摊列表 */}
+          {editEventType === 'contract_signed' && (
+            <>
+              <Form.Item
+                name="amount"
+                label="合同价格 (万元)"
+                rules={[{ required: true, message: '请输入合同价格' }]}
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  min={0} 
+                  onChange={() => setTimeout(recalculateEditAllocations, 100)} 
+                />
+              </Form.Item>
+
+              <Divider style={{ margin: '16px 0 8px 0' }} />
+              
+              {/* 交付业绩比例分摊编辑 */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justify_content: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13 }}>🛠️ 交付业绩比例分配 (和为100%)</strong>
+                  <Button 
+                    size="small" 
+                    type="dashed" 
+                    onClick={() => {
+                      const cur = editForm.getFieldValue('delivery_allocations') || []
+                      editForm.setFieldsValue({
+                        delivery_allocations: [...cur, { user_id: undefined, ratio: 0, amount: 0 }]
+                      })
+                    }}
+                  >
+                    + 增加交付成员
+                  </Button>
+                </div>
+
+                <Form.List name="delivery_allocations">
+                  {(fields, { remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                          <Col span={10}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'user_id']}
+                              rules={[{ required: true, message: '必填' }]}
+                              style={{ margin: 0 }}
+                            >
+                              <Select
+                                showSearch
+                                placeholder="交付人员"
+                                options={users.map(u => ({ label: `${u.name}`, value: u.id }))}
+                                filterOption={(input, option) =>
+                                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                }
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={6}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'ratio']}
+                              rules={[{ required: true, message: '必填' }]}
+                              style={{ margin: 0 }}
+                            >
+                              <InputNumber
+                                placeholder="比例 (%)"
+                                min={0}
+                                max={100}
+                                style={{ width: '100%' }}
+                                formatter={value => `${value}%`}
+                                parser={value => value!.replace('%', '')}
+                                onChange={() => setTimeout(recalculateEditAllocations, 100)}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={6}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'amount']}
+                              style={{ margin: 0 }}
+                            >
+                              <InputNumber placeholder="分摊金额(万)" disabled style={{ width: '100%' }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={2}>
+                            <Button type="link" danger onClick={() => { remove(name); setTimeout(recalculateEditAllocations, 100); }}>删除</Button>
+                          </Col>
+                        </Row>
+                      ))}
+                    </>
+                  )}
+                </Form.List>
+              </div>
+
+              {/* 营销业绩比例分摊编辑 */}
+              <div>
+                <div style={{ display: 'flex', justify_content: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13 }}>💰 营销业绩比例分配 (和为100%)</strong>
+                  <Button 
+                    size="small" 
+                    type="dashed" 
+                    onClick={() => {
+                      const cur = editForm.getFieldValue('marketing_allocations') || []
+                      editForm.setFieldsValue({
+                        marketing_allocations: [...cur, { user_id: undefined, ratio: 0, amount: 0 }]
+                      })
+                    }}
+                  >
+                    + 增加营销成员
+                  </Button>
+                </div>
+
+                <Form.List name="marketing_allocations">
+                  {(fields, { remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                          <Col span={10}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'user_id']}
+                              rules={[{ required: true, message: '必填' }]}
+                              style={{ margin: 0 }}
+                            >
+                              <Select
+                                showSearch
+                                placeholder="营销人员"
+                                options={users.map(u => ({ label: `${u.name}`, value: u.id }))}
+                                filterOption={(input, option) =>
+                                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                }
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={6}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'ratio']}
+                              rules={[{ required: true, message: '必填' }]}
+                              style={{ margin: 0 }}
+                            >
+                              <InputNumber
+                                placeholder="比例 (%)"
+                                min={0}
+                                max={100}
+                                style={{ width: '100%' }}
+                                formatter={value => `${value}%`}
+                                parser={value => value!.replace('%', '')}
+                                onChange={() => setTimeout(recalculateEditAllocations, 100)}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={6}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'amount']}
+                              style={{ margin: 0 }}
+                            >
+                              <InputNumber placeholder="分摊金额(万)" disabled style={{ width: '100%' }} />
+                            </Form.Item>
+                          </Col>
+                          <Col span={2}>
+                            <Button type="link" danger onClick={() => { remove(name); setTimeout(recalculateEditAllocations, 100); }}>删除</Button>
+                          </Col>
+                        </Row>
+                      ))}
+                    </>
+                  )}
+                </Form.List>
+              </div>
+            </>
+          )}
+
+          <Divider style={{ margin: '12px 0' }} />
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="push_status"
+                label="推送状态"
+                rules={[{ required: true, message: '请选择推送状态' }]}
+              >
+                <Select options={PUSH_STATUS_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="push_channel"
+                label="推送渠道"
+                rules={[{ required: true, message: '请选择推送渠道' }]}
+              >
+                <Select options={PUSH_CHANNEL_OPTIONS} />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>

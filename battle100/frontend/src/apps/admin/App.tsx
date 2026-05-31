@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Reports from './pages/Reports'
 import Goals from './pages/Goals'
+import Settings from './pages/Settings'
 import AdminLayout from './layouts/AdminLayout'
 import { useAuthStore } from '@shared/stores/authStore'
 
@@ -37,6 +38,7 @@ const App: React.FC = () => {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<Reports />} />
             <Route path="goals" element={<Goals />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
 
           {/* 捕获未定义路径 */}

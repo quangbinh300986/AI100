@@ -8,7 +8,10 @@ const htmlRewritePlugin = () => ({
   configureServer(server: any) {
     server.middlewares.use((req: any, res: any, next: any) => {
       // 如果请求的是 /admin 或 /m 等子路径，并且不是静态资源（没有后缀），则重定向到对应的 HTML 文件
-      if (req.url?.startsWith('/admin') && !req.url.includes('.')) {
+      // 如果请求的是根路径，默认重定向到管理后台 admin.html
+      if ((req.url === '/' || req.url === '/index.html') && !req.url.includes('.')) {
+        req.url = '/admin.html'
+      } else if (req.url?.startsWith('/admin') && !req.url.includes('.')) {
         req.url = '/admin.html'
       } else if (req.url?.startsWith('/m') && !req.url.includes('.')) {
         req.url = '/mobile.html'
@@ -44,6 +47,7 @@ export default defineConfig({
   },
   server: {
     // 开发服务器配置
+    host: true,
     port: 3100,
     proxy: {
       // API代理到新后端端口

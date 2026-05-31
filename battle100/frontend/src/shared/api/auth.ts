@@ -1,7 +1,7 @@
 /**
  * 认证相关API
  */
-import { post } from './client'
+import { post, get } from './client'
 import type { LoginRequest, LoginResponse, User } from '@shared/types'
 
 /** 用户登录 */
@@ -11,7 +11,7 @@ export function login(data: LoginRequest) {
 
 /** 获取当前用户信息 */
 export function getCurrentUser() {
-  return post<User>('/auth/me')
+  return get<User>('/auth/me')
 }
 
 /** 退出登录 */

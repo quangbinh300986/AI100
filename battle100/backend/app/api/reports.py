@@ -22,7 +22,31 @@ from app.schemas.report import (
     ReportReviewRequest,
     ReportListResponse,
 )
-from app.api.deps import get_current_user, require_roles
+from fastapi import Request
+from app.api.deps import get_current_user, require_permission
+from app.services.audit_service import log_action, to_dict
+
+# 将本文件内所有的 require_roles 拦截器重映射到 reports 动态权限校验上，实现精细化数据库动态控制
+def dynamic_require_roles(*roles):
+    async def reports_permission_dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+            
+        path = request.url.path
+        
+        # 统一映射到 approve_report，只要勾选了填报审核大类，均允许审核操作
+        perm = "approve_report"
+        
+        checker = require_permission(perm)
+        return await checker(current_user, db)
+        
+    return reports_permission_dependency
+
+require_roles = dynamic_require_roles
 
 router = APIRouter(prefix="/reports", tags=["每日填报"])
 
@@ -169,46 +193,56 @@ async def list_reports(
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     report_date: date | None = Query(None, description="按日期筛选"),
     user_id: int | None = Query(None, description="按用户筛选"),
+    team_id: int | None = Query(None, description="按战队筛选"),
     status_filter: str | None = Query(None, alias="status", description="按状态筛选"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     获取填报列表，支持分页和筛选
-    普通员工只能看自己的，管理者可以看下属的
+    普通员工只能看自己的，战队长只能看本战队成员的，超级管理员/目标官/数字专员可看所有
     """
     query = select(DailyReport).options(selectinload(DailyReport.details))
 
-    # 权限过滤：普通员工只看自己的
-    if current_user.role == UserRole.STAFF.value:
+    # 1. 角色权限过滤
+    if current_user.role in [UserRole.STAFF.value, UserRole.MARKETING_STAFF.value, UserRole.TECH_MARKETING.value]:
+        # 普通员工（普通、营销、技术营销）强制只看自己的日报
         query = query.where(DailyReport.user_id == current_user.id)
-    elif user_id is not None:
-        query = query.where(DailyReport.user_id == user_id)
+    elif current_user.role == UserRole.TEAM_LEADER.value:
+        # 战队长强制只看自己战队成员的日报
+        if current_user.team_id is None:
+            # 若战队长未分配战队，则无法看到任何数据
+            query = query.where(DailyReport.id == -1)
+        else:
+            # JOIN User 表，强制限定 team_id
+            query = query.join(User, DailyReport.user_id == User.id).where(User.team_id == current_user.team_id)
+            # 如果战队长传入了特定 user_id 筛选，确保该用户在同一战队内
+            if user_id is not None:
+                query = query.where(DailyReport.user_id == user_id)
+    else:
+        # 超级管理员、目标官、数字专员：支持灵活按战队或个人过滤
+        if team_id is not None:
+            query = query.join(User, DailyReport.user_id == User.id).where(User.team_id == team_id)
+        if user_id is not None:
+            query = query.where(DailyReport.user_id == user_id)
 
-    # 日期筛选
+    # 2. 日期筛选
     if report_date is not None:
         query = query.where(DailyReport.report_date == report_date)
 
-    # 状态筛选
+    # 3. 状态筛选
     if status_filter is not None:
         query = query.where(DailyReport.status == status_filter)
 
-    # 排序：按日期降序
+    # 4. 排序：按日期降序
     query = query.order_by(DailyReport.report_date.desc())
 
-    # 计算总数
-    count_query = select(func.count()).select_from(
-        select(DailyReport.id).where(
-            *[clause for clause in query.whereclause] if query.whereclause is not None else []
-        ).subquery()
-    )
-    # 简化：使用原query做count
-    count_result = await db.execute(
-        select(func.count(DailyReport.id)).select_from(DailyReport)
-    )
-    total = count_result.scalar()
+    # 5. 正确计算过滤后的总条数
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
 
-    # 分页
+    # 6. 分页
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     reports = result.scalars().all()
@@ -343,7 +377,7 @@ async def submit_report(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """将草稿状态的填报提交审核"""
+    """将草稿状态的填报提交并默认自动审核通过"""
     result = await db.execute(
         select(DailyReport).where(DailyReport.id == report_id)
     )
@@ -357,12 +391,36 @@ async def submit_report(
     if report.status not in [ReportStatus.DRAFT.value, ReportStatus.REJECTED.value]:
         raise HTTPException(status_code=400, detail="当前状态不允许提交")
 
-    report.status = ReportStatus.SUBMITTED
+    # 现阶段默认提交直接审核通过
+    report.status = ReportStatus.REVIEWED
     report.submitted_at = datetime.now(timezone.utc)
+    report.reviewed_at = datetime.now(timezone.utc)
+    report.reviewer_id = None
     db.add(report)
     await db.flush()
 
-    return {"message": "填报已提交"}
+    # 记录审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="UPDATE",
+        target_module="report",
+        target_id=report.id,
+        description=f"提交日报并自动审核通过：日期 {report.report_date}",
+        before_state=None,
+        after_state=to_dict(report)
+    )
+
+    # 自动通过后广播通知大屏刷新
+    try:
+        from app.services.websocket import ws_manager
+        await ws_manager.broadcast({"type": "update", "event": "report_approved"})
+    except Exception as e:
+        # 记录日志，但不影响主逻辑返回
+        import logging
+        logging.getLogger("battle100").error(f"默认通过大屏 WebSocket 广播失败: {e}")
+
+    return {"message": "填报已提交并默认通过"}
 
 
 @router.post("/{report_id}/review", summary="审核填报")
@@ -376,7 +434,7 @@ async def review_report(
 ):
     """
     审核填报记录
-    仅管理员、目标官、战队长可操作
+    仅管理员、目标官、战队长可操作。其中战队长只能审核本战队成员。
     """
     result = await db.execute(
         select(DailyReport).where(DailyReport.id == report_id)
@@ -385,8 +443,23 @@ async def review_report(
     if report is None:
         raise HTTPException(status_code=404, detail="填报记录不存在")
 
+    # 战队长防越权审查校验
+    if current_user.role == UserRole.TEAM_LEADER.value:
+        report_user_res = await db.execute(
+            select(User.team_id).where(User.id == report.user_id)
+        )
+        report_user_team_id = report_user_res.scalar()
+        if current_user.team_id is None or report_user_team_id != current_user.team_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="权限不足，您无权审核其他战队成员的日报"
+            )
+
     if report.status != ReportStatus.SUBMITTED.value:
         raise HTTPException(status_code=400, detail="只能审核已提交的填报")
+
+    # 状态修改前备份
+    before_state = to_dict(report)
 
     if review.action == "approved":
         report.status = ReportStatus.REVIEWED
@@ -399,6 +472,19 @@ async def review_report(
     report.reviewed_at = datetime.now(timezone.utc)
     db.add(report)
     await db.flush()
+
+    # 记录审计日志
+    action_cn = "审核通过" if review.action == "approved" else "审核驳回"
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="UPDATE",
+        target_module="report",
+        target_id=report.id,
+        description=f"审核日报：日期 {report.report_date}，结果：{action_cn}。备注：{review.comment or '无'}",
+        before_state=before_state,
+        after_state=to_dict(report),
+    )
 
     # 审核通过后广播通知大屏刷新
     if review.action == "approved":

@@ -20,6 +20,13 @@ const { Title, Text } = Typography
 
 const Dashboard: React.FC = () => {
   const { user } = useAuthStore()
+  
+  // 统一权限判定函数，超级管理员默认拥有所有权限，无 permissions 字段时兜底为 true
+  const hasPerm = (p: string) => {
+    if (user?.role === 'admin') return true
+    return user?.permissions?.includes(p) ?? true
+  }
+
   const [data, setData] = useState<DashboardData | null>(null)
   const [personalStats, setPersonalStats] = useState<MyStatsResponse['personal_stats'] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,10 +34,119 @@ const Dashboard: React.FC = () => {
   const [broadcastForm] = Form.useForm()
   const [currentActionType, setCurrentActionType] = useState<string>('')
   const [usersList, setUsersList] = useState<{ id: number; name: string }[]>([])
+  const [crmProjects, setCrmProjects] = useState<any[]>([])
+  const [crmLoading, setCrmLoading] = useState(false)
+  const [crmCustomers, setCrmCustomers] = useState<string[]>([])
   
   const [teamMetricsModalVisible, setTeamMetricsModalVisible] = useState(false)
   const [selectedTeamMetrics, setSelectedTeamMetrics] = useState<any>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
+  
+  // 新增分摊分摊逻辑所需的临时状态
+  const [formVersion, setFormVersion] = useState(0)
+  const [selectedProjectMarketingUsers, setSelectedProjectMarketingUsers] = useState<any[]>([])
+
+  // 线索明细弹窗状态
+  const [leadsModalVisible, setLeadsModalVisible] = useState(false)
+  const [leadsLoading, setLeadsLoading] = useState(false)
+  const [leadsList, setLeadsList] = useState<any[]>([])
+  const [currentLeadType, setCurrentLeadType] = useState<string>('')
+  const [currentLeadTeamName, setCurrentLeadTeamName] = useState<string>('')
+
+  // 获取战队线索明细数据
+  const handleViewLeadsList = async (teamId: number, leadType: 'valid' | 'potential', teamName: string) => {
+    setLeadsModalVisible(true)
+    setLeadsLoading(true)
+    setLeadsList([])
+    setCurrentLeadType(leadType === 'valid' ? '有效需求线索' : '潜力需求线索')
+    setCurrentLeadTeamName(teamName)
+    try {
+      const res = await get(`/dashboard/team-leads?team_id=${teamId}&lead_type=${leadType}`)
+      if (res && Array.isArray(res)) {
+        setLeadsList(res)
+      }
+    } catch (err: any) {
+      // 捕获异常，并使用 message.error 提示用户连接失败的真实报错原因
+      const errMsg = err?.response?.data?.detail || err?.message || '获取线索明细列表失败'
+      message.error(errMsg)
+      setLeadsModalVisible(false) // 失败时关闭二级Modal，避免显示空白弹框
+    } finally {
+      setLeadsLoading(false)
+    }
+  }
+
+  // 二级线索列表表格列定义
+  const leadsColumns = [
+    {
+      title: '业务信息',
+      dataIndex: 'name',
+      key: 'name',
+      width: 250,
+      render: (val: string) => <a style={{ color: '#1677ff', textDecoration: 'underline' }}>{val}</a>
+    },
+    {
+      title: '拓展进度',
+      dataIndex: 'progress',
+      key: 'progress',
+      width: 90,
+      align: 'center' as const
+    },
+    {
+      title: '最新反馈内容',
+      dataIndex: 'latest_feedback',
+      key: 'latest_feedback',
+      width: 300,
+      render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
+    },
+    {
+      title: '业务线索状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      align: 'center' as const
+    },
+    {
+      title: '项目预算(万)',
+      dataIndex: 'budget',
+      key: 'budget',
+      width: 110,
+      align: 'right' as const,
+      render: (val: number) => val !== undefined ? val : 0
+    },
+    {
+      title: '预计金额(万)',
+      dataIndex: 'forecast_amount',
+      key: 'forecast_amount',
+      width: 110,
+      align: 'right' as const,
+      render: (val: number) => val !== undefined ? val : 0
+    },
+    {
+      title: '所属区域',
+      dataIndex: 'region',
+      key: 'region',
+      width: 140
+    },
+    {
+      title: '业务分类',
+      dataIndex: 'business_category',
+      key: 'business_category',
+      width: 130
+    },
+    {
+      title: '项目来源',
+      dataIndex: 'source',
+      key: 'source',
+      width: 100,
+      align: 'center' as const
+    },
+    {
+      title: '业主单位',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      width: 260
+    }
+  ]
 
   const roundPct = (num: number) => {
     return Math.round(num * 100) / 100
@@ -65,24 +181,105 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  // 异步获取 CRM 中对应进展阶段的潜在项目列表
+  const loadCrmProjects = async (actionType: string) => {
+    let progress = 25
+    if (actionType === 'lead_25') progress = 25
+    else if (actionType === 'lead_75') progress = 75
+    else if (actionType === 'contract') progress = 90
+    else return
+
+    setCrmLoading(true)
+    try {
+      const res = await get<any[]>(`/broadcast/crm-projects?progress=${progress}`)
+      if (res && Array.isArray(res)) {
+        setCrmProjects(res)
+      } else {
+        setCrmProjects([])
+      }
+    } catch (err) {
+      message.error('获取 CRM 对应项目失败，可能连接超时')
+      setCrmProjects([])
+    } finally {
+      setCrmLoading(false)
+    }
+  }
+
   const handleValuesChange = (changedValues: any, allValues: any) => {
+    const isMarketing = user?.position_type === 'marketing'
+    const defaultDelivery = isMarketing ? [] : [{ userId: user?.id, ratio: 100 }]
+
+    // A. 当选择动作类型改变时，请求 CRM 对应阶段项目并重置字段
     if (changedValues.actionType !== undefined) {
       const type = changedValues.actionType
       setCurrentActionType(type)
+      setCrmProjects([])
+      setSelectedProjectMarketingUsers([])
+      if (['lead_25', 'lead_75', 'contract'].includes(type)) {
+        loadCrmProjects(type)
+      }
       broadcastForm.setFieldsValue({
+        crmProjectId: undefined,
         customerName: '',
         amount: '',
         projectName: '',
         contractName: '',
-        employeeName: '',
+        budgetMoney: '',
+        expectMoney: '',
+        deliveryAllocations: defaultDelivery,
+        employeeName: allValues.employeeName || user?.name || '',
         happinessScore: 20,
         actionDescription: '',
         content: type ? '攻坚一百天，亮剑破六千！今日' : ''
       })
+      setFormVersion(v => v + 1)
       return
     }
 
-    const { actionType, customerName, amount, projectName, contractName, employeeName, happinessScore, actionDescription } = allValues
+    // B. 当选择 CRM 具体项目时，联动自动回填项目名、业主单位、预算/预计金额，并带出营销人员
+    if (changedValues.crmProjectId !== undefined) {
+      const projId = changedValues.crmProjectId
+      const proj = crmProjects.find(p => p.id === projId)
+      if (proj) {
+        broadcastForm.setFieldsValue({
+          customerName: proj.customer_name,
+          projectName: proj.name,
+          contractName: proj.name,
+          budgetMoney: proj.budget_money,
+          expectMoney: proj.expect_money,
+          amount: proj.expect_money || proj.budget_money || 0.0,
+          deliveryAllocations: defaultDelivery
+        })
+        // 回填到计算变量中
+        allValues.customerName = proj.customer_name
+        allValues.projectName = proj.name
+        allValues.contractName = proj.name
+        allValues.budgetMoney = proj.budget_money
+        allValues.expectMoney = proj.expect_money
+        allValues.amount = proj.expect_money || proj.budget_money || 0.0
+
+        if (proj.marketing_users) {
+          setSelectedProjectMarketingUsers(proj.marketing_users)
+          const validMarketingUsers = proj.marketing_users.filter((mu: any) => mu.local_user_id !== null)
+          const marketingInit: any = {}
+          if (validMarketingUsers.length === 1) {
+            marketingInit[`marketingRatio_${validMarketingUsers[0].local_user_id}`] = 100
+          } else {
+            validMarketingUsers.forEach((mu: any) => {
+              marketingInit[`marketingRatio_${mu.local_user_id}`] = undefined
+            })
+          }
+          broadcastForm.setFieldsValue(marketingInit)
+        } else {
+          setSelectedProjectMarketingUsers([])
+        }
+      } else {
+        setSelectedProjectMarketingUsers([])
+      }
+    }
+
+    // C. 重新计算生成捷报文字
+    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney } = allValues
     if (!actionType) return
     
     const prefix = '攻坚一百天，亮剑破六千！今日'
@@ -90,25 +287,28 @@ const Dashboard: React.FC = () => {
     
     switch (actionType) {
       case 'lead_25':
-        generated = `${prefix}确定有效线索：客户为${customerName || 'XX'}，项目金额${amount || 'XX'}万，赢战百日！`
+        generated = `${prefix}确定有效线索：客户为${customerName || 'XX'}，预算金额${budgetMoney || 0.0}万，预计${expectMoney || 0.0}万，赢战百日！`
         break
       case 'lead_75':
-        generated = `${prefix}确定${projectName || 'XX'}项目中地承接，客户为${customerName || 'XX'}，项目金额${amount || 'XX'}万，赢战百日！`
+        generated = `${prefix}确定${projectName || 'XX'}项目中地承接，客户为${customerName || 'XX'}，预算金额${budgetMoney || 0.0}万，预计${expectMoney || 0.0}万，赢战百日！`
         break
       case 'contract':
-        generated = `${prefix}确定${contractName || 'XX'}项目走完合同流程，客户为${customerName || 'XX'}，项目金额${amount || 'XX'}万，赢战百日！`
+        generated = `${prefix}确定${contractName || 'XX'}项目走完合同流程，客户为${customerName || 'XX'}，合同价格${expectMoney || 0.0}万，赢战百日！`
         break
       case 'triangle':
         generated = `${prefix}售前铁三角现场联动，客户分别为${customerName || 'XX'}，为客户幸福而奋斗，赢战百日！`
         break
       case 'happiness':
-        generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！`
+        generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，业主单位：${customerName || 'XX'}，收到客户正反馈，为客户幸福而奋斗，赢战百日！`
         break
       default:
         break
     }
     
     broadcastForm.setFieldsValue({ content: generated })
+    
+    // 强制触发组件重绘以更新折算金额与统计
+    setFormVersion(v => v + 1)
   }
 
   // 加载数据
@@ -134,6 +334,28 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  // 异步获取 CRM 数据库中的客户名称列表
+  const loadCrmCustomers = async () => {
+    try {
+      const res = await get<any>('/broadcast/crm-customers')
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setCrmCustomers(data)
+      } else {
+        setCrmCustomers([])
+      }
+    } catch (err) {
+      console.error('加载 CRM 客户列表失败', err)
+      setCrmCustomers([])
+    }
+  }
+
+  useEffect(() => {
+    if (broadcastModalVisible) {
+      loadCrmCustomers()
+    }
+  }, [broadcastModalVisible])
+
   useEffect(() => {
     loadData()
     loadUsersList()
@@ -142,14 +364,111 @@ const Dashboard: React.FC = () => {
   // 发布广播
   const handlePublishBroadcast = async (values: any) => {
     try {
-      const res = await post('/broadcast', {
-        event_type: 'manual',
+      let deliveryAllocations: any[] = []
+      let marketingAllocations: any[] = []
+
+      if (values.actionType === 'contract') {
+        const contractAmt = parseFloat(values.expectMoney || 0)
+        if (isNaN(contractAmt) || contractAmt <= 0) {
+          message.error('请输入有效的合同价格！')
+          return
+        }
+
+        // A. 校验交付业绩分配比例
+        if (values.deliveryAllocations && values.deliveryAllocations.length > 0) {
+          let deliveryRatioSum = 0
+          const userSet = new Set()
+          for (const item of values.deliveryAllocations) {
+            if (!item.userId) {
+              message.error('交付业绩分配中存在未选择员工的记录！')
+              return
+            }
+            if (userSet.has(item.userId)) {
+              message.error('交付业绩分配人员不能重复！')
+              return
+            }
+            userSet.add(item.userId)
+            
+            const ratio = parseFloat(item.ratio || 0)
+            if (isNaN(ratio) || ratio <= 0) {
+              message.error('每个分摊人员的比例必须大于 0%！')
+              return
+            }
+            deliveryRatioSum += ratio
+            deliveryAllocations.push({
+              user_id: item.userId,
+              ratio: ratio,
+              amount: (ratio * contractAmt) / 100
+            })
+          }
+
+          if (Math.abs(deliveryRatioSum - 100) > 0.01) {
+            message.error(`交付新签分配比例总和必须等于 100%！当前累计为: ${deliveryRatioSum.toFixed(2)}%`)
+            return
+          }
+        } else {
+          message.error('请添加交付新签业绩分配人员！')
+          return
+        }
+
+        // B. 校验营销业绩分配比例
+        const validMarketingUsers = selectedProjectMarketingUsers.filter(mu => mu.local_user_id !== null)
+        if (validMarketingUsers.length > 0) {
+          let marketingRatioSum = 0
+          for (const mu of validMarketingUsers) {
+            const ratioKey = `marketingRatio_${mu.local_user_id}`
+            const ratio = parseFloat(values[ratioKey] || 0)
+            if (isNaN(ratio) || ratio <= 0) {
+              message.error(`请为营销人员 ${mu.name} 输入合法的比例！`)
+              return
+            }
+            marketingRatioSum += ratio
+            marketingAllocations.push({
+              user_id: mu.local_user_id,
+              ratio: ratio,
+              amount: (ratio * contractAmt) / 100
+            })
+          }
+
+          if (Math.abs(marketingRatioSum - 100) > 0.01) {
+            message.error(`营销新签分配比例总和必须等于 100%！当前累计为: ${marketingRatioSum.toFixed(2)}%`)
+            return
+          }
+        } else {
+          message.error('该项目在百日系统中没有已绑定系统账号的营销人员，请先在用户管理中配置关联 CRM 用户！')
+          return
+        }
+      }
+
+      const payload: any = {
+        event_type: values.actionType === 'contract' ? 'contract_signed' : values.actionType,
         content: values.content,
-        push_channel: 'all'
-      })
+        push_channel: 'all',
+        action_type: values.actionType,
+        customer_name: values.customerName || values.contractName || values.projectName || '',
+        amount: values.amount ? parseFloat(values.amount) : undefined,
+        employee_name: values.employeeName,
+        happiness_score: values.happinessScore !== undefined ? parseInt(values.happinessScore) : undefined,
+        action_description: values.actionDescription,
+        // 新增 CRM 关联属性
+        budget_money: values.budgetMoney ? parseFloat(values.budgetMoney) : undefined,
+        expect_money: values.expectMoney ? parseFloat(values.expectMoney) : undefined,
+        crm_opportunity_id: values.crmProjectId
+      }
+
+      if (values.actionType === 'contract') {
+        payload.delivery_allocations = deliveryAllocations
+        payload.marketing_allocations = marketingAllocations
+        payload.amount = parseFloat(values.expectMoney)
+        payload.expect_money = parseFloat(values.expectMoney)
+      }
+
+      const res = await post('/broadcast', payload)
       if (res) {
-        message.success('广播发布成功，大屏端与钉钉已同步推送')
+        message.success('广播发布成功，大屏端与钉钉已同步推送并记录各自分配实绩')
         setBroadcastModalVisible(false)
+        setCurrentActionType('')
+        setSelectedProjectMarketingUsers([])
         broadcastForm.resetFields()
         loadData()
       }
@@ -213,6 +532,57 @@ const Dashboard: React.FC = () => {
     return '预警红灯'
   }
 
+  const zone1Teams = data?.dualTrackTeams?.slice(0, 3) || []
+  const zone2Teams = data?.dualTrackTeams?.slice(3, 6) || []
+  const zone3Teams = data?.dualTrackTeams?.slice(6, 9) || []
+
+  const renderTeamCard = (t: any, idx: number) => {
+    return (
+      <Col xs={24} sm={12} md={8} key={t.teamName || idx}>
+        <Card
+          hoverable
+          onClick={() => t.teamId && handleViewTeamMetrics(t.teamId)}
+          size="small"
+          title={<strong style={{ fontSize: 15, cursor: 'pointer' }}>{t.teamName}</strong>}
+          extra={
+            <Space>
+              <Badge status={getLightStatus(t.statusLight)} text={getLightText(t.statusLight)} />
+            </Space>
+          }
+          style={{
+            background: '#fafafa',
+            border: `1px solid ${t.statusLight === 'red' ? '#ffa39e' : t.statusLight === 'yellow' ? '#ffe58f' : '#d9d9d9'}`,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+          }}
+        >
+          <div style={{ marginBottom: 4 }}>
+            <Text type="secondary">战队巴长：</Text><strong>{t.leader}</strong>
+          </div>
+
+          <div style={{ background: '#fff', padding: '10px 12px', borderRadius: 6, border: '1px solid #f0f0f0', marginTop: 8 }}>
+            {/* 营销新签进度 */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                <Text type="secondary">营销新签实际/目标</Text>
+                <strong>{t.marketingActual} / {t.marketingTarget} 万 ({t.marketingRate}%)</strong>
+              </div>
+              <Progress percent={t.marketingRate} size="small" strokeColor="#1677ff" showInfo={false} />
+            </div>
+
+            {/* 交付新签进度 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                <Text type="secondary">交付新签实际/目标</Text>
+                <strong>{t.deliveryActual} / {t.deliveryTarget} 万 ({t.deliveryRate}%)</strong>
+              </div>
+              <Progress percent={t.deliveryRate} size="small" strokeColor="#52c41a" showInfo={false} />
+            </div>
+          </div>
+        </Card>
+      </Col>
+    )
+  }
+
   return (
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
@@ -227,8 +597,10 @@ const Dashboard: React.FC = () => {
           <Space>
             <Button icon={<FireOutlined />} onClick={loadData} loading={loading}>刷新看板</Button>
             <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
+              setCurrentActionType('')
               setBroadcastModalVisible(true)
               broadcastForm.setFieldsValue({
+                actionType: undefined,
                 employeeName: user?.name || ''
               })
             }}>
@@ -323,52 +695,76 @@ const Dashboard: React.FC = () => {
         title={<span><FlagOutlined style={{ marginRight: 8 }} />战队双轨动力大PK (3x3九宫格看板，点击卡片可查看战队多维度指标)</span>} 
         style={{ marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
       >
-        <Row gutter={[16, 16]}>
-          {data?.dualTrackTeams?.map((t, idx) => (
-            <Col xs={24} sm={12} md={8} key={t.teamName || idx}>
-              <Card
-                hoverable
-                onClick={() => t.teamId && handleViewTeamMetrics(t.teamId)}
-                size="small"
-                title={<strong style={{ fontSize: 15, cursor: 'pointer' }}>{t.teamName}</strong>}
-                extra={
-                  <Space>
-                    <Badge status={getLightStatus(t.statusLight)} text={getLightText(t.statusLight)} />
-                  </Space>
-                }
-                style={{
-                  background: '#fafafa',
-                  border: `1px solid ${t.statusLight === 'red' ? '#ffa39e' : t.statusLight === 'yellow' ? '#ffe58f' : '#d9d9d9'}`,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                }}
-              >
-                <div style={{ marginBottom: 4 }}>
-                  <Text type="secondary">战队巴长：</Text><strong>{t.leader}</strong>
-                </div>
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          {/* 第一战区 */}
+          {zone1Teams.length > 0 && (
+            <div>
+              <div style={{ 
+                padding: '6px 16px', 
+                background: '#e6f7ff', 
+                borderLeft: '4px solid #1890ff', 
+                fontWeight: 'bold', 
+                fontSize: '14px',
+                color: '#0050b3',
+                marginBottom: 12, 
+                borderRadius: '0 4px 4px 0', 
+                display: 'inline-block',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              }}>
+                🔵 第一战区（清远战队、广州一战队、广州二战队）
+              </div>
+              <Row gutter={[16, 16]}>
+                {zone1Teams.map((t, idx) => renderTeamCard(t, idx))}
+              </Row>
+            </div>
+          )}
 
-                <div style={{ background: '#fff', padding: '10px 12px', borderRadius: 6, border: '1px solid #f0f0f0', marginTop: 8 }}>
-                  {/* 营销新签进度 */}
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                      <Text type="secondary">营销新签实际/目标</Text>
-                      <strong>{t.marketingActual} / {t.marketingTarget} 万 ({t.marketingRate}%)</strong>
-                    </div>
-                    <Progress percent={t.marketingRate} size="small" strokeColor="#1677ff" showInfo={false} />
-                  </div>
+          {/* 第二战区 */}
+          {zone2Teams.length > 0 && (
+            <div>
+              <div style={{ 
+                padding: '6px 16px', 
+                background: '#f9f0ff', 
+                borderLeft: '4px solid #722ed1', 
+                fontWeight: 'bold', 
+                fontSize: '14px',
+                color: '#531dab',
+                marginBottom: 12, 
+                borderRadius: '0 4px 4px 0', 
+                display: 'inline-block',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              }}>
+                🟣 第二战区（广州三战队（大数据）、佛山战队、湛江战队）
+              </div>
+              <Row gutter={[16, 16]}>
+                {zone2Teams.map((t, idx) => renderTeamCard(t, idx + 3))}
+              </Row>
+            </div>
+          )}
 
-                  {/* 交付新签进度 */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                      <Text type="secondary">交付新签实际/目标</Text>
-                      <strong>{t.deliveryActual} / {t.deliveryTarget} 万 ({t.deliveryRate}%)</strong>
-                    </div>
-                    <Progress percent={t.deliveryRate} size="small" strokeColor="#52c41a" showInfo={false} />
-                  </div>
-                </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+          {/* 第三战区 */}
+          {zone3Teams.length > 0 && (
+            <div>
+              <div style={{ 
+                padding: '6px 16px', 
+                background: '#fff0f6', 
+                borderLeft: '4px solid #eb2f96', 
+                fontWeight: 'bold', 
+                fontSize: '14px',
+                color: '#c41d7f',
+                marginBottom: 12, 
+                borderRadius: '0 4px 4px 0', 
+                display: 'inline-block',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              }}>
+                🔴 第三战区（云浮战队、东莞战队、茂名战队）
+              </div>
+              <Row gutter={[16, 16]}>
+                {zone3Teams.map((t, idx) => renderTeamCard(t, idx + 6))}
+              </Row>
+            </div>
+          )}
+        </Space>
       </Card>
 
       {/* 第三级：战区赛马 & 个人英雄榜 & 个人岗位考核水位 */}
@@ -554,48 +950,270 @@ const Dashboard: React.FC = () => {
             </Select>
           </Form.Item>
 
+          {['lead_25', 'lead_75', 'contract'].includes(currentActionType) && (
+            <Form.Item
+              name="crmProjectId"
+              label={`选择对应 CRM 中进展阶段为 ${currentActionType === 'lead_25' ? '25%' : currentActionType === 'lead_75' ? '75%' : '90%'} 的项目`}
+              rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
+            >
+              <Select
+                showSearch
+                loading={crmLoading}
+                placeholder="键入检索 CRM 项目名称..."
+                optionFilterProp="label"
+                filterOption={(input, option) =>
+                  ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={crmProjects.map(p => ({
+                  value: p.id,
+                  label: `${p.name} | 业主：${p.customer_name}`
+                }))}
+              />
+            </Form.Item>
+          )}
+
           {currentActionType === 'lead_25' && (
             <>
-              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请输入客户名称' }]}>
-                <Input placeholder="例如：腾讯科技有限公司" />
+              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                <Input disabled placeholder="选择项目后自动回填业主单位" />
               </Form.Item>
-              <Form.Item name="amount" label="项目金额 (万元)" rules={[{ required: true, message: '请输入项目金额' }]}>
-                <Input placeholder="例如：50" />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="budgetMoney" label="项目预算金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="expectMoney" label="预计金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name="amount" noStyle><Input type="hidden" /></Form.Item>
             </>
           )}
 
           {currentActionType === 'lead_75' && (
             <>
-              <Form.Item name="projectName" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
-                <Input placeholder="例如：数字底座建设项目" />
+              <Form.Item name="projectName" label="项目名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                <Input disabled placeholder="选择项目后自动回填" />
               </Form.Item>
-              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请输入客户名称' }]}>
-                <Input placeholder="例如：阿里巴巴集团" />
+              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                <Input disabled placeholder="选择项目后自动回填业主单位" />
               </Form.Item>
-              <Form.Item name="amount" label="项目金额 (万元)" rules={[{ required: true, message: '请输入项目金额' }]}>
-                <Input placeholder="例如：100" />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="budgetMoney" label="项目预算金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="expectMoney" label="预计金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name="amount" noStyle><Input type="hidden" /></Form.Item>
             </>
           )}
 
-          {currentActionType === 'contract' && (
-            <>
-              <Form.Item name="contractName" label="合同/项目名称" rules={[{ required: true, message: '请输入合同名称' }]}>
-                <Input placeholder="例如：华为云服务采购合同" />
-              </Form.Item>
-              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请输入客户名称' }]}>
-                <Input placeholder="例如：华为终端有限公司" />
-              </Form.Item>
-              <Form.Item name="amount" label="合同金额 (万元)" rules={[{ required: true, message: '请输入合同金额' }]}>
-                <Input placeholder="例如：120" />
-              </Form.Item>
-            </>
-          )}
+          {currentActionType === 'contract' && (() => {
+            const expectMoneyVal = parseFloat(broadcastForm.getFieldValue('expectMoney') || 0);
+            const deliveryAllocationsVal = broadcastForm.getFieldValue('deliveryAllocations') || [];
+            
+            // 实时累计已分配的交付比例
+            const deliveryRatioTotal = deliveryAllocationsVal.reduce((acc: number, curr: any) => acc + parseFloat(curr?.ratio || 0), 0);
+            
+            // 实时累计已分配的营销比例
+            const marketingRatioTotal = selectedProjectMarketingUsers
+              .filter(mu => mu.local_user_id !== null)
+              .reduce((acc: number, curr: any) => acc + parseFloat(broadcastForm.getFieldValue(`marketingRatio_${curr.local_user_id}`) || 0), 0);
+              
+            return (
+              <>
+                <Form.Item name="contractName" label="合同/项目名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                  <Input disabled placeholder="选择项目后自动回填" />
+                </Form.Item>
+                <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                  <Input disabled placeholder="选择项目后自动回填业主单位" />
+                </Form.Item>
+                
+                <Form.Item name="expectMoney" label="合同价格 (万元)" rules={[{ required: true, message: '请填写合同价格' }]}>
+                  <Input type="number" step="0.0001" placeholder="自动回填且可手动修改" />
+                </Form.Item>
+                
+                {/* 交付新签业绩分配 */}
+                <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                    交付新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
+                    <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                      (除了营销岗以外的人员，如技术、交付人员)
+                    </span>
+                  </div>
+                  <Form.List name="deliveryAllocations">
+                    {(fields, { add, remove }) => (
+                      <>
+                        {fields.map(({ key, name, ...restField }) => {
+                          const ratio = parseFloat(broadcastForm.getFieldValue(['deliveryAllocations', name, 'ratio']) || 0);
+                          const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
+                          return (
+                            <Row key={key} gutter={16} align="middle" style={{ marginBottom: 8 }}>
+                              <Col span={10}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'userId']}
+                                  rules={[{ required: true, message: '请选择分摊员工' }]}
+                                  noStyle
+                                >
+                                  <Select
+                                    showSearch
+                                    placeholder="选择分摊员工"
+                                    optionFilterProp="label"
+                                    options={usersList
+                                      .filter(u => u.position_type !== 'marketing')
+                                      .map(u => ({
+                                        value: u.id,
+                                        label: `${u.name} | ${u.position || '交付/技术'}`
+                                      }))}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'ratio']}
+                                  rules={[{ required: true, message: '比例' }]}
+                                  noStyle
+                                >
+                                  <Input
+                                    type="number"
+                                    placeholder="比例 (%)"
+                                    suffix="%"
+                                    style={{ width: '100%' }}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={4} style={{ paddingLeft: 8 }}>
+                                <span style={{ fontSize: 12, color: '#888' }}>
+                                  {allocatedAmount} 万元
+                                </span>
+                              </Col>
+                              <Col span={2}>
+                                <Button type="link" danger onClick={() => remove(name)}>
+                                  删除
+                                </Button>
+                              </Col>
+                            </Row>
+                          );
+                        })}
+                        <Form.Item noStyle>
+                          <Button type="dashed" onClick={() => add()} block style={{ marginTop: 8 }}>
+                            + 添加交付分摊员工
+                          </Button>
+                        </Form.Item>
+                      </>
+                    )}
+                  </Form.List>
+                  
+                  {/* 交付比率统计 */}
+                  <div style={{ marginTop: 8, fontSize: 12, textAlign: 'right', color: '#666' }}>
+                    已分配累计比例：
+                    <span style={{ fontWeight: 'bold', color: Math.abs(deliveryRatioTotal - 100) < 0.01 ? 'green' : 'red' }}>
+                      {deliveryRatioTotal.toFixed(2)} %
+                    </span>
+                    （必须等于 100%）
+                  </div>
+                </div>
+
+                {/* 营销新签业绩分配 */}
+                {selectedProjectMarketingUsers.length > 0 && (
+                  <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                      营销新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
+                      <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                        (当前 CRM 项目对应的营销人员)
+                      </span>
+                    </div>
+                    {selectedProjectMarketingUsers.map((mu) => {
+                      if (mu.local_user_id === null) {
+                        return (
+                          <Row key={mu.crm_user_id} align="middle" style={{ marginBottom: 8, padding: '4px 0' }}>
+                            <Col span={10}>
+                              <span style={{ color: '#aaa', textDecoration: 'line-through' }}>
+                                {mu.name}
+                              </span>
+                            </Col>
+                            <Col span={14}>
+                              <span style={{ color: '#ff4d4f', fontSize: 12 }}>
+                                (未绑定系统账号，无法在此系统分摊)
+                              </span>
+                            </Col>
+                          </Row>
+                        );
+                      }
+                      
+                      const ratio = parseFloat(broadcastForm.getFieldValue(`marketingRatio_${mu.local_user_id}`) || 0);
+                      const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
+                      
+                      return (
+                        <Row key={mu.crm_user_id} align="middle" style={{ marginBottom: 8 }}>
+                          <Col span={10}>
+                            <span>
+                              {mu.name}（营销岗）
+                            </span>
+                          </Col>
+                          <Col span={10}>
+                            <Form.Item
+                              name={`marketingRatio_${mu.local_user_id}`}
+                              rules={[{ required: true, message: '请输入比例' }]}
+                              noStyle
+                            >
+                              <Input
+                                type="number"
+                                placeholder="比例 (%)"
+                                suffix="%"
+                                style={{ width: '100%' }}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={4} style={{ paddingLeft: 12 }}>
+                            <span style={{ fontSize: 12, color: '#888' }}>
+                              {allocatedAmount} 万元
+                            </span>
+                          </Col>
+                        </Row>
+                      );
+                    })}
+                    
+                    {/* 营销比率统计 */}
+                    <div style={{ marginTop: 8, fontSize: 12, textAlign: 'right', color: '#666' }}>
+                      已分配累计比例：
+                      <span style={{ fontWeight: 'bold', color: Math.abs(marketingRatioTotal - 100) < 0.01 ? 'green' : 'red' }}>
+                        {marketingRatioTotal.toFixed(2)} %
+                      </span>
+                      （必须等于 100%）
+                    </div>
+                  </div>
+                )}
+                
+                {/* 隐藏字段用来兼容之前逻辑 */}
+                <Form.Item name="amount" noStyle><Input type="hidden" /></Form.Item>
+                <Form.Item name="budgetMoney" noStyle><Input type="hidden" /></Form.Item>
+              </>
+            );
+          })()}
 
           {currentActionType === 'triangle' && (
-            <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请输入拜访联动客户' }]}>
-              <Input placeholder="例如：广州市规划局" />
+            <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
+              <Select
+                showSearch
+                placeholder="搜索选择 CRM 客户名称"
+                optionFilterProp="label"
+                filterOption={(input, option) =>
+                  ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={crmCustomers.map(c => ({ value: c, label: c }))}
+              />
             </Form.Item>
           )}
 
@@ -605,11 +1223,22 @@ const Dashboard: React.FC = () => {
                 <Select
                   showSearch
                   placeholder="搜索选择员工姓名，默认为当前登录人"
-                  optionFilterProp="children"
+                  optionFilterProp="label"
                   filterOption={(input, option) =>
                     ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
                   options={usersList.map(u => ({ value: u.name, label: u.name }))}
+                />
+              </Form.Item>
+              <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
+                <Select
+                  showSearch
+                  placeholder="搜索选择 CRM 客户名称"
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={crmCustomers.map(c => ({ value: c, label: c }))}
                 />
               </Form.Item>
               <Form.Item name="happinessScore" label="客户幸福标准分值" rules={[{ required: true, message: '请选择幸福分值' }]}>
@@ -747,7 +1376,38 @@ const Dashboard: React.FC = () => {
                 { title: '作战多维指标', dataIndex: 'name', key: 'name', width: 200, render: (val: string) => <strong>{val}</strong> },
                 { title: '口径/定义解析', dataIndex: 'definition', key: 'definition', width: 320 },
                 { title: '保底奋斗目标', dataIndex: 'target', key: 'target', width: 130 },
-                { title: '真实实际完成', dataIndex: 'actual', key: 'actual', width: 130, render: (val: string) => <span style={{ color: '#1677ff', fontWeight: 'bold' }}>{val}</span> },
+                { 
+                  title: '真实实际完成', 
+                  dataIndex: 'actual', 
+                  key: 'actual', 
+                  width: 130, 
+                  render: (val: string, record: any) => {
+                    const isLeads = record.key === 'valid_leads' || record.key === 'potential_leads';
+                    const hasValue = val && val !== '—';
+                    if (isLeads && hasValue) {
+                      if (!hasPerm('drilldown_leads')) {
+                        return <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>{val}</span>;
+                      }
+                      return (
+                        <a 
+                          style={{ 
+                            color: '#1677ff', 
+                            fontWeight: 'bold', 
+                            textDecoration: 'underline', 
+                            cursor: 'pointer' 
+                          }}
+                          onClick={() => {
+                            const leadType = record.key === 'valid_leads' ? 'valid' : 'potential';
+                            handleViewLeadsList(selectedTeamMetrics.team_id, leadType, selectedTeamMetrics.team_name);
+                          }}
+                        >
+                          {val}
+                        </a>
+                      );
+                    }
+                    return <span style={{ color: '#1677ff', fontWeight: 'bold' }}>{val}</span>;
+                  }
+                },
                 { 
                   title: '达成进度', 
                   dataIndex: 'rate', 
@@ -768,6 +1428,34 @@ const Dashboard: React.FC = () => {
         ) : (
           <div style={{ textAlign: 'center', padding: '30px 0' }}>暂无数据</div>
         )}
+      </Modal>
+
+      {/* 战队线索明细下钻 Modal */}
+      <Modal
+        title={selectedTeamMetrics ? `🔍 【${currentLeadTeamName}】${currentLeadType}明细列表` : "线索明细列表"}
+        open={leadsModalVisible}
+        onCancel={() => {
+          setLeadsModalVisible(false)
+          setLeadsList([])
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setLeadsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1200}
+        destroyOnClose
+      >
+        <Table
+          dataSource={leadsList}
+          columns={leadsColumns}
+          loading={leadsLoading}
+          rowKey="id"
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条数据` }}
+          scroll={{ x: 1800, y: 500 }}
+          bordered
+          size="small"
+        />
       </Modal>
     </div>
   )

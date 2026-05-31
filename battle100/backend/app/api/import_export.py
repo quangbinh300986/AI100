@@ -15,7 +15,38 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.goal import PersonalGoal, TeamGoal, WeeklyTarget, GoalType
 from app.models.organization import Team
-from app.api.deps import get_current_user, require_roles
+from fastapi import Request
+from app.api.deps import get_current_user, require_roles, require_permission
+from app.services.audit_service import log_action, to_dict
+
+# 动态权限代理拦截：依据请求路径，将导入导出动作智能分流到 settings (用户/钉钉操作) 或 goals (周目标导入/导出) 上
+def dynamic_require_roles(*roles):
+    async def import_export_permission_dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+            
+        path = request.url.path
+        
+        # 1. 用户导入导出及钉钉同步映射为 settings 相关的管理权限
+        if "users" in path:
+            perm = "manage_user_roles"
+        # 2. 周目标 Excel 导入映射为 import_weekly_targets
+        elif "goals" in path and "import" in path:
+            perm = "import_weekly_targets"
+        # 3. 其它（如周目标导出）映射为 view_goals 即可
+        else:
+            perm = "view_goals"
+            
+        checker = require_permission(perm)
+        return await checker(current_user, db)
+        
+    return import_export_permission_dependency
+
+require_roles = dynamic_require_roles
 
 router = APIRouter(prefix="/import-export", tags=["导入导出"])
 
@@ -72,6 +103,18 @@ async def import_users(
             errors.append(f"第{row_idx}行导入失败: {str(e)}")
 
     await db.flush()
+
+    # 记录审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="IMPORT",
+        target_module="user",
+        target_id=0,
+        description=f"Excel批量导入用户，成功导入 {imported_count} 个用户",
+        before_state=None,
+        after_state={"imported_count": imported_count, "errors": errors},
+    )
 
     return {
         "message": f"成功导入{imported_count}个用户",
@@ -359,6 +402,18 @@ async def import_goals_weekly(
     except Exception as aggregate_err:
         errors.append(f"周分解目标导入成功，但在自动累加更新战队总目标时失败: {str(aggregate_err)}")
 
+    # 记录审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="IMPORT",
+        target_module="goal",
+        target_id=0,
+        description=f"Excel批量导入周分解目标，成功导入 {imported_count} 条数据",
+        before_state=None,
+        after_state={"imported_count": imported_count, "errors": errors},
+    )
+
     return {
         "message": f"成功导入 {imported_count} 条周度目标分配数据",
         "imported_count": imported_count,
@@ -533,6 +588,18 @@ async def import_goals_personal(
                 imported_count += 1
 
     await db.flush()
+
+    # 记录审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="IMPORT",
+        target_module="goal",
+        target_id=0,
+        description=f"Excel批量导入个人与战队多Sheet目标，成功同步 {imported_count} 条数据",
+        before_state=None,
+        after_state={"imported_count": imported_count, "errors": errors},
+    )
 
     return {
         "message": f"成功同步个人与战队多 Sheet 个人目标 {imported_count} 条",

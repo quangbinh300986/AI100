@@ -459,28 +459,43 @@ async def get_dashboard_overview(
         
         # 1. 有效线索确定 (10% -> 25%)
         if d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
-            content = f"攻坚一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+                content = d.description
+            else:
+                content = f"攻坚一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "achievement"
             
         # 2. 中标确定 (50% -> 75%)
         elif d.detail_type == DetailType.LEAD and (d.lead_progress == "75%" or "75" in str(d.lead_progress or "")):
-            content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+                content = d.description
+            else:
+                content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "milestone"
             
         # 3. 已完成合同签订（双方盖章）(75% -> 90%)
         elif d.detail_type == DetailType.CONTRACT:
-            content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+                content = d.description
+            else:
+                content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "contract"
             
         # 4. 铁三角联动
         elif d.detail_type == DetailType.TRIANGLE:
-            content = f"攻坚一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
+            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+                content = d.description
+            else:
+                content = f"攻坚一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
             feed_type = "info"
             
         # 5. 客户幸福动作
         elif d.detail_type == DetailType.HAPPINESS:
             score = d.happiness_level or 20
-            content = f"攻坚一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
+            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+                content = d.description
+            else:
+                content = f"攻坚一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
             feed_type = "milestone"
             
         else:
@@ -587,7 +602,7 @@ async def get_dashboard_overview(
         "清远战队": "郑子鹏",
         "广州一战队": "陈浩龙",
         "广州二战队": "刘罗军",
-        "广州三战队（数据）": "伍耀强",
+        "广州三战队（大数据）": "伍耀强",
         "广州三战队": "伍耀强",
         "佛山战队": "卢俊松",
         "湛江战队": "周真波",
@@ -649,6 +664,14 @@ async def get_dashboard_overview(
     # 截取前9名保证3x3网格
     dual_track_teams = dual_track_teams[:9]
 
+    # 动态计算倒计时天数（以数据库中最晚的周目标结束日期为基准，默认2026-09-13）
+    max_end_date_res = await db.execute(select(func.max(WeeklyTarget.week_end)))
+    campaign_end_date = max_end_date_res.scalar()
+    if not campaign_end_date:
+        campaign_end_date = date(2026, 9, 13)
+    
+    countdown = max(0, (campaign_end_date - target_date).days + 1)
+
     return DashboardResponse(
         kpiSummary=kpi_summary,
         zoneRanking=zone_ranking,
@@ -659,7 +682,7 @@ async def get_dashboard_overview(
         triangleBoard=triangle_board,
         zoneTeamsPK=zone_teams_pk,
         dualTrackTeams=dual_track_teams,
-        countdown=71,
+        countdown=countdown,
         campaignName="中地顾问「百日奋战」经营冲刺大屏",
         slogan="攻坚一百天，亮剑破六千！"
     )
@@ -1114,3 +1137,174 @@ async def get_team_detailed_metrics(
         "happiness_actual": happiness_actual,
         "crm_connected": crm_connected
     }
+
+
+def get_mock_leads(lead_type: str, team_name: str):
+    """
+    Mock 数据兜底：当直连 CRM 数据库断开或出错时，返回高度拟真的明细数据
+    """
+    if lead_type == "valid":
+        return [
+            {
+                "id": "mock_valid_1",
+                "name": "从化区2026年耕作层剥离再利用方案编制",
+                "progress": "50%",
+                "latest_feedback": "合同已签订，正在准备前期资料",
+                "status": "未预设立",
+                "budget": 29.0,
+                "forecast_amount": 29.0,
+                "region": "广州市从化区",
+                "business_category": "耕作层剥离利用方案",
+                "source": "营销端",
+                "customer_name": "广州市从化区土地储备开发中心"
+            },
+            {
+                "id": "mock_valid_2",
+                "name": "湛江县城标动力开发边界局部优化方案",
+                "progress": "25%",
+                "latest_feedback": "已挂网，已在走商务流程",
+                "status": "未预设立",
+                "budget": 20.0,
+                "forecast_amount": 20.0,
+                "region": "湛江市遂溪县",
+                "business_category": "规划修改类",
+                "source": "营销端",
+                "customer_name": "遂溪县自然资源局"
+            },
+            {
+                "id": "mock_valid_3",
+                "name": "廉江市新民镇2026年度第十批次建设用地报批",
+                "progress": "75%",
+                "latest_feedback": "已签合同，正组卷上报",
+                "status": "已预设立",
+                "budget": 15.0,
+                "forecast_amount": 15.0,
+                "region": "廉江市新民镇",
+                "business_category": "规划报批类",
+                "source": "营销端",
+                "customer_name": "新民镇人民政府"
+            }
+        ]
+    else:
+        return [
+            {
+                "id": "mock_potential_1",
+                "name": "明富路回购规划",
+                "progress": "10%",
+                "latest_feedback": "合同已签订，正在准备初稿",
+                "status": "未预设立",
+                "budget": 10.0,
+                "forecast_amount": 10.0,
+                "region": "佛山市高明区",
+                "business_category": "其他规划类",
+                "source": "营销端",
+                "customer_name": "佛山市自然资源局高明分局"
+            },
+            {
+                "id": "mock_potential_2",
+                "name": "罗定市2026年国有建设用地使用权基准地价更新",
+                "progress": "5%",
+                "latest_feedback": "已送初稿并开展论证工作",
+                "status": "未预设立",
+                "budget": 60.0,
+                "forecast_amount": 43.0,
+                "region": "云浮市罗定市",
+                "business_category": "基准地价更新",
+                "source": "营销端",
+                "customer_name": "罗定市自然资源局"
+            }
+        ]
+
+
+@router.get("/team-leads", summary="获取战队有效/潜力线索明细列表")
+async def get_team_leads(
+    team_id: int,
+    lead_type: str = Query(..., description="线索类型：valid(有效, 25-75%) 或 potential(潜力, 5-10%)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取某个战队在特定线索类型（有效或潜力）下的 CRM 线索明细列表
+    """
+    import pymysql
+    # 1. 验证战队是否存在
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team = team_res.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="战队不存在")
+
+    # 2. 查询该战队成员的 crm_user_id 列表
+    users_res = await db.execute(select(User).where(User.team_id == team_id))
+    members = users_res.scalars().all()
+    crm_user_ids = [u.crm_user_id for u in members if u.crm_user_id]
+    
+    if not crm_user_ids:
+        raise HTTPException(status_code=400, detail="该战队成员未绑定任何 CRM 账号，无法拉取线索列表")
+
+    leads_list = []
+    
+    # 3. 直连 CRM 数据库拉取线索列表
+    try:
+        conn = pymysql.connect(
+            host=settings.CRM_DB_HOST,
+            port=settings.CRM_DB_PORT,
+            user=settings.CRM_DB_USER,
+            password=settings.CRM_DB_PASSWORD,
+            database=settings.CRM_DB_NAME,
+            charset='utf8mb4',
+            connect_timeout=3
+        )
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        
+        user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+        
+        # 进度区间判断
+        if lead_type == "valid":
+            progress_cond = "progress BETWEEN 25 AND 75"
+        elif lead_type == "potential":
+            progress_cond = "progress BETWEEN 5 AND 10"
+        else:
+            raise HTTPException(status_code=400, detail="无效的线索类型")
+            
+        sql = f"""
+            SELECT id, name, progress, remark, details, contract_status, budget_money, expect_money, 
+                   province, city, district, third_type, data_source, customer_name 
+            FROM zdcrm_business_opportunity 
+            WHERE {progress_cond}
+              AND (is_suspension = '0' OR is_suspension IS NULL)
+              AND market_user_id IN ({user_ids_str})
+            ORDER BY create_time DESC
+        """
+        cur.execute(sql)
+        rows = cur.fetchall()
+        
+        for row in rows:
+            region = ""
+            if row.get("province"):
+                region += row["province"]
+            if row.get("city"):
+                region += row["city"]
+            if row.get("district"):
+                region += row["district"]
+                
+            leads_list.append({
+                "id": row.get("id"),
+                "name": row.get("name") or "未命名业务",
+                "progress": f"{float(row['progress'])}%" if row.get("progress") is not None else "0%",
+                "latest_feedback": row.get("remark") or row.get("details") or "暂无反馈",
+                "status": row.get("contract_status") or "未预设立",
+                "budget": float(row["budget_money"]) if row.get("budget_money") is not None else 0.0,
+                "forecast_amount": float(row["expect_money"]) if row.get("expect_money") is not None else 0.0,
+                "region": region or "未知区域",
+                "business_category": row.get("third_type") or "未分类",
+                "source": row.get("data_source") or "营销端",
+                "customer_name": row.get("customer_name") or "未知单位"
+            })
+            
+        cur.close()
+        conn.close()
+    except Exception as e:
+        import logging
+        logging.getLogger("battle100").warning(f"直连 CRM 获取线索详情失败: {e}")
+        raise HTTPException(status_code=503, detail="连接 CRM 数据库失败，无法获取线索详情")
+        
+    return leads_list

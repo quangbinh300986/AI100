@@ -25,6 +25,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.ranking import router as ranking_router
 from app.api.broadcast import router as broadcast_router
 from app.api.import_export import router as import_export_router
+from app.api.audit_logs import router as audit_logs_router
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -35,11 +36,57 @@ from app.services.websocket import ws_manager
 
 
 async def init_db():
-    """初始化数据库表并预置幸福度标准"""
+    """初始化数据库表并预置幸福度标准及默认角色权限"""
     async with engine.begin() as conn:
         # 使用同步反射自动在PostgreSQL中创建表
         await conn.run_sync(Base.metadata.create_all)
     logger.info("数据库表结构初始化成功")
+
+    # 异步预置角色权限默认配置
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models.user import RolePermission
+
+    async with SessionLocal() as db:
+        try:
+            # 检查是否有权限记录
+            count_res = await db.execute(select(RolePermission))
+            if not count_res.scalars().first():
+                logger.info("未检测到角色权限配置，开始预置默认权限数据...")
+                default_perms = [
+                    # admin 拥有全部 12 项权限
+                    RolePermission(role="admin", menu_key="view_dashboard"),
+                    RolePermission(role="admin", menu_key="drilldown_leads"),
+                    RolePermission(role="admin", menu_key="view_reports"),
+                    RolePermission(role="admin", menu_key="approve_report"),
+                    RolePermission(role="admin", menu_key="reject_report"),
+                    RolePermission(role="admin", menu_key="view_goals"),
+                    RolePermission(role="admin", menu_key="manage_base_targets"),
+                    RolePermission(role="admin", menu_key="import_weekly_targets"),
+                    RolePermission(role="admin", menu_key="clear_targets"),
+                    RolePermission(role="admin", menu_key="view_settings"),
+                    RolePermission(role="admin", menu_key="manage_role_permissions"),
+                    RolePermission(role="admin", menu_key="manage_user_roles"),
+                    # target_officer (目标官)
+                    RolePermission(role="target_officer", menu_key="view_dashboard"),
+                    RolePermission(role="target_officer", menu_key="view_goals"),
+                    RolePermission(role="target_officer", menu_key="manage_base_targets"),
+                    RolePermission(role="target_officer", menu_key="import_weekly_targets"),
+                    # digital_specialist (数字专员)
+                    RolePermission(role="digital_specialist", menu_key="view_dashboard"),
+                    RolePermission(role="digital_specialist", menu_key="view_goals"),
+                    RolePermission(role="digital_specialist", menu_key="import_weekly_targets"),
+                    # team_leader (战队长)
+                    RolePermission(role="team_leader", menu_key="view_dashboard"),
+                    RolePermission(role="team_leader", menu_key="view_reports"),
+                    RolePermission(role="team_leader", menu_key="approve_report"),
+                    RolePermission(role="team_leader", menu_key="reject_report"),
+                ]
+                db.add_all(default_perms)
+                await db.commit()
+                logger.info("默认角色权限数据预置成功")
+        except Exception as ex:
+            logger.error(f"预置默认角色权限数据失败: {ex}")
 
 
 @asynccontextmanager
@@ -83,6 +130,7 @@ app.include_router(ranking_router, prefix=settings.API_PREFIX)
 app.include_router(broadcast_router, prefix=settings.API_PREFIX)
 app.include_router(import_export_router, prefix=settings.API_PREFIX)
 app.include_router(import_export_router, prefix="/api")
+app.include_router(audit_logs_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/")

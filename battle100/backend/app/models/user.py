@@ -76,3 +76,18 @@ class User(BaseModel):
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, name={self.name}, role={self.role})>"
+
+
+class RolePermission(BaseModel):
+    """角色权限配置表"""
+    __tablename__ = "role_permissions"
+
+    role: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True, comment="用户角色，如 admin, team_leader 等"
+    )
+    menu_key: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="菜单/权限 Key，如 dashboard, reports, goals, settings"
+    )
+
+    def __repr__(self) -> str:
+        return f"<RolePermission(id={self.id}, role={self.role}, menu_key={self.menu_key})>"

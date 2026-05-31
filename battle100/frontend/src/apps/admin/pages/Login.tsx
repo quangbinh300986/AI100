@@ -1,15 +1,95 @@
-import React, { useState } from 'react'
-
-import { Form as AntForm, Input as AntInput, Button as AntButton, message as antMessage } from 'antd'
-import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Form as AntForm, Input as AntInput, Button as AntButton, message as antMessage, Spin } from 'antd'
+import { UserOutlined, LockOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { login as apiLogin } from '@shared/api/auth'
+import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
+import { setToken, removeToken } from '@shared/utils'
+import dd from 'dingtalk-jsapi'
 
 const Login: React.FC = () => {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
+  const [ddLoading, setDdLoading] = useState(false)
   const setAuth = useAuthStore((state) => state.setAuth)
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn)
+
+  /** 钉钉免密登录流程 */
+  const handleDingTalkLogin = async () => {
+    setDdLoading(true)
+    try {
+      const ddApi = dd as any
+      ddApi.ready(async () => {
+        try {
+          const corpId = 'dingdaec913f1d2b741235c2f4657eb6378f'
+          ddApi.runtime.permission.requestAuthCode({
+            corpId: corpId,
+            onSuccess: async (result: { code: string }) => {
+              try {
+                // 请求后端免登
+                const res = await post<any>('/auth/dingtalk-login', { auth_code: result.code })
+                const tokenData = res?.data ? res.data : res
+                const accessToken = tokenData.access_token
+                
+                if (accessToken) {
+                  setToken(accessToken)
+                  localStorage.setItem('battle100_token', accessToken)
+                  
+                  // 获取用户信息
+                  const userRes = await get<any>('/auth/me')
+                  const userData = userRes.code === 0 && userRes.data ? userRes.data : userRes
+                  
+                  if (userData && userData.role) {
+                    setAuth(userData, accessToken)
+                    antMessage.success('免密登录成功')
+                    navigate('/admin/dashboard')
+                  } else {
+                    removeToken()
+                    localStorage.removeItem('battle100_token')
+                    antMessage.error('获取用户信息失败')
+                    setDdLoading(false)
+                  }
+                } else {
+                  throw new Error('未返回有效的Token')
+                }
+              } catch (innerErr: any) {
+                console.error('免登后处理失败', innerErr)
+                removeToken()
+                localStorage.removeItem('battle100_token')
+                const errMsg = innerErr?.response?.data?.detail || innerErr?.message || '未知校验错误'
+                antMessage.error(`免密登录绑定失败: ${errMsg}`)
+                setDdLoading(false)
+              }
+            },
+            onFail: (err: any) => {
+              console.error('获取钉钉授权码失败', err)
+              antMessage.error(`钉钉授权码获取失败: ${JSON.stringify(err) || '未知错误'}`)
+              setDdLoading(false)
+            }
+          })
+        } catch (readyErr: any) {
+          console.error('钉钉 Ready 初始化错误', readyErr)
+          antMessage.error(`Ready初始化异常: ${readyErr.message}`)
+          setDdLoading(false)
+        }
+      })
+    } catch (e: any) {
+      console.error('钉钉免登引导异常', e)
+      antMessage.error(`引导失败: ${e.message}`)
+      setDdLoading(false)
+    }
+  }
+
+  // 探测钉钉运行环境
+  useEffect(() => {
+    const ua = navigator.userAgent.toLowerCase()
+    const isDD = ua.includes('dingtalk')
+    
+    if (isDD && !isLoggedIn) {
+      handleDingTalkLogin()
+    }
+  }, [isLoggedIn])
 
   // 处理登录
   const onFinish = async (values: any) => {
@@ -21,25 +101,30 @@ const Login: React.FC = () => {
         password: values.password,
       })
       
-      // FastAPI的接口可能返回 { access_token, refresh_token }
-      // 后端 models.User 数据可以通过调用 /auth/me 获取
-      // 这里如果后端login接口只返回了 token，我们可以在前端设置 token 并且造一个 mock 用户，或者直接配合 store
-      // 让我们假设 apiLogin 返回的直接是后端数据
       const data = response as any
       if (data && data.access_token) {
-        // 创建一个临时管理员用户，之后会自动拉取 /me
-        const mockUser = {
-          id: 1,
-          username: 'admin',
-          realName: '中地顾问管理员',
-          phone: values.phone,
-          role: 'admin' as const,
-          isActive: true,
-          createdAt: new Date().toISOString(),
+        setToken(data.access_token)
+        localStorage.setItem('battle100_token', data.access_token)
+        
+        try {
+          // 实时请求真正的用户信息并更新 Store 状态
+          const userRes = await get<any>('/auth/me')
+          const userData = userRes.code === 0 && userRes.data ? userRes.data : userRes
+          
+          if (userData && userData.role) {
+            setAuth(userData, data.access_token)
+            antMessage.success('登录成功')
+            navigate('/admin/dashboard')
+          } else {
+            removeToken()
+            localStorage.removeItem('battle100_token')
+            antMessage.error('获取用户信息失败')
+          }
+        } catch (meErr) {
+          removeToken()
+          localStorage.removeItem('battle100_token')
+          antMessage.error('初始化用户信息失败')
         }
-        setAuth(mockUser, data.access_token)
-        antMessage.success('登录成功')
-        navigate('/admin/dashboard')
       } else {
         antMessage.error('登录失败，未获取到有效凭证')
       }
@@ -49,6 +134,28 @@ const Login: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (ddLoading) {
+    const antIcon = <LoadingOutlined style={{ fontSize: 40, color: '#1890ff' }} spin />
+    return (
+      <div 
+        className="login-container" 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          minHeight: '100vh', 
+          background: '#f0f2f5' 
+        }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <Spin indicator={antIcon} style={{ marginBottom: 16 }} />
+          <h3 style={{ fontSize: 18, color: '#1a1a1a', fontWeight: 600 }}>正在通过钉钉免登安全登录后台...</h3>
+          <p style={{ color: '#8c8c8c' }}>请稍候，系统正在校验您的管理员身份</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -95,6 +202,16 @@ const Login: React.FC = () => {
           <AntForm.Item
             name="password"
             rules={[{ required: true, message: '请输入密码!' }]}
+          >
+            <AntInput.Password
+              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
+              placeholder="密码"
+            />
+          </AntForm.Item>
+
+          <AntForm.Item
+            name="password"
+            style={{ display: 'none' }}
           >
             <AntInput.Password
               prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}

@@ -61,9 +61,49 @@ class DingTalkClient:
         :param auth_code: 前端传来的授权码
         :return: 用户信息字典
         """
-        # TODO: 实现钉钉免登获取用户信息
-        # 步骤：1. 获取access_token 2. 通过code获取userid 3. 获取用户详情
-        return None
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            # 1. 获取 userid
+            url = f"{self.BASE_URL}/topapi/v2/user/getuserinfo"
+            params = {"access_token": token}
+            json_data = {"code": auth_code}
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+            
+            if data.get("errcode") != 0:
+                logger.error(f"通过免登授权码获取userid失败: {data.get('errmsg')}")
+                return None
+                
+            result = data.get("result", {})
+            userid = result.get("userid")
+            name = result.get("name")
+            
+            # 2. 通过 userid 获取用户详情，拿到手机号
+            user_detail_url = f"{self.BASE_URL}/topapi/v2/user/get"
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    user_detail_url, 
+                    params=params, 
+                    json={"userid": userid, "language": "zh_CN"}
+                )
+                detail_data = response.json()
+                
+            mobile = None
+            if detail_data.get("errcode") == 0:
+                mobile = detail_data.get("result", {}).get("mobile")
+                
+            return {
+                "userid": userid,
+                "name": name,
+                "mobile": mobile
+            }
+        except Exception as e:
+            logger.error(f"get_user_info_by_code 发生异常: {e}")
+            return None
 
     async def send_work_notification(
         self,
@@ -76,10 +116,44 @@ class DingTalkClient:
         :param user_id_list: 钉钉用户ID列表
         :param content: 消息内容（支持Markdown）
         :param title: 消息标题
-        :return: 钉钉消息ID
+        :return: 任务ID (task_id)
         """
-        # TODO: 实现钉钉工作通知推送
-        return None
+        if not user_id_list:
+            return None
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            agent_id = settings.DINGTALK_AGENT_ID
+            if not agent_id:
+                logger.error("未配置 DINGTALK_AGENT_ID，无法发送工作通知")
+                return None
+                
+            url = f"{self.BASE_URL}/topapi/message/corpconversation/asyncsend_v2"
+            params = {"access_token": token}
+            json_data = {
+                "agent_id": int(agent_id),
+                "userid_list": ",".join(user_id_list),
+                "msg": {
+                    "msgtype": "markdown",
+                    "markdown": {
+                        "title": title,
+                        "text": content
+                    }
+                }
+            }
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+                
+            if data.get("errcode") == 0:
+                return str(data.get("task_id"))
+            else:
+                logger.error(f"发送工作通知失败: {data.get('errmsg')}")
+                return None
+        except Exception as e:
+            logger.error(f"send_work_notification 发生异常: {e}")
+            return None
 
     async def send_group_message(
         self,
@@ -94,7 +168,209 @@ class DingTalkClient:
         :param msg_type: 消息类型（text/markdown/action_card等）
         :return: 消息ID
         """
-        # TODO: 实现钉钉群消息推送
+        if not chat_id:
+            return None
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            url = f"{self.BASE_URL}/chat/send"
+            params = {"access_token": token}
+            
+            title = "百日奋战播报"
+            if content.startswith("#"):
+                first_line = content.split("\n")[0]
+                title = first_line.replace("#", "").strip()
+                
+            json_data = {
+                "chatid": chat_id,
+                "msg": {
+                    "msgtype": "markdown",
+                    "markdown": {
+                        "title": title,
+                        "text": content
+                    }
+                }
+            }
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+                
+            if data.get("errcode") == 0:
+                return data.get("messageId")
+            else:
+                # 尝试使用新版机器人发送群消息接口
+                new_url = f"{self.NEW_API_URL}/v1.0/robot/groupMessages/send"
+                headers = {
+                    "x-acs-dingtalk-access-token": token,
+                    "Content-Type": "application/json"
+                }
+                import json
+                new_json_data = {
+                    "msgKey": "sampleMarkdown",
+                    "msgParam": json.dumps({"title": title, "text": content}),
+                    "openConversationId": chat_id,
+                    "robotCode": self.app_key
+                }
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.post(new_url, headers=headers, json=new_json_data)
+                    new_data = resp.json()
+                if resp.status_code == 200 or new_data.get("processQueryKey"):
+                    return new_data.get("processQueryKey") or "success"
+                else:
+                    logger.error(f"发送群消息失败，旧接口错误: {data.get('errmsg')}; 新接口返回: {new_data}")
+                    return None
+        except Exception as e:
+            logger.error(f"send_group_message 发生异常: {e}")
+            return None
+
+    async def send_webhook_message(
+        self,
+        content: str,
+        title: str = "百日奋战播报",
+    ) -> Optional[str]:
+        """
+        通过自定义群机器人 Webhook 发送消息
+        :param content: 消息内容（支持Markdown）
+        :param title: 消息标题
+        :return: 消息发送状态标识
+        """
+        webhook_url = settings.DINGTALK_WEBHOOK_URL
+        if not webhook_url:
+            return None
+            
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            import time
+            import hmac
+            import hashlib
+            import base64
+            import urllib.parse
+            
+            secret = settings.DINGTALK_WEBHOOK_SECRET
+            url = webhook_url
+            
+            if secret:
+                timestamp = str(round(time.time() * 1000))
+                secret_enc = secret.encode('utf-8')
+                string_to_sign = f"{timestamp}\n{secret}"
+                string_to_sign_enc = string_to_sign.encode('utf-8')
+                hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
+                sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+                
+                if "?" in url:
+                    url = f"{url}&timestamp={timestamp}&sign={sign}"
+                else:
+                    url = f"{url}?timestamp={timestamp}&sign={sign}"
+                    
+            json_data = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "title": title,
+                    "text": content
+                }
+            }
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=json_data)
+                data = response.json()
+                
+            if data.get("errcode") == 0 or data.get("status") == "ok":
+                return "webhook_success"
+            else:
+                logger.error(f"Webhook 发送失败: {data.get('errmsg') or data}")
+                return None
+        except Exception as e:
+            logger.error(f"send_webhook_message 发生异常: {e}")
+            return None
+
+    async def push_broadcast_message(
+        self,
+        event_type: str,
+        content: str,
+        user_name: Optional[str] = None,
+        team_name: Optional[str] = None,
+        dingtalk_users: Optional[list[str]] = None
+    ) -> Optional[str]:
+        """
+        统一的消息播报推送服务，支持 Webhook、自建群发及工作通知，并将战报排版成精美的 Markdown 卡片
+        """
+        import logging
+        import re
+        logger = logging.getLogger("battle100")
+        
+        # 1. 转换事件类型名称
+        event_type_names = {
+            "contract_signed": "已完成合同签订 (90%)",
+            "lead_75": "中标确定 (75%)",
+            "lead_25": "有效线索确定 (25%)",
+            "triangle": "铁三角联动",
+            "happiness": "客户幸福动作",
+            "custom": "自定义播报",
+            "goal_achieved": "目标达成",
+            "daily_summary": "每日战报汇总",
+            "weekly_summary": "每周战报汇总",
+            "ranking_update": "战队排名更新"
+        }
+        type_name = event_type_names.get(event_type, "最新战报")
+        
+        # 2. 格式化精美 Markdown 内容
+        cleaned_content = content
+        if "【战报播报】" in cleaned_content:
+            cleaned_content = cleaned_content.replace("【战报播报】", "")
+            
+        markdown_text = f"### 📢 战报播报 | 冲刺 100 天\n\n"
+        markdown_text += f"**恭喜战友，再传捷报！**\n\n"
+        markdown_text += f"---\n"
+        markdown_text += f"* **战报类型**：{type_name}\n"
+        if user_name:
+            markdown_text += f"* **推进战友**：{user_name}\n"
+        if team_name:
+            markdown_text += f"* **所属战队**：{team_name}\n"
+            
+        # 提取金额与客户单位
+        amount_match = re.search(r"金额：\s*([0-9.]+)\s*万元", content)
+        if not amount_match:
+            amount_match = re.search(r"价值\s*([0-9.]+)\s*万元", content)
+        if amount_match:
+            markdown_text += f"* **战报金额**：**{amount_match.group(1)}** 万元 💰\n"
+            
+        customer_match = re.search(r"业主单位：\s*([^，!。]+)", content)
+        if not customer_match:
+            customer_match = re.search(r"客户为\s*([^，!。]+)", content)
+        if customer_match:
+            markdown_text += f"* **业主单位**：{customer_match.group(1)}\n"
+            
+        markdown_text += f"---\n"
+        markdown_text += f"> {cleaned_content}\n\n"
+        markdown_text += f"> **赢战百日**，攻坚一百天，亮剑破六千！让我们共同期待下一个战报！💪"
+        
+        title = f"战报播报: {type_name}"
+        msg_id = None
+        
+        # 路由 1：群自定义机器人 Webhook（最推荐）
+        if settings.DINGTALK_WEBHOOK_URL:
+            logger.info("检测到 DINGTALK_WEBHOOK_URL，使用群自定义机器人 Webhook 发送")
+            msg_id = await self.send_webhook_message(markdown_text, title)
+            if msg_id:
+                return msg_id
+                
+        # 路由 2：企业自建群聊接口（需 ChatID）
+        if settings.DINGTALK_CHAT_ID:
+            logger.info(f"使用自建应用机器人向群聊 {settings.DINGTALK_CHAT_ID} 发送")
+            msg_id = await self.send_group_message(settings.DINGTALK_CHAT_ID, markdown_text)
+            if msg_id:
+                return msg_id
+                
+        # 路由 3：工作通知兜底（直接发送给相关人员个人）
+        if dingtalk_users:
+            logger.info(f"使用自建应用向指定用户 {dingtalk_users} 推送个人工作通知")
+            msg_id = await self.send_work_notification(dingtalk_users, markdown_text, title)
+            if msg_id:
+                return msg_id
+                
         return None
 
     async def get_department_users(self, dept_id: int = 1) -> list[dict]:
@@ -103,8 +379,28 @@ class DingTalkClient:
         :param dept_id: 部门ID，默认根部门
         :return: 用户列表
         """
-        # TODO: 实现获取部门成员列表
-        return []
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            url = f"{self.BASE_URL}/topapi/v2/user/list"
+            params = {"access_token": token}
+            json_data = {
+                "dept_id": dept_id,
+                "cursor": 0,
+                "size": 100
+            }
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+            if data.get("errcode") == 0:
+                return data.get("result", {}).get("list", [])
+            else:
+                logger.error(f"获取部门用户失败: {data.get('errmsg')}")
+                return []
+        except Exception as e:
+            logger.error(f"get_department_users 发生异常: {e}")
+            return []
 
 
 # 全局钉钉客户端单例

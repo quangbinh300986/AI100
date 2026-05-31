@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build && node post-build.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -15,6 +15,7 @@
     "antd-mobile": "^5.42.3",
     "axios": "^1.16.1",
     "dayjs": "^1.11.21",
+    "dingtalk-jsapi": "^3.2.9",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "react": "^19.2.6",
