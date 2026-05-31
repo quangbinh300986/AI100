@@ -21,41 +21,11 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('marketing')
   const timerRef = useRef<any>(null)
 
-  // 默认周签约 Mock 兜底数据（对齐截图一数据）
-  const defaultHeroes: RankingItem[] = [
-    { rank: 1, name: '董卓佼', teamName: '东莞战队', score: 21.55, trend: 'up' },
-    { rank: 2, name: '郑子鹏', teamName: '清远战队', score: 5.0, trend: 'up' },
-    { rank: 3, name: '刘训东', teamName: '茂名战队', score: 1.94, trend: 'up' },
-    { rank: 4, name: '李泽源', teamName: '广州一战队', score: 0.0, trend: 'same' },
-    { rank: 5, name: '文思凡', teamName: '广州一战队', score: 0.0, trend: 'same' }
-  ]
-
-  // 默认周有效线索 Mock 兜底数据 (线索先锋奖)
-  const defaultLeads: RankingItem[] = [
-    { rank: 1, name: '苏志辉', teamName: '清远战队', score: 15, trend: 'up' },
-    { rank: 2, name: '陈露', teamName: '佛山战队', score: 11, trend: 'up' },
-    { rank: 3, name: '曾志强', teamName: '湛江战队', score: 9, trend: 'same' },
-    { rank: 4, name: '项斌强', teamName: '广州一战队', score: 7, trend: 'up' },
-    { rank: 5, name: '尹晓明', teamName: '云浮战队', score: 5, trend: 'down' }
-  ]
-
-  // 默认周客户幸福动作 Mock 兜底数据 (幸福动作卷王)
-  const defaultHappiness: RankingItem[] = [
-    { rank: 1, name: '陈露', teamName: '佛山战队', score: 18, trend: 'up' },
-    { rank: 2, name: '梁少芬', teamName: '清远战队', score: 14, trend: 'up' },
-    { rank: 3, name: '林金龙', teamName: '云浮战队', score: 11, trend: 'same' },
-    { rank: 4, name: '罗志成', teamName: '东莞战队', score: 9, trend: 'up' },
-    { rank: 5, name: '周展图', teamName: '广州二战队', score: 8, trend: 'same' }
-  ]
-
-  // 默认周铁三角协作 Mock 兜底数据 (协作标杆)
-  const defaultTriangle: RankingItem[] = [
-    { rank: 1, name: '项斌强', teamName: '广州一战队', score: 12, trend: 'up' },
-    { rank: 2, name: '苏志辉', teamName: '清远战队', score: 10, trend: 'up' },
-    { rank: 3, name: '曾志强', teamName: '茂名战队', score: 8, trend: 'same' },
-    { rank: 4, name: '温国荣', teamName: '东莞战队', score: 6, trend: 'down' },
-    { rank: 5, name: '梁永昌', teamName: '茂名战队', score: 5, trend: 'same' }
-  ]
+  // 默认周排行兜底设为空，保证全真数据展示
+  const defaultHeroes: RankingItem[] = []
+  const defaultLeads: RankingItem[] = []
+  const defaultHappiness: RankingItem[] = []
+  const defaultTriangle: RankingItem[] = []
 
   // 定时轮播函数
   const startTimer = () => {

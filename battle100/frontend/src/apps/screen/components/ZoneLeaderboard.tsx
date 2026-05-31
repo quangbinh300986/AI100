@@ -7,20 +7,20 @@ interface ZoneLeaderboardProps {
 }
 
 const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-red', zoneTeamsPK }) => {
-  // 默认高保真的 3 战区内周冲刺赛马 Mock 数据（对齐您的截图一数据）
+  // 默认周冲刺兜底，所有实际值置零，保证只跑真实数据
   const defaultZoneTeamsPK: Record<string, RankingItem[]> = {
     '第一战区': [
-      { rank: 1, name: '清远战队', score: 0.36, trend: 'up' },
+      { rank: 1, name: '清远战队', score: 0.0, trend: 'same' },
       { rank: 2, name: '广州一战队', score: 0.0, trend: 'same' },
       { rank: 3, name: '广州二战队', score: 0.0, trend: 'same' }
     ],
     '第二战区': [
-      { rank: 1, name: '广州三战队（大数据）', score: 0.0, trend: 'up' },
+      { rank: 1, name: '广州三战队（大数据）', score: 0.0, trend: 'same' },
       { rank: 2, name: '佛山战队', score: 0.0, trend: 'same' },
       { rank: 3, name: '湛江战队', score: 0.0, trend: 'same' }
     ],
     '第三战区': [
-      { rank: 1, name: '东莞战队', score: 7.98, trend: 'up' },
+      { rank: 1, name: '东莞战队', score: 0.0, trend: 'same' },
       { rank: 2, name: '云浮战队', score: 0.0, trend: 'same' },
       { rank: 3, name: '茂名战队', score: 0.0, trend: 'same' }
     ]

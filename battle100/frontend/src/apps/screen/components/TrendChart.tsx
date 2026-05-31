@@ -13,13 +13,13 @@ interface TrendChartProps {
 }
 
 const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', weeklyTrend }) => {
-  // 默认高保真周趋势数据，防止 API 加载慢时白屏
+  // 默认周趋势置空，防止显示虚假对比数据
   const defaultTrend = {
-    dates: ['第一周', '第二周', '第三周', '第四周', '第五周', '第六周', '第七周'],
-    newContracts: [120, 340, 560, 1100, 1950, 3100, 5578],
-    happinessActions: [35, 110, 240, 380, 510, 640, 764],
-    ironTriangle: [15, 60, 120, 190, 250, 310, 364],
-    validLeads: [20, 80, 150, 220, 290, 350, 412]
+    dates: [],
+    newContracts: [],
+    happinessActions: [],
+    ironTriangle: [],
+    validLeads: []
   }
 
   const trend = weeklyTrend || defaultTrend

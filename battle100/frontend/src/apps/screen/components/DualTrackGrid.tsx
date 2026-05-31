@@ -98,18 +98,18 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
             if (teamData) {
               matchedTeams.push(teamData)
             } else {
-              // 兜底 Mock，防止后端暂无该战队数据时界面崩塌
+              // 兜底重归零，防止后端暂无该战队数据时界面崩塌，保证数据完全真实
               const targets = defaultTargets[name] || { m: 1000, d: 800 }
               matchedTeams.push({
                 teamName: name,
                 leader: defaultLeaders[name] || '巴长',
-                marketingActual: name === '东莞战队' ? 21.55 : name === '清远战队' ? 5 : 0,
+                marketingActual: 0,
                 marketingTarget: targets.m,
-                marketingRate: name === '东莞战队' ? 7.98 : name === '清远战队' ? 0.36 : 0,
-                deliveryActual: name === '茂名战队' ? 1.94 : 0,
+                marketingRate: 0,
+                deliveryActual: 0,
                 deliveryTarget: targets.d,
-                deliveryRate: name === '茂名战队' ? 1.62 : 0,
-                statusLight: name === '茂名战队' ? 'green' : 'red'
+                deliveryRate: 0,
+                statusLight: 'red'
               })
             }
           })

@@ -18,57 +18,8 @@ interface FunnelItem {
 }
 
 const LeadFunnel: React.FC<LeadFunnelProps> = ({ theme = 'theme-light-red' }) => {
-  // 高保真特大攻坚商机项目流转数据
-  const funnelData: FunnelItem[] = [
-    {
-      stage: '营销开拓',
-      percent: 25,
-      projectName: '清城区2026年度国土空间规划实施评估与动态调整项目',
-      amount: 120,
-      teamName: '清远战队',
-      owner: '郑子鹏',
-      expert: '方案经理老张',
-      collabCount: 3,
-      tag: '🌟 幸福动作 x2',
-      tagColor: '#fa8c16'
-    },
-    {
-      stage: '方案介入',
-      percent: 55,
-      projectName: '大良街道村级工业园低效用地改造规划设计与空间策划',
-      amount: 110,
-      teamName: '佛山战队',
-      owner: '卢俊松',
-      expert: '方案经理小黄',
-      collabCount: 2,
-      tag: '👍 有卡点需支持',
-      tagColor: '#f5222d'
-    },
-    {
-      stage: '风控审查',
-      percent: 90,
-      projectName: '粤港澳大湾区（广州片区）存量土地盘活与低效再开发专项顾问',
-      amount: 220,
-      teamName: '广州二战队',
-      owner: '刘岁军',
-      expert: '方案经理老王',
-      collabCount: 5,
-      tag: '🌟 幸福动作 x4',
-      tagColor: '#fa8c16'
-    },
-    {
-      stage: '成功签约',
-      percent: 100,
-      projectName: '德庆县林地资源价值估算与绿美广东生态规划技术服务',
-      amount: 55,
-      teamName: '云浮战队',
-      owner: '肖晓明',
-      expert: '方案经理老李',
-      collabCount: 4,
-      tag: '🏆 成功签单',
-      tagColor: '#389e0d'
-    }
-  ]
+  // 默认商机漏斗列表置空，只使用真实数据
+  const funnelData: FunnelItem[] = []
 
   const isScrollTheme = theme === 'theme-light-red' || theme === 'theme-gold'
 
