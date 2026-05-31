@@ -17,12 +17,12 @@ interface KpiCardsProps {
 }
 
 const KpiCards: React.FC<KpiCardsProps> = ({ theme = 'theme-light-red', kpiSummary }) => {
-  // 高保真 Mock 兜底数据，绝对杜绝由于 API 加载慢或失败导致的界面崩塌
+  // 当后端接口不可用时，默认全部归零显示，杜绝假数据兜底
   const defaultSummary = {
-    newContracts: { value: 5578.0, target: 12400.0, percentage: 44.98 },
-    happinessActions: { value: 764, target: 3300, percentage: 23.15 },
-    ironTriangle: { value: 364, target: 500, percentage: 72.80 },
-    validLeads: { value: 412, target: 600, percentage: 68.67 }
+    newContracts: { value: 0, target: 0, percentage: 0 },
+    happinessActions: { value: 0, target: 0, percentage: 0 },
+    ironTriangle: { value: 0, target: 0, percentage: 0 },
+    validLeads: { value: 0, target: 0, percentage: 0 }
   }
 
   const summary = kpiSummary || defaultSummary

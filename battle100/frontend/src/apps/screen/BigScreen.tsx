@@ -121,9 +121,9 @@ const BigScreen: React.FC = () => {
     return () => clearInterval(timer)
   }, [autoRotate])
 
-  // 计算总签约保底额完成率
-  const newContractsValue = data?.kpiSummary?.newContracts?.value ?? 5578.0
-  const newContractsTarget = data?.kpiSummary?.newContracts?.target ?? 12400.0
+  // 计算总签约保底额完成率，若无接口数据则默认归零
+  const newContractsValue = data?.kpiSummary?.newContracts?.value ?? 0
+  const newContractsTarget = data?.kpiSummary?.newContracts?.target ?? 0
   const totalCompletionRate = newContractsTarget > 0 ? (newContractsValue / newContractsTarget) * 100 : 0.0
 
   return (
@@ -152,7 +152,7 @@ const BigScreen: React.FC = () => {
       {/* 1. 顶部 HeaderBanner */}
       <HeaderBanner
         theme={theme}
-        countdown={data?.countdown ?? 71}
+        countdown={data?.countdown ?? 0}
         slogan={data?.slogan ?? '新签破六万战役 · 数字化指挥舱'}
         campaignName={data?.campaignName ?? '中地顾问百日奋战'}
       />
