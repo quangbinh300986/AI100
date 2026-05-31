@@ -321,7 +321,7 @@ class DingTalkClient:
         if "【战报播报】" in cleaned_content:
             cleaned_content = cleaned_content.replace("【战报播报】", "")
             
-        markdown_text = f"### 📢 战报播报 | 冲刺 100 天\n\n"
+        markdown_text = f"### 🎉 战报播报 | 冲刺 100 天\n\n"
         markdown_text += f"**恭喜战友，再传捷报！**\n\n"
         markdown_text += f"---\n"
         markdown_text += f"* **战报类型**：{type_name}\n"
@@ -344,8 +344,13 @@ class DingTalkClient:
             markdown_text += f"* **业主单位**：{customer_match.group(1)}\n"
             
         markdown_text += f"---\n"
-        markdown_text += f"> {cleaned_content}\n\n"
-        markdown_text += f"> **赢战百日**，攻坚一百天，亮剑破六千！让我们共同期待下一个战报！💪"
+        
+        # 保证主正文段落以肌肉图标结尾，并去掉重复期待语
+        cleaned_content_stripped = cleaned_content.strip()
+        if not cleaned_content_stripped.endswith("💪"):
+            cleaned_content_stripped += " 💪"
+            
+        markdown_text += f"> {cleaned_content_stripped}\n"
         
         title = f"战报播报: {type_name}"
         msg_id = None

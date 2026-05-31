@@ -64,6 +64,23 @@ class DualTrackTeam(BaseModel):
     statusLight: str = Field(default="green", description="综合状态灯: red/yellow/green")
 
 
+class FunnelItem(BaseModel):
+    """商机漏斗阶段属性"""
+    stage: str = Field(..., description="推进阶段，例如 5%、10%等")
+    name: str = Field(..., description="阶段中文名称，例如 潜在需求信息")
+    count: int = Field(default=0, description="商机总个数")
+    rate: float = Field(default=0.0, description="转化率（%）")
+
+
+class ImportantProjectItem(BaseModel):
+    """50万以上重特大攻坚项目"""
+    id: str = Field(..., description="商机/项目ID")
+    name: str = Field(..., description="商机/项目名称")
+    customerName: Optional[str] = Field(default=None, description="客户名称")
+    amount: float = Field(default=0.0, description="预计金额（万元）")
+    progress: int = Field(default=0, description="当前进度百分比")
+
+
 class DashboardResponse(BaseModel):
     """大屏看板完整响应 (即对齐前端 DashboardData)"""
     kpiSummary: KpiSummary = Field(..., description="四大指标汇总")
@@ -76,6 +93,8 @@ class DashboardResponse(BaseModel):
     leadsBoard: list[RankingItem] = Field(default_factory=list, description="线索先锋榜TOP10")
     zoneTeamsPK: dict[str, list[RankingItem]] = Field(default_factory=dict, description="战区内部战队相互PK榜单")
     dualTrackTeams: list[DualTrackTeam] = Field(default_factory=list, description="九宫格双轨战队数据")
+    leadsFunnel: list[FunnelItem] = Field(default_factory=list, description="销售漏斗数据")
+    importantProjects: list[ImportantProjectItem] = Field(default_factory=list, description="50万以上重特大攻坚项目")
     countdown: int = Field(default=71, description="百日倒计时天数")
     campaignName: str = Field(default="中地顾问「百日奋战」经营冲刺大屏", description="战役名称")
     slogan: str = Field(default="攻坚一百天，亮剑破六千！", description="战役口号")

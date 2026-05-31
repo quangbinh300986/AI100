@@ -196,6 +196,35 @@ export interface DashboardData {
   campaignName: string
   /** 活动口号 */
   slogan: string
+  /** 销售漏斗数据 */
+  leadsFunnel?: FunnelItem[]
+  /** 50万以上重特大攻坚项目 */
+  importantProjects?: ImportantProjectItem[]
+}
+
+/** 销售漏斗明细 */
+export interface FunnelItem {
+  /** 推进阶段：5%、10%等 */
+  stage: string
+  /** 阶段名称：潜在需求信息等 */
+  name: string
+  /** 商机总个数 */
+  count: number
+  /** 本阶段到下一阶段转化率 */
+  rate: number
+}
+
+/** 50万以上重特大攻坚项目明细 */
+export interface ImportantProjectItem {
+  id: string
+  /** 项目名称 */
+  name: string
+  /** 客户名称 */
+  customerName?: string
+  /** 金额（万元） */
+  amount: number
+  /** 当前阶段进度百分比 */
+  progress: number
 }
 
 /** 实时播报条目 */

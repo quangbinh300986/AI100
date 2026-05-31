@@ -406,7 +406,7 @@ const BigScreen: React.FC = () => {
             </div>
             {/* 中间：铁三角线索漏斗与重特大项目攻坚墙 */}
             <div style={{ flex: 3, height: '100%' }}>
-              <LeadFunnel theme={theme} />
+              <LeadFunnel theme={theme} leadsFunnel={data?.leadsFunnel} importantProjects={data?.importantProjects} />
             </div>
             {/* 右侧：个人周排行榜榜单 */}
             <div style={{ flex: 3, height: '100%' }}>
