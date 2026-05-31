@@ -316,6 +316,16 @@ async def create_personal_goal_direct(
     )
     db.add(goal)
     await db.flush()
+    await db.refresh(goal)
+
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "CREATE", "personal_goal", str(goal.id),
+        f"创建了个人目标，用户ID: {goal.user_id}, 目标类型: {goal.goal_type}",
+        before_state=None,
+        after_state=to_dict(goal)
+    )
+
     return {"code": 200, "message": "创建个人目标成功", "id": goal.id}
 
 
@@ -331,6 +341,8 @@ async def update_personal_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="目标未找到")
         
+    before_state = to_dict(goal)
+        
     goal.goal_type = goal_in.goal_type
     goal.base_target = goal_in.base_target
     goal.challenge_target = goal_in.challenge_target
@@ -339,6 +351,16 @@ async def update_personal_goal(
     
     db.add(goal)
     await db.flush()
+    await db.refresh(goal)
+
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "UPDATE", "personal_goal", str(goal_id),
+        f"修改了个人目标，用户ID: {goal.user_id}, 目标类型: {goal.goal_type}",
+        before_state=before_state,
+        after_state=to_dict(goal)
+    )
+
     return {"code": 200, "message": "修改成功"}
 
 
@@ -814,9 +836,19 @@ async def create_weekly_target_direct(
     )
     db.add(target)
     await db.flush()
+    await db.refresh(target)
     
     # 重新聚合更新该战队总目标
     await sync_team_goals_from_weekly(db, target.team_id)
+
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "CREATE", "weekly_target", str(target.id),
+        f"新建了战队【ID:{target.team_id}】第 {target.week_number} 周分解目标",
+        before_state=None,
+        after_state=to_dict(target)
+    )
+
     return {"code": 200, "message": "新建周目标成功", "id": target.id}
 
 
@@ -832,6 +864,7 @@ async def update_weekly_target_detail(
     if not wt:
         raise HTTPException(status_code=404, detail="未找到周分解记录")
         
+    before_state = to_dict(wt)
     old_team_id = wt.team_id
     
     wt.team_id = target_in.team_id
@@ -847,12 +880,21 @@ async def update_weekly_target_detail(
     
     db.add(wt)
     await db.flush()
+    await db.refresh(wt)
     
     # 重新更新老战队与新战队的 TeamGoal
     await sync_team_goals_from_weekly(db, old_team_id)
     if old_team_id != wt.team_id:
         await sync_team_goals_from_weekly(db, wt.team_id)
         
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "UPDATE", "weekly_target", str(target_id),
+        f"修改了战队【ID:{wt.team_id}】第 {wt.week_number} 周分解目标",
+        before_state=before_state,
+        after_state=to_dict(wt)
+    )
+
     return {"code": 200, "message": "更新周目标成功"}
 
 
@@ -867,12 +909,21 @@ async def delete_weekly_target_detail(
     if not wt:
         raise HTTPException(status_code=404, detail="未找到周分解记录")
         
+    before_state = to_dict(wt)
     team_id = wt.team_id
     await db.delete(wt)
     await db.flush()
     
     # 重新聚合 TeamGoal
     await sync_team_goals_from_weekly(db, team_id)
+
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "DELETE", "weekly_target", str(target_id),
+        f"删除了战队【ID:{wt.team_id}】第 {wt.week_number} 周分解目标",
+        before_state=before_state,
+        after_state=None
+    )
     return {"code": 200, "message": "删除周目标成功"}
 
 

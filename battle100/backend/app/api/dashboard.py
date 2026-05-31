@@ -779,12 +779,23 @@ async def get_my_cascade_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    try:
+        return await _get_my_cascade_stats_impl(db, current_user)
+    except Exception as err:
+        import traceback
+        exc_info = traceback.format_exc()
+        logger.error(f"my-stats 接口报错: {exc_info}")
+        raise HTTPException(status_code=500, detail=f"my-stats error: {str(err)}\n{exc_info}")
+
+async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     """
     自上而下获取：
     1. 全公司四大KPI累计进度
     2. 所属战队营销/交付双轨及过程指标进度
     3. 个人核心KPI目标达成进度（根据岗位动态呈现）
     """
+    from app.models.report import ReportDetail, DetailType, ReportStatus
+
     # ====== 1. 公司盘数据 ======
     # 统计去重后全公司累计合同额（只统计交付维度，过滤掉营销维度以防重复计算）
     total_amount_stmt = select(

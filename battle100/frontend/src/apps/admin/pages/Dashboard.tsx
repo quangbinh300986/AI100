@@ -326,9 +326,10 @@ const Dashboard: React.FC = () => {
       if (statsRes) {
         setPersonalStats((statsRes as any).personal_stats)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      message.error('加载系统作战看板数据失败')
+      const detailError = err?.response?.data?.detail || err?.message || '加载系统作战看板数据失败'
+      message.error(`诊断错误: ${detailError}`, 10)
     } finally {
       setLoading(false)
     }
