@@ -8,29 +8,40 @@ interface HonorHallProps {
 
 const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams = [] }) => {
   // 筛选出红灯或黄灯的队伍进行预警
+  // 筛选出红灯或黄灯的队伍进行预警
   const warningTeams = teams.filter(t => t.statusLight === 'red' || t.statusLight === 'yellow')
-  const warningText = warningTeams.length > 0 
-    ? `战队 [${warningTeams.map(t => `${t.teamName}(${t.leader})`).join(', ')}] 进度面临卡点。已指派技术专家、风控委介入方案诊断，开展陪访以破除僵局。`
-    : `所有战队进度良好，绿灯放行中。继续保持高昂斗志，冲刺百日奋战目标！`
+  
+  // 真实业务中，政委协调介入为针对极个别落后战队的精准帮扶。
+  // 若大部分战队（如超过3个）均处于未达标状态，说明是战役起步初期的正常现象，不应点名报错，应自动转换为绿色的全盘冲刺状态条。
+  const isNormalOrEarlyStage = warningTeams.length === 0 || warningTeams.length > 3
+  
+  const alertBg = isNormalOrEarlyStage ? 'rgba(82, 196, 26, 0.08)' : 'rgba(250, 173, 20, 0.1)'
+  const alertBorder = isNormalOrEarlyStage ? '1px solid #52c41a' : '1px solid #faad14'
+  const alertColor = isNormalOrEarlyStage ? '#52c41a' : '#faad14'
+  const alertIcon = isNormalOrEarlyStage ? '✅' : '⚠️'
+  const alertTitle = isNormalOrEarlyStage ? '全盘冲刺动态' : '政委协同介入中'
+  const alertContent = isNormalOrEarlyStage
+    ? '所有战队正火热攻坚中，整体进度受控。坚定必胜信念，继续全力冲刺百日奋战目标！'
+    : `战队 [${warningTeams.map(t => `${t.teamName}(${t.leader})`).join(', ')}] 进度面临卡点。已指派技术专家、风控委介入方案诊断，开展陪访以破除僵局。`
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* 政委协同介入预警条 */}
+      {/* 战区/政委协同状态通知条 */}
       <div style={{
-        background: 'rgba(250, 173, 20, 0.1)',
-        border: '1px solid #faad14',
+        background: alertBg,
+        border: alertBorder,
         borderRadius: '6px',
         padding: '0.8rem 1.2rem',
-        color: '#faad14',
+        color: alertColor,
         fontSize: '0.95rem',
         display: 'flex',
         alignItems: 'center',
         gap: '0.8rem',
         fontWeight: 'bold',
-        boxShadow: '0 2px 8px rgba(250, 173, 20, 0.15)'
+        boxShadow: isNormalOrEarlyStage ? '0 2px 8px rgba(82, 196, 26, 0.12)' : '0 2px 8px rgba(250, 173, 20, 0.15)'
       }}>
-        <span style={{ fontSize: '1.2rem' }}>⚠️</span>
-        <span>政委协同介入中：{warningText}</span>
+        <span style={{ fontSize: '1.2rem' }}>{alertIcon}</span>
+        <span>{alertTitle}：{alertContent}</span>
       </div>
 
       <div style={{
@@ -84,8 +95,8 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
           <div style={{ fontSize: '2.5rem' }}>🎯</div>
           <div>
             <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>百万订单“猎头”大奖 (累计)</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0' }}>已斩获百万/五十万级攻坚项目 3 个，每个即时奖励 1888 元</div>
-            <div style={{ color: '#f5222d', fontWeight: 'bold', fontSize: '1.2rem' }}>+ ¥5664</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0' }}>已斩获百万/五十万级攻坚项目 0 个，每个即时奖励 1888 元</div>
+            <div style={{ color: '#f5222d', fontWeight: 'bold', fontSize: '1.2rem' }}>+ ¥0</div>
           </div>
         </div>
       </div>
