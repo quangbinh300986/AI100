@@ -306,19 +306,20 @@ const Reports: React.FC = () => {
   }
 
   // 触发获取特定拓展进度的 CRM 项目
-  const fetchCRMProjects = async (progress: number) => {
+  const fetchCRMProjects = async (progress: number, initialProject?: any) => {
     setCrmLoading(true)
     try {
       const res = await get<any>(`/broadcast/crm-projects?progress=${progress}`)
       const data = res?.data ? res.data : res
-      if (data && Array.isArray(data)) {
-        setCrmProjects(data)
-      } else {
-        setCrmProjects([])
+      let list = (data && Array.isArray(data)) ? data : []
+      if (initialProject) {
+        list = list.filter((p: any) => p.id !== initialProject.id)
+        list = [initialProject, ...list]
       }
+      setCrmProjects(list)
     } catch (err) {
       message.error('无法直连获取 CRM 对应进度的项目数据')
-      setCrmProjects([])
+      setCrmProjects(initialProject ? [initialProject] : [])
     } finally {
       setCrmLoading(false)
     }
@@ -394,6 +395,56 @@ const Reports: React.FC = () => {
 
     const generatedContent = `【战报播报】恭喜【${user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
     createForm.setFieldsValue({ content: generatedContent })
+  }
+
+  // 选中某条编辑 CRM 商机后的数据带入逻辑
+  const handleEditCRMProjectSelect = (oppId: string) => {
+    const proj = crmProjects.find(p => p.id === oppId)
+    if (!proj) return
+
+    const defaultAmount = proj.expect_money > 0 ? proj.expect_money : proj.budget_money
+
+    editForm.setFieldsValue({
+      customer_name: proj.customer_name,
+      amount: defaultAmount,
+      expect_money: proj.expect_money,
+      budget_money: proj.budget_money
+    })
+
+    const currentDelivery = [{
+      user_id: selectedBroadcast?.user_id || user?.id || 0,
+      ratio: 100,
+      amount: defaultAmount
+    }]
+    editForm.setFieldsValue({ delivery_allocations: currentDelivery })
+
+    if (proj.marketing_users && proj.marketing_users.length > 0) {
+      const marketingUsersCount = proj.marketing_users.length
+      const avgRatio = Math.round((100 / marketingUsersCount) * 100) / 100
+      
+      const initMarketingAlloc = proj.marketing_users.map((mu, index) => {
+        const matchedLocalId = mu.local_user_id || 0
+        const allocRatio = index === marketingUsersCount - 1 
+          ? Math.round((100 - avgRatio * (marketingUsersCount - 1)) * 100) / 100 
+          : avgRatio
+
+        return {
+          user_id: matchedLocalId,
+          ratio: allocRatio,
+          amount: Math.round((defaultAmount * (allocRatio / 100)) * 100) / 100
+        }
+      })
+      editForm.setFieldsValue({ marketing_allocations: initMarketingAlloc })
+    } else {
+      editForm.setFieldsValue({ marketing_allocations: [] })
+    }
+
+    let progressText = '90%'
+    if (editEventType === 'lead_75') progressText = '75%'
+    if (editEventType === 'lead_25') progressText = '25%'
+
+    const generatedContent = `【战报播报】恭喜【${selectedBroadcast?.user_name || user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
+    editForm.setFieldsValue({ content: generatedContent })
   }
 
   // 重新根据输入框的总金额与分摊比例计算每个员工的分摊具体金额 (新建表单)
@@ -539,9 +590,9 @@ const Reports: React.FC = () => {
       // 如果是前三种(关联 CRM) 或 铁三角/幸福动作，将对应的客户名称、金额及分摊发送回写
       if (editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25') {
         payload.customer_name = values.customer_name
+        payload.amount = Number(values.amount || 0)
       }
       if (editEventType === 'contract_signed') {
-        payload.amount = Number(values.amount)
         payload.delivery_allocations = values.delivery_allocations
         payload.marketing_allocations = values.marketing_allocations
       }
@@ -698,10 +749,28 @@ const Reports: React.FC = () => {
                 : 0;
 
               // 从 content 中提取客户单位名称以兜底
-              const matchCustomer = record.content.match(/业主单位：([^，!；]+)/)?.[1] || 
-                                    record.content.match(/客户分别为([^，!；]+)/)?.[1] || 
-                                    record.content.match(/客户为([^，!；]+)/)?.[1] || 
+              const matchCustomer = record.content.match(/业主单位：\s*([^，!。；]+)/)?.[1] || 
+                                    record.content.match(/客户为\s*([^，!。；]+)/)?.[1] || 
+                                    record.content.match(/客户分别为\s*([^，!。；]+)/)?.[1] || 
                                     '';
+              const matchProjectName = record.content.match(/《([^》]+)》/)?.[1] || '已关联项目';
+
+              const initialProj = record.crm_opportunity_id ? {
+                id: record.crm_opportunity_id,
+                name: matchProjectName,
+                customer_name: matchCustomer,
+                expect_money: record.amount || totalAllocAmount || 0,
+                budget_money: record.amount || totalAllocAmount || 0,
+                marketing_users: []
+              } : undefined;
+
+              let progress = 90
+              if (record.event_type === 'lead_75') progress = 75
+              if (record.event_type === 'lead_25') progress = 25
+
+              if (['contract_signed', 'lead_75', 'lead_25'].includes(record.event_type)) {
+                fetchCRMProjects(progress, initialProj)
+              }
 
               editForm.setFieldsValue({
                 content: record.content,
@@ -709,7 +778,9 @@ const Reports: React.FC = () => {
                 push_channel: record.push_channel,
                 crm_opportunity_id: record.crm_opportunity_id,
                 customer_name: matchCustomer,
-                amount: totalAllocAmount,
+                amount: record.amount || totalAllocAmount || 0,
+                expect_money: record.amount || totalAllocAmount || 0,
+                budget_money: record.amount || totalAllocAmount || 0,
                 delivery_allocations: record.delivery_allocations || [],
                 marketing_allocations: record.marketing_allocations || []
               })
@@ -1302,35 +1373,58 @@ const Reports: React.FC = () => {
             <Input.TextArea rows={4} />
           </Form.Item>
 
-          {/* 前三种 (lead_25, lead_75, contract_signed) 显示和 CRM 潜力库相关属性 */}
-          {(editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25') && (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="crm_opportunity_id"
-                  label="关联 CRM 商机 ID"
-                  rules={[{ required: true, message: '请输入 CRM 关联商机 ID' }]}
-                >
-                  <Input placeholder="输入商机 ID..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="customer_name"
-                  label="业主 / 客户单位"
-                  rules={[{ required: true, message: '请选择业主/客户单位' }]}
-                >
-                  <Select
-                    showSearch
-                    placeholder="搜索选择 CRM 客户名称"
-                    filterOption={(input, option) =>
-                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={crmCustomers.map(c => ({ label: c, value: c }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
+          {/* 前三种 (lead_25, lead_75, contract_signed) 显示和 CRM 潜力库选择下拉框 */}
+          {['lead_25', 'lead_75', 'contract_signed'].includes(editEventType) && (
+            <Form.Item
+              name="crm_opportunity_id"
+              label={`选择对应 CRM 中进展阶段为 ${
+                editEventType === 'lead_25' ? '25%' : editEventType === 'lead_75' ? '75%' : '90%'
+              } 的项目`}
+              rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
+            >
+              <Select
+                showSearch
+                loading={crmLoading}
+                placeholder="键入检索 CRM 项目名称..."
+                optionFilterProp="label"
+                filterOption={(input, option) =>
+                  ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={crmProjects.map(p => ({
+                  value: p.id,
+                  label: `${p.name} | 业主：${p.customer_name}`
+                }))}
+                onSelect={handleEditCRMProjectSelect}
+              />
+            </Form.Item>
+          )}
+
+          {/* 有效线索确定 (25%) / 中标确定 (75%) 的回填只读界面 */}
+          {(editEventType === 'lead_25' || editEventType === 'lead_75') && (
+            <>
+              <Form.Item name="customer_name" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+                <Input disabled placeholder="选择项目后自动回填业主单位" />
+              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="budget_money" label="项目预算金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="expect_money" label="预计金额 (万元)">
+                    <Input disabled placeholder="自动回填" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          )}
+
+          {/* 合同签订 (90%) 类型的客户名称回填 */}
+          {editEventType === 'contract_signed' && (
+            <Form.Item name="customer_name" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
+              <Input disabled placeholder="选择项目后自动回填业主单位" />
+            </Form.Item>
           )}
 
           {/* 后两种 (triangle, happiness) 显示和客户相关属性 */}
