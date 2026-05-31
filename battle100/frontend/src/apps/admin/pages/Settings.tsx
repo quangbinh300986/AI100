@@ -43,9 +43,9 @@ const PERMISSIONS = [
   { key: 'drilldown_leads', group: '📊 作战仪表盘', label: '下钻查看 CRM 线索明细', desc: '允许在指标详情弹窗中，点击有效/潜力线索数值以下钻查看具体的 CRM 线索明细列表' },
   
   // 播报管理
-  { key: 'view_reports', group: '📢 播报管理', label: '访问播报管理页面', desc: '允许进入播报管理页面，查看公司与战队成员提交的历史申报日报列表' },
-  { key: 'approve_report', group: '📢 播报管理', label: '日报审核通过操作', desc: '允许执行“一键通过”或者“审核通过”动作，对数据予以确认归档' },
-  { key: 'reject_report', group: '📢 播报管理', label: '日报审核退回操作', desc: '允许执行“退回修改”动作，将日报打回给申报人重新填写' },
+  { key: 'view_reports', group: '📢 播报管理', label: '访问实时战报管理页面', desc: '允许进入实时战报管理页面，查看全公司与各战队的战报广播记录' },
+  { key: 'approve_report', group: '📢 播报管理', label: '手动创建与编辑战报', desc: '允许手动新建战报（并伴随录入业绩指标）或编辑修改已有战报项目关联' },
+  { key: 'reject_report', group: '📢 播报管理', label: '删除与级联清退战报', desc: '允许删除或批量删除战报，此操作将级联清退回滚相关业绩与日报完成额' },
 
   // 目标管理
   { key: 'view_goals', group: '🎯 目标导入与管理', label: '访问目标管理页面', desc: '允许进入目标管理模块，查看四大指标的设定和周目标分解列表' },

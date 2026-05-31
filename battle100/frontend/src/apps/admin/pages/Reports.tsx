@@ -123,6 +123,22 @@ const Reports: React.FC = () => {
   const { user } = useAuthStore()
   const isTeamLeader = user?.role === 'team_leader'
 
+  // 动态权限校验函数 (支持系统管理员 admin 与默认配置兜底)
+  const hasPermission = (perm: string) => {
+    if (user?.role === 'admin') return true
+    const userPerms = (user as any)?.permissions
+    if (!userPerms || userPerms.length === 0) {
+      if (perm === 'approve_report') {
+        return user?.role === 'admin' || user?.role === 'team_leader'
+      }
+      if (perm === 'reject_report') {
+        return user?.role === 'admin'
+      }
+      return true
+    }
+    return userPerms.includes(perm)
+  }
+
   const [broadcasts, setBroadcasts] = useState<BroadcastItem[]>([])
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
@@ -775,6 +791,7 @@ const Reports: React.FC = () => {
           <Button
             type="text"
             icon={<EditOutlined style={{ color: '#1890ff' }} />}
+            disabled={!hasPermission('approve_report')}
             onClick={() => {
               setSelectedBroadcast(record)
               setEditEventType(record.event_type)
@@ -836,8 +853,9 @@ const Reports: React.FC = () => {
             okText="狠心删除"
             cancelText="保留"
             okButtonProps={{ danger: true }}
+            disabled={!hasPermission('reject_report')}
           >
-            <Button type="text" danger icon={<DeleteOutlined />}>
+            <Button type="text" danger icon={<DeleteOutlined />} disabled={!hasPermission('reject_report')}>
               删除
             </Button>
           </Popconfirm>
@@ -890,6 +908,7 @@ const Reports: React.FC = () => {
             <Button
               type="primary"
               icon={<PlusOutlined />}
+              disabled={!hasPermission('approve_report')}
               onClick={() => {
                 createForm.resetFields()
                 setWithIndicator(false)
@@ -1000,8 +1019,9 @@ const Reports: React.FC = () => {
                   okText="确定批量删除"
                   cancelText="取消"
                   okButtonProps={{ danger: true }}
+                  disabled={!hasPermission('reject_report')}
                 >
-                  <Button type="primary" danger size="small" icon={<DeleteOutlined />}>
+                  <Button type="primary" danger size="small" icon={<DeleteOutlined />} disabled={!hasPermission('reject_report')}>
                     批量删除所选
                   </Button>
                 </Popconfirm>

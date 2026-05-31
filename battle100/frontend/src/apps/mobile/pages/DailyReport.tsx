@@ -143,11 +143,14 @@ export default function DailyReport() {
     if (actionType === 'lead_75') progressText = '75%'
     if (actionType === 'lead_25') progressText = '25%'
 
+    const prefix = '攻坚一百天，亮剑破六千！今日确定'
     let generatedContent = ''
     if (actionType === 'contract') {
-      generatedContent = `【战报播报】恭喜【${user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
+      generatedContent = `${prefix}${proj.name}项目走完合同流程，客户为${proj.customer_name}，项目金额${defaultAmount}万，赢战百日！`
+    } else if (actionType === 'lead_75') {
+      generatedContent = `${prefix}${proj.name}项目中地承接，客户为${proj.customer_name}，项目金额${defaultAmount}万，赢战百日！`
     } else {
-      generatedContent = `攻坚一百天，亮剑破六千！今日确定${actionType === 'lead_75' ? '【' + proj.name + '】中地承接，' : '有效线索：'}客户为${proj.customer_name}，预算金额${proj.budget_money || 0}万，预计${defaultAmount || 0}万，赢战百日！`
+      generatedContent = `${prefix}有效线索：客户为${proj.customer_name}，项目金额${defaultAmount}万，赢战百日！`
     }
 
     setFormData(prev => ({
@@ -230,7 +233,7 @@ export default function DailyReport() {
   // 幸福动作文本生成
   const updateHappinessContent = (score: number, desc: string, customer: string) => {
     const prefix = '攻坚一百天，亮剑破六千！今日'
-    const generated = `${prefix}${user?.name || 'XX'}做到客户幸福标准${score}分${desc || 'XX'}动作，业主单位：${customer || 'XX'}，收到客户正反馈，为客户幸福而奋斗，赢战百日！`
+    const generated = `${prefix}${user?.name || 'XX'}做到客户幸福标准${score}分${desc || 'XX'}动作，收到客户${customer || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }
 

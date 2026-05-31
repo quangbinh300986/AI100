@@ -240,6 +240,9 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                 deliveryActual: 0,
                 deliveryTarget: targets.d,
                 deliveryRate: 0,
+                validLeadsActual: 0,
+                validLeadsTarget: 0,
+                validLeadsRate: 0,
                 statusLight: 'red'
               })
             }
@@ -398,6 +401,29 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                               style={{
                                 width: `${Math.min(team.deliveryRate, 100)}%`,
                                 background: 'linear-gradient(90deg, #52c41a 0%, #95de64 100%)',
+                                height: '100%',
+                                borderRadius: '3px'
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 有效线索指标 */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.1rem' }}>
+                            <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>有效线索实际/目标</span>
+                            <span style={{ color: '#333333', fontWeight: 'bold' }}>
+                              {team.validLeadsActual ?? 0}/{team.validLeadsTarget ?? 0}条
+                              <span style={{ color: (team.validLeadsRate ?? 0) > 0 ? '#faad14' : '#8c8c8c', marginLeft: '0.15rem' }}>
+                                ({(team.validLeadsRate ?? 0).toFixed(1).replace('.0', '')}%)
+                              </span>
+                            </span>
+                          </div>
+                          <div className="progress-track" style={{ height: '6px', borderRadius: '3px', backgroundColor: '#f5f5f5' }}>
+                            <div
+                              style={{
+                                width: `${Math.min(team.validLeadsRate ?? 0, 100)}%`,
+                                background: 'linear-gradient(90deg, #faad14 0%, #ffe58f 100%)',
                                 height: '100%',
                                 borderRadius: '3px'
                               }}

@@ -151,6 +151,9 @@ export interface DualTrackTeam {
   deliveryActual: number
   deliveryTarget: number
   deliveryRate: number
+  validLeadsActual?: number
+  validLeadsTarget?: number
+  validLeadsRate?: number
   statusLight: 'red' | 'yellow' | 'green'
 }
 

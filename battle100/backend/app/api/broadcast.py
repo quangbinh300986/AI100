@@ -179,7 +179,12 @@ async def get_crm_projects(
     - 90：拓展进度 90% 的已签订合同项目
     """
     import pymysql
+    from datetime import datetime
     from app.config import settings
+
+    # 计算当前月份首天零点，仅过滤当月更新过的活跃项目
+    now = datetime.now()
+    start_of_month = datetime(now.year, now.month, 1, 0, 0, 0)
 
     try:
         conn = pymysql.connect(
@@ -193,18 +198,18 @@ async def get_crm_projects(
         )
         cur = conn.cursor(pymysql.cursors.DictCursor)
         
-        # 只查询未删除、非暂停状态的项目，同时拉取营销人员列 market_user_id
-        # 若指定了 include_opp_id，也会一同查出
+        # 只查询未删除、非暂停状态，且最后更新时间在当月（含）以后的项目，同时拉取营销人员列 market_user_id
         query = """
             SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
             FROM zdcrm_business_opportunity
-            WHERE (progress = %s OR id = %s)
+            WHERE progress = %s
+              AND update_time >= %s
               AND is_del = '0'
               AND (is_suspension = '0' OR is_suspension IS NULL)
             ORDER BY create_time DESC
             LIMIT 500
         """
-        cur.execute(query, (progress, include_opp_id))
+        cur.execute(query, (progress, start_of_month))
         projects = cur.fetchall()
         
         # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID

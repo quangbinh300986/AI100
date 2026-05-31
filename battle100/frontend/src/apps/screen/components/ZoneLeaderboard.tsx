@@ -203,6 +203,17 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
           </tbody>
         </table>
       </div>
+      {/* 底部计算公式公布说明 */}
+      <div style={{
+        marginTop: '0.4rem',
+        fontSize: '0.85rem',
+        color: '#8c8c8c',
+        textAlign: 'left',
+        paddingLeft: '0.4rem',
+        lineHeight: '1.3'
+      }}>
+        * 注：<strong>完成百分比 (%)</strong> = (营销新签实际/基础目标 × 50%) + (交付新签实际/基础目标 × 50%)。无营销目标的战队(如广州三战队)完成百分比 = 交付实际/基础目标 × 100%。
+      </div>
     </div>
   )
 }

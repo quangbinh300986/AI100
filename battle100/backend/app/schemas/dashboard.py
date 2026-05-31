@@ -63,6 +63,9 @@ class DualTrackTeam(BaseModel):
     deliveryActual: float = Field(default=0.0, description="交付新签实际")
     deliveryTarget: float = Field(default=0.0, description="交付新签目标")
     deliveryRate: float = Field(default=0.0, description="交付达成率")
+    validLeadsActual: int = Field(default=0, description="有效需求线索实际")
+    validLeadsTarget: float = Field(default=0.0, description="有效需求线索目标")
+    validLeadsRate: float = Field(default=0.0, description="有效需求线索达成率")
     statusLight: str = Field(default="green", description="综合状态灯: red/yellow/green")
 
 

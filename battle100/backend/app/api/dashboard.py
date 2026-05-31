@@ -390,14 +390,18 @@ async def get_dashboard_overview(
         t_res = await db.execute(select(Team).where(Team.zone_id == z.id))
         zone_teams = t_res.scalars().all()
         
-        # 统计该战区下所有战队的已审核营销新签当周实际值与当周目标值之和
-        z_actual = 0.0
-        z_target = 0.0
+        # 统计该战区下所有战队的已审核营销与交付新签实际值与目标之和
+        z_m_actual = 0.0
+        z_m_target = 0.0
+        z_d_actual = 0.0
+        z_d_target = 0.0
         for t in zone_teams:
-            t_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
-            z_actual += t_act
+            t_m_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
+            t_d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, t.id)
+            z_m_actual += t_m_act
+            z_d_actual += t_d_act
 
-            # 查询该战队当周的目标
+            # 查询目标
             wt_stmt = select(WeeklyTarget).where(
                 WeeklyTarget.team_id == t.id,
                 WeeklyTarget.week_start <= target_date,
@@ -405,18 +409,43 @@ async def get_dashboard_overview(
             )
             wt_res = await db.execute(wt_stmt)
             wt_obj = wt_res.scalar_one_or_none()
-            t_tgt = wt_obj.marketing_base_target if wt_obj else 0.0
-            if t_tgt == 0:
-                # 兜底：均摊周度营销目标
+            
+            t_m_tgt = wt_obj.marketing_base_target if wt_obj else 0.0
+            t_d_tgt = wt_obj.delivery_base_target if wt_obj else 0.0
+            
+            # 营销目标兜底
+            if t_m_tgt == 0:
                 g_res = await db.execute(
                     select(TeamGoal.base_target)
                     .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.MARKETING)
                 )
                 m_target_total = float(g_res.scalar() or 0.0)
-                t_tgt = round(m_target_total / 12, 2) if m_target_total > 0 else 50.0
-            z_target += t_tgt
+                if m_target_total > 0:
+                    t_m_tgt = round(m_target_total / 12, 2)
+            
+            # 交付目标兜底
+            if t_d_tgt == 0:
+                g_res = await db.execute(
+                    select(TeamGoal.base_target)
+                    .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.DELIVERY)
+                )
+                d_target_total = float(g_res.scalar() or 0.0)
+                if d_target_total > 0:
+                    t_d_tgt = round(d_target_total / 12, 2)
+                    
+            z_m_target += t_m_tgt
+            z_d_target += t_d_tgt
 
-        z_pct = round((z_actual / z_target) * 100, 2) if z_target > 0 else 0.0
+        # 加权计算战区百分比
+        if z_m_target > 0 and z_d_target > 0:
+            z_pct = round((z_m_actual / z_m_target * 50) + (z_d_actual / z_d_target * 50), 2)
+        elif z_m_target <= 0 and z_d_target > 0:
+            z_pct = round((z_d_actual / z_d_target * 100), 2)
+        elif z_m_target > 0 and z_d_target <= 0:
+            z_pct = round((z_m_actual / z_m_target * 100), 2)
+        else:
+            z_pct = 0.0
+            
         zone_ranking_list.append({
             "name": z.name,
             "score": z_pct
@@ -424,10 +453,11 @@ async def get_dashboard_overview(
         
         team_pk_items = []
         for t in zone_teams:
-            # 统计该战队已审核真实营销签约额 (周度)
-            t_actual = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
+            # 1. 营销实际和交付实际 (周度)
+            t_m_actual = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
+            t_d_actual = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, t.id)
 
-            # 获取该战队当周新签目标 (周度)
+            # 2. 获取当周目标分解对象
             wt_stmt = select(WeeklyTarget).where(
                 WeeklyTarget.team_id == t.id,
                 WeeklyTarget.week_start <= target_date,
@@ -435,17 +465,42 @@ async def get_dashboard_overview(
             )
             wt_res = await db.execute(wt_stmt)
             wt_obj = wt_res.scalar_one_or_none()
-            t_target = wt_obj.marketing_base_target if wt_obj else 0.0
-            if t_target == 0:
-                # 兜底：均摊周度营销目标
+            
+            t_m_target = wt_obj.marketing_base_target if wt_obj else 0.0
+            t_d_target = wt_obj.delivery_base_target if wt_obj else 0.0
+            
+            # 营销目标兜底
+            if t_m_target == 0:
                 g_res = await db.execute(
                     select(TeamGoal.base_target)
                     .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.MARKETING)
                 )
                 m_target_total = float(g_res.scalar() or 0.0)
-                t_target = round(m_target_total / 12, 2) if m_target_total > 0 else 50.0
+                if m_target_total > 0:
+                    t_m_target = round(m_target_total / 12, 2)
+            
+            # 交付目标兜底
+            if t_d_target == 0:
+                g_res = await db.execute(
+                    select(TeamGoal.base_target)
+                    .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.DELIVERY)
+                )
+                d_target_total = float(g_res.scalar() or 0.0)
+                if d_target_total > 0:
+                    t_d_target = round(d_target_total / 12, 2)
 
-            t_pct = round((t_actual / t_target) * 100, 2) if t_target > 0 else 0.0
+            # 3. 加权计算综合完成百分比
+            if t_m_target > 0 and t_d_target > 0:
+                t_m_pct = (t_m_actual / t_m_target) * 50
+                t_d_pct = (t_d_actual / t_d_target) * 50
+                t_pct = round(t_m_pct + t_d_pct, 2)
+            elif t_m_target <= 0 and t_d_target > 0:
+                t_pct = round((t_d_actual / t_d_target) * 100, 2)
+            elif t_m_target > 0 and t_d_target <= 0:
+                t_pct = round((t_m_actual / t_m_target) * 100, 2)
+            else:
+                t_pct = 0.0
+
             team_pk_items.append({
                 "name": t.name,
                 "score": t_pct
@@ -796,6 +851,66 @@ async def get_dashboard_overview(
         "茂名战队": "陈鸿源"
     }
 
+    # 7.8 批量汇聚所有战队有效需求线索目标及 CRM 实际数
+    from app.models.goal import PersonalGoal, GoalType
+    user_goals_query = await db.execute(
+        select(
+            User.id,
+            User.team_id,
+            User.crm_user_id,
+            func.coalesce(PersonalGoal.base_target, 0)
+        ).select_from(User)
+        .outerjoin(PersonalGoal, (User.id == PersonalGoal.user_id) & (PersonalGoal.goal_type == GoalType.LEADS_COUNT))
+        .where(User.is_active == True)
+    )
+    user_goals_rows = user_goals_query.all()
+    
+    team_leads_target_map = {}
+    crm_user_to_team_map = {}
+    for uid, team_id, crm_uid, target in user_goals_rows:
+        if not team_id:
+            continue
+        team_leads_target_map[team_id] = team_leads_target_map.get(team_id, 0.0) + float(target)
+        if crm_uid:
+            crm_user_to_team_map[crm_uid] = team_id
+
+    team_leads_actual_map = {}
+    if crm_user_to_team_map:
+        import pymysql
+        try:
+            crm_conn = pymysql.connect(
+                host=settings.CRM_DB_HOST,
+                port=settings.CRM_DB_PORT,
+                user=settings.CRM_DB_USER,
+                password=settings.CRM_DB_PASSWORD,
+                database=settings.CRM_DB_NAME,
+                charset='utf8mb4',
+                connect_timeout=3
+            )
+            crm_cur = crm_conn.cursor(pymysql.cursors.DictCursor)
+            # 仅统计更新时间在6月1日后且进度等于25%的线索
+            crm_cur.execute("""
+                SELECT market_user_id
+                FROM zdcrm_business_opportunity
+                WHERE progress = 25
+                  AND is_del = '0'
+                  AND (is_suspension = '0' OR is_suspension IS NULL)
+                  AND update_time >= '2026-06-01 00:00:00'
+            """)
+            crm_rows = crm_cur.fetchall()
+            for row in crm_rows:
+                m_uid = row["market_user_id"]
+                if m_uid:
+                    for part in m_uid.split(","):
+                        part = part.strip()
+                        if part in crm_user_to_team_map:
+                            tid = crm_user_to_team_map[part]
+                            team_leads_actual_map[tid] = team_leads_actual_map.get(tid, 0) + 1
+            crm_cur.close()
+            crm_conn.close()
+        except Exception as crm_err:
+            logger.warning(f"双轨动力卡片直连 CRM 获取有效线索失败: {crm_err}")
+
     t_res = await db.execute(select(Team).order_by(Team.zone_id, Team.id))
     all_teams = t_res.scalars().all()
     
@@ -822,6 +937,11 @@ async def get_dashboard_overview(
         m_rate = (m_actual / m_target * 100) if m_target > 0 else 0.0
         d_rate = (d_actual / d_target * 100) if d_target > 0 else 0.0
         
+        # 有效线索目标和实际
+        leads_target = team_leads_target_map.get(t.id, 0.0)
+        leads_actual = team_leads_actual_map.get(t.id, 0)
+        leads_rate = (leads_actual / leads_target * 100) if leads_target > 0 else 0.0
+        
         # 综合状态灯
         avg_rate = (m_rate + d_rate) / 2
         if m_target == 0 and d_target == 0:
@@ -843,6 +963,9 @@ async def get_dashboard_overview(
             "deliveryActual": round(d_actual, 2),
             "deliveryTarget": round(d_target, 2),
             "deliveryRate": round(d_rate, 2),
+            "validLeadsActual": leads_actual,
+            "validLeadsTarget": round(leads_target, 2),
+            "validLeadsRate": round(leads_rate, 2),
             "statusLight": light
         })
     
@@ -1345,15 +1468,16 @@ async def get_team_detailed_metrics(
             )
             cur = conn.cursor(pymysql.cursors.DictCursor)
             
-            # 有效需求线索量 (25%-75%阶段)
+            # 有效需求线索量 (仅25%阶段，且更新时间在6月1日后才算)
             user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
             
             cur.execute(f"""
                 SELECT COUNT(*) as count 
                 FROM zdcrm_business_opportunity 
-                WHERE progress BETWEEN 25 AND 75 
+                WHERE progress = 25 
                   AND (is_suspension = '0' OR is_suspension IS NULL)
                   AND market_user_id IN ({user_ids_str})
+                  AND update_time >= '2026-06-01 00:00:00'
             """)
             valid_leads_actual = cur.fetchone()["count"]
 
@@ -1572,11 +1696,11 @@ async def get_team_leads(
         
         user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
         
-        # 进度区间判断
+        # 进度与时间过滤条件拼接
         if lead_type == "valid":
-            progress_cond = "progress BETWEEN 25 AND 75"
+            filter_cond = "progress = 25 AND update_time >= '2026-06-01 00:00:00'"
         elif lead_type == "potential":
-            progress_cond = "progress BETWEEN 5 AND 10"
+            filter_cond = "progress BETWEEN 5 AND 10"
         else:
             raise HTTPException(status_code=400, detail="无效的线索类型")
             
@@ -1584,7 +1708,7 @@ async def get_team_leads(
             SELECT id, name, progress, remark, details, contract_status, budget_money, expect_money, 
                    province, city, district, third_type, data_source, customer_name 
             FROM zdcrm_business_opportunity 
-            WHERE {progress_cond}
+            WHERE {filter_cond}
               AND (is_suspension = '0' OR is_suspension IS NULL)
               AND market_user_id IN ({user_ids_str})
             ORDER BY create_time DESC
@@ -1812,5 +1936,248 @@ async def get_team_happiness(
             "description": r.description or "—",
         })
     return result
+
+
+@router.get("/daily-report", summary="生成个人/战队当天日报")
+async def generate_daily_report(
+    team_id: int | None = Query(None, description="战队ID"),
+    report_date: str | None = Query(None, description="填报日期，格式 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import date, timedelta, datetime
+    from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
+    from app.models.goal import WeeklyTarget, TeamGoal
+    from app.models.organization import Team, Zone
+    from app.config import settings
+
+    # 解析日期
+    if report_date:
+        try:
+            target_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+        except:
+            target_date = date.today()
+    else:
+        target_date = date.today()
+
+    # 计算周度时间范围
+    start_of_week = target_date - timedelta(days=target_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    # 计算中文月份和周数
+    def get_chinese_num(n: int) -> str:
+        cn = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"]
+        return cn[n] if 0 <= n < len(cn) else str(n)
+
+    month_cn = get_chinese_num(target_date.month)
+
+    # 查当周 WeeklyTarget 获取 week_number
+    wt_num_stmt = select(WeeklyTarget.week_number).where(
+        WeeklyTarget.week_start <= target_date,
+        WeeklyTarget.week_end >= target_date
+    ).limit(1)
+    wt_num_res = await db.execute(wt_num_stmt)
+    week_num = wt_num_res.scalar()
+    if not week_num:
+        # 兜底计算当月第几周
+        week_num = (target_date.day - 1) // 7 + 1
+    week_cn = get_chinese_num(week_num)
+
+    # 倒计时及攻坚天数
+    max_end_date_res = await db.execute(select(func.max(WeeklyTarget.week_end)))
+    campaign_end_date = max_end_date_res.scalar()
+    if not campaign_end_date:
+        campaign_end_date = date(2026, 9, 13)
+    countdown = max(0, (campaign_end_date - target_date).days + 1)
+    campaign_day = 101 - countdown
+    if campaign_day < 1:
+        campaign_day = 1
+
+    # 星期几
+    days_cn = ["一", "二", "三", "四", "五", "六", "七"]
+    day_of_week_cn = days_cn[target_date.weekday()]
+
+    # 统计周目标和周实际完成额 (万元)
+    if team_id:
+        # 战队
+        # 周目标
+        wt_stmt = select(
+            func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0) +
+            func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
+        ).where(
+            WeeklyTarget.team_id == team_id,
+            WeeklyTarget.week_start <= target_date,
+            WeeklyTarget.week_end >= target_date
+        )
+        tgt_val = float(await db.scalar(wt_stmt) or 0.0)
+        if tgt_val == 0.0:
+            # 兜底
+            g_res = await db.execute(select(func.sum(TeamGoal.base_target)).where(TeamGoal.team_id == team_id))
+            tgt_val = round(float(g_res.scalar() or 0.0) / 12, 2)
+
+        # 周实际
+        m_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, team_id)
+        d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, team_id)
+        act_val = round(m_act + d_act, 2)
+    else:
+        # 公司
+        wt_stmt = select(
+            func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0) +
+            func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
+        ).where(
+            WeeklyTarget.week_start <= target_date,
+            WeeklyTarget.week_end >= target_date
+        )
+        tgt_val = float(await db.scalar(wt_stmt) or 0.0)
+
+        # 周实际
+        m_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week)
+        d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week)
+        act_val = round(m_act + d_act, 2)
+
+    # 统计当天已审核填报的增量数据
+    report_stmt = select(DailyReport.id).where(
+        DailyReport.report_date == target_date,
+        DailyReport.status == ReportStatus.REVIEWED
+    )
+    if team_id:
+        report_stmt = report_stmt.join(User, DailyReport.user_id == User.id).where(User.team_id == team_id)
+    report_ids = (await db.execute(report_stmt)).scalars().all()
+
+    valid_leads_cnt = 0
+    win_contracts_cnt = 0
+    win_contracts_amt = 0.0
+    signed_contracts_cnt = 0
+    signed_contracts_amt = 0.0
+    triangle_cnt = 0
+
+    if report_ids:
+        # 有效线索数量 (线索明细且进展为25%)
+        lead_stmt = select(func.count(ReportDetail.id)).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.LEAD,
+            ReportDetail.lead_progress == "25"
+        )
+        valid_leads_cnt = int(await db.scalar(lead_stmt) or 0)
+
+        # 中标确定 (线索明细且进展为75%)
+        win_stmt = select(
+            func.count(ReportDetail.id).label("cnt"),
+            func.coalesce(func.sum(ReportDetail.amount), 0).label("amt")
+        ).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.LEAD,
+            ReportDetail.lead_progress == "75"
+        )
+        win_res = (await db.execute(win_stmt)).first()
+        if win_res:
+            win_contracts_cnt = int(win_res.cnt or 0)
+            win_contracts_amt = round(float(win_res.amt or 0.0), 2)
+
+        # 签订合同
+        contract_stmt = select(
+            func.count(ReportDetail.id).label("cnt"),
+            func.coalesce(func.sum(ReportDetail.amount), 0).label("amt")
+        ).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.CONTRACT
+        )
+        c_res = (await db.execute(contract_stmt)).first()
+        if c_res:
+            signed_contracts_cnt = int(c_res.cnt or 0)
+            signed_contracts_amt = round(float(c_res.amt or 0.0), 2)
+
+        # 铁三角联动次数
+        triangle_stmt = select(func.count(ReportDetail.id)).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.TRIANGLE
+        )
+        triangle_cnt = int(await db.scalar(triangle_stmt) or 0)
+
+    # 尝试直连 CRM 补充当日新增有效线索 (与填报取最大)
+    crm_user_ids = []
+    if team_id:
+        users_res = await db.execute(select(User.crm_user_id).where(User.team_id == team_id))
+        crm_user_ids = [uid for (uid,) in users_res.all() if uid]
+    else:
+        users_res = await db.execute(select(User.crm_user_id).where(User.crm_user_id != None))
+        crm_user_ids = [uid for (uid,) in users_res.all() if uid]
+
+    crm_leads_cnt = 0
+    if crm_user_ids:
+        import pymysql
+        try:
+            crm_conn = pymysql.connect(
+                host=settings.CRM_DB_HOST,
+                port=settings.CRM_DB_PORT,
+                user=settings.CRM_DB_USER,
+                password=settings.CRM_DB_PASSWORD,
+                database=settings.CRM_DB_NAME,
+                charset='utf8mb4',
+                connect_timeout=3
+            )
+            cur = crm_conn.cursor(pymysql.cursors.DictCursor)
+            user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+            start_of_day = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
+            end_of_day = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
+            cur.execute(f"""
+                SELECT COUNT(*) as count 
+                FROM zdcrm_business_opportunity 
+                WHERE progress = 25 
+                  AND is_del = '0'
+                  AND (is_suspension = '0' OR is_suspension IS NULL)
+                  AND market_user_id IN ({user_ids_str})
+                  AND update_time BETWEEN %s AND %s
+            """, (start_of_day, end_of_day))
+            crm_leads_cnt = cur.fetchone()["count"]
+            cur.close()
+            crm_conn.close()
+        except Exception as crm_err:
+            logger.warning(f"当日日报获取 CRM 线索失败: {crm_err}")
+
+    valid_leads_cnt = max(valid_leads_cnt, crm_leads_cnt)
+
+    # 组装文本
+    if team_id:
+        # 获取战区和战队名称
+        team_info_stmt = select(Team.name, Zone.name).select_from(Team).join(Zone, Team.zone_id == Zone.id).where(Team.id == team_id)
+        team_info_res = (await db.execute(team_info_stmt)).first()
+        t_name = team_info_res[0] if team_info_res else "本战队"
+        z_name = team_info_res[1] if team_info_res else ""
+        
+        text = (
+            f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报：\n"
+            f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
+            f"今日确定有效线索：{valid_leads_cnt} 条\n"
+            f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
+            f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+            f"今日售前铁三角联动次数：{triangle_cnt} 次\n"
+            f"今日工作小结\n"
+            f"①\n"
+            f"②\n"
+            f"今日工作反思\n"
+            f"①\n"
+            f"②\n"
+            f"明日工作安排\n"
+            f"①\n"
+            f"②\n"
+            f"持续付出不亚于任何人的努力，全力以赴，挑战高目标，奋斗赢幸福，胜利!胜利!胜利!"
+        )
+    else:
+        text = (
+            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
+            f"昨日确定有效线索：{valid_leads_cnt} 条\n"
+            f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
+            f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+            f"昨日售前铁三角联动次数：{triangle_cnt} 次\n"
+            f"赢战百日！"
+        )
+
+    return {
+        "text": text,
+        "team_id": team_id,
+        "report_date": target_date.strftime("%Y-%m-%d")
+    }
+
+
 
 

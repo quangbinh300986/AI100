@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -9,7 +10,8 @@ import {
   FireOutlined,
   RiseOutlined,
   FlagOutlined,
-  UserOutlined
+  UserOutlined,
+  FileTextOutlined
 } from '@ant-design/icons'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics } from '@shared/api/dashboard'
 import { get, post } from '@shared/api/client'
@@ -42,6 +44,34 @@ const Dashboard: React.FC = () => {
   const [selectedTeamMetrics, setSelectedTeamMetrics] = useState<any>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
   
+  // 日报自动生成器状态
+  const [dailyReportModalVisible, setDailyReportModalVisible] = useState(false)
+  const [dailyReportText, setDailyReportText] = useState('')
+  const [dailyReportLoading, setDailyReportLoading] = useState(false)
+
+  const handleGenerateDailyReport = async () => {
+    try {
+      let url = '/dashboard/daily-report'
+      if (user?.role === 'target_officer') {
+        if (user?.team_id) {
+          url += `?team_id=${user.team_id}`
+        }
+      }
+      setDailyReportLoading(true)
+      const res: any = await get(url)
+      if (res && res.text) {
+        setDailyReportText(res.text)
+        setDailyReportModalVisible(true)
+      } else {
+        message.error('生成日报失败，返回数据为空')
+      }
+    } catch (err) {
+      message.error('日报生成接口调用失败')
+    } finally {
+      setDailyReportLoading(false)
+    }
+  }
+
   // 新增分摊分摊逻辑所需的临时状态
   const [formVersion, setFormVersion] = useState(0)
   const [selectedProjectMarketingUsers, setSelectedProjectMarketingUsers] = useState<any[]>([])
@@ -502,19 +532,19 @@ const Dashboard: React.FC = () => {
     
     switch (actionType) {
       case 'lead_25':
-        generated = `${prefix}确定有效线索：客户为${customerName || 'XX'}，预算金额${budgetMoney || 0.0}万，预计${expectMoney || 0.0}万，赢战百日！`
+        generated = `${prefix}确定有效线索：客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万，赢战百日！`
         break
       case 'lead_75':
-        generated = `${prefix}确定${projectName || 'XX'}项目中地承接，客户为${customerName || 'XX'}，预算金额${budgetMoney || 0.0}万，预计${expectMoney || 0.0}万，赢战百日！`
+        generated = `${prefix}确定${projectName || 'XX'}项目中地承接，客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万，赢战百日！`
         break
       case 'contract':
-        generated = `${prefix}确定${contractName || 'XX'}项目走完合同流程，客户为${customerName || 'XX'}，合同价格${expectMoney || 0.0}万，赢战百日！`
+        generated = `${prefix}确定${contractName || 'XX'}项目走完合同流程，客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万 nudge，赢战百日！`.replace(" nudge", "")
         break
       case 'triangle':
         generated = `${prefix}售前铁三角现场联动，客户分别为${customerName || 'XX'}，为客户幸福而奋斗，赢战百日！`
         break
       case 'happiness':
-        generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，业主单位：${customerName || 'XX'}，收到客户正反馈，为客户幸福而奋斗，赢战百日！`
+        generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，收到客户${customerName || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
         break
       default:
         break
@@ -795,12 +825,21 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* 交付新签进度 */}
-            <div>
+            <div style={{ marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
                 <Text type="secondary">交付新签实际/目标</Text>
                 <strong>{t.deliveryActual} / {t.deliveryTarget} 万 ({t.deliveryRate}%)</strong>
               </div>
               <Progress percent={t.deliveryRate} size="small" strokeColor="#52c41a" showInfo={false} />
+            </div>
+
+            {/* 有效线索进度 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                <Text type="secondary">有效线索实际/目标</Text>
+                <strong>{t.validLeadsActual ?? 0} / {t.validLeadsTarget ?? 0} 条 ({(t.validLeadsRate ?? 0)}%)</strong>
+              </div>
+              <Progress percent={t.validLeadsRate ?? 0} size="small" strokeColor="#faad14" showInfo={false} />
             </div>
           </div>
         </Card>
@@ -820,6 +859,17 @@ const Dashboard: React.FC = () => {
         </Col>
         <Col>
           <Space>
+            {['admin', 'digital_specialist', 'target_officer'].includes(user?.role || '') && (
+              <Button 
+                type="primary" 
+                style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }} 
+                icon={<FileTextOutlined />} 
+                loading={dailyReportLoading}
+                onClick={handleGenerateDailyReport}
+              >
+                生成今日日报
+              </Button>
+            )}
             <Button icon={<FireOutlined />} onClick={loadData} loading={loading}>刷新看板</Button>
             <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
               setCurrentActionType('')
@@ -1869,6 +1919,51 @@ const Dashboard: React.FC = () => {
           bordered
           size="small"
         />
+      </Modal>
+
+      {/* 📅 今日日报自动生成器 Modal */}
+      <Modal
+        title="📅 今日日报自动生成器"
+        open={dailyReportModalVisible}
+        onCancel={() => setDailyReportModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setDailyReportModalVisible(false)}>
+            关闭
+          </Button>,
+          <Button 
+            key="copy" 
+            type="primary" 
+            onClick={() => {
+              navigator.clipboard.writeText(dailyReportText)
+              message.success('日报内容已成功复制到剪贴板！可以直接粘贴发送！')
+            }}
+          >
+            一键复制日报
+          </Button>
+        ]}
+        width={600}
+        destroyOnClose
+      >
+        <div style={{ padding: '8px 0' }}>
+          <Alert 
+            message="点击下方按钮即可一键复制格式化文案，直接发送至微信/钉钉群！" 
+            type="info" 
+            showIcon 
+            style={{ marginBottom: 16 }} 
+          />
+          <Input.TextArea
+            value={dailyReportText}
+            autoSize={{ minRows: 10, maxRows: 20 }}
+            readOnly
+            style={{ 
+              fontFamily: 'monospace', 
+              backgroundColor: '#f5f5f5', 
+              padding: '12px', 
+              borderRadius: '6px',
+              color: '#333'
+            }}
+          />
+        </div>
       </Modal>
     </div>
   )

@@ -321,7 +321,7 @@ class DingTalkClient:
         if "【战报播报】" in cleaned_content:
             cleaned_content = cleaned_content.replace("【战报播报】", "")
             
-        markdown_text = f"### 🎉 战报播报 | 冲刺 100 天\n\n"
+        markdown_text = f"### 🎉 战报播报 | 赢战百日\n\n"
         markdown_text += f"**恭喜战友，再传捷报！**\n\n"
         markdown_text += f"---\n"
         markdown_text += f"* **战报类型**：{type_name}\n"
