@@ -49,8 +49,11 @@ const BigScreen: React.FC = () => {
   const loadScreenData = async () => {
     try {
       const res = await getDashboardData()
-      if (res && res.data) {
-        setData(res.data)
+      // 后端 overview 接口直接返回了 DashboardResponse 对象本身，顶层并没有 data 包装
+      // 这里采用与后台 Dashboard 页面一致的解包策略，同时兼容可能存在的 data 属性
+      const actualData = (res as any)?.data ? (res as any).data : res
+      if (actualData) {
+        setData(actualData)
       }
     } catch (err) {
       console.error('API 轮询数据加载失败:', err)
