@@ -70,7 +70,6 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
           fontSize: '1.25rem',
           fontWeight: 'bold',
           color: 'var(--accent-color, #b71c1c)',
-          fontFamily: 'STKaiti, KaiTi, sans-serif',
         }}>
           各战区战队周冲刺排名 (周一开始清零)
         </div>
@@ -87,7 +86,10 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
           border: '1px solid rgba(183, 28, 28, 0.15)',
           borderRadius: '8px',
           background: '#ffffff',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
         <div className="scroll-corner-decor-top-right" style={{ transform: 'scale(0.5)' }} />
@@ -95,9 +97,10 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
 
         <table style={{
           width: '100%',
+          height: '100%',
           borderCollapse: 'collapse',
           textAlign: 'center',
-          fontSize: '0.85rem'
+          fontSize: '1.2rem'
         }}>
           <thead>
             <tr style={{
@@ -157,8 +160,7 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                         color: '#111111',
                         borderRight: '1px solid rgba(0,0,0,0.06)',
                         verticalAlign: 'middle',
-                        fontFamily: 'STKaiti, KaiTi, sans-serif',
-                        fontSize: '0.95rem'
+                        fontSize: '1.15rem'
                       }}
                     >
                       {row.zoneName}
@@ -175,24 +177,24 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                       color: rankColor,
                       border: rankBorder,
                       fontWeight: 'bold',
-                      fontSize: '0.75rem'
+                      fontSize: '1.05rem'
                     }}>
                       Top {row.rank}
                     </span>
                   </td>
 
                   {/* 战队名称 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)' }}>
+                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.25rem' }}>
                     {row.teamName}
                   </td>
 
                   {/* 完成百分比 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', borderRight: '1px solid rgba(0,0,0,0.06)' }}>
+                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.25rem' }}>
                     {row.score.toFixed(2).replace('.00', '')}%
                   </td>
 
                   {/* 趋势 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: trendColor }}>
+                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: trendColor, fontSize: '1.25rem' }}>
                     {trendText}
                   </td>
                 </tr>

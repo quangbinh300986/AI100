@@ -142,6 +142,7 @@ export interface RankingItem {
 
 /** 双轨动力战队状态卡片 */
 export interface DualTrackTeam {
+  teamId?: number
   teamName: string
   leader: string
   marketingActual: number
@@ -172,6 +173,8 @@ export interface DashboardData {
   weeklyTrend: {
     dates: string[]
     newContracts: number[]
+    newContractsTarget?: number[]
+    newContractsChallengeTarget?: number[]
     happinessActions: number[]
     ironTriangle: number[]
     validLeads: number[]

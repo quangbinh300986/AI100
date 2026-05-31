@@ -59,8 +59,7 @@ const ZoneRanking: React.FC<ZoneRankingProps> = ({
           color: 'var(--accent-color)',
           borderBottom: '3px solid var(--border-color)',
           paddingBottom: '0.8rem',
-          fontWeight: '900',
-          fontFamily: 'STKaiti, KaiTi, sans-serif'
+          fontWeight: '900'
         }}
       >
         🏇 各大战区指挥部：内部赛马竞速榜
@@ -84,19 +83,19 @@ const ZoneRanking: React.FC<ZoneRankingProps> = ({
             {/* 战区大标题 */}
             <div
               style={{
-                fontSize: '1.4rem',
-                fontWeight: '900',
-                color: 'var(--text-primary)',
-                borderBottom: '2px dashed rgba(212, 175, 55, 0.6)',
-                paddingBottom: '0.5rem',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.6rem'
-              }}
-            >
-              <span style={{ fontSize: '1.6rem' }}>🚩</span>
-              <span style={{ fontFamily: 'STKaiti, KaiTi, sans-serif', letterSpacing: '2px' }}>{zoneName}</span>
+              fontSize: '1.4rem',
+              fontWeight: '900',
+              color: 'var(--text-primary)',
+              borderBottom: '2px dashed rgba(212, 175, 55, 0.6)',
+              paddingBottom: '0.5rem',
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem'
+            }}
+          >
+            <span style={{ fontSize: '1.6rem' }}>🚩</span>
+            <span style={{ letterSpacing: '2px' }}>{zoneName}</span>
               <span style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
                 (内战 PK)
               </span>

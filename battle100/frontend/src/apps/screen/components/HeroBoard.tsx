@@ -168,8 +168,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           fontSize: '1.15rem',
           color: color,
           fontWeight: 'bold',
-          flexShrink: 0,
-          fontFamily: 'STKaiti, KaiTi, sans-serif'
+          flexShrink: 0
         }}
       >
         {title}

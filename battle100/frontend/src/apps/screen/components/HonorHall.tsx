@@ -48,7 +48,6 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
         fontSize: '1.1rem',
         fontWeight: 'bold',
         color: 'var(--accent-color)',
-        fontFamily: 'STKaiti, KaiTi, sans-serif',
       }}>
         自动结算奖励与荣誉大厅
       </div>

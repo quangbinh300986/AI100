@@ -45,6 +45,8 @@ class WeeklyTrendData(BaseModel):
     """双轴趋势图折线数据列表"""
     dates: list[str] = Field(default_factory=list, description="日期或周次列表")
     newContracts: list[float] = Field(default_factory=list, description="营销完成趋势")
+    newContractsTarget: list[float] = Field(default_factory=list, description="营销保底目标累计趋势")
+    newContractsChallengeTarget: list[float] = Field(default_factory=list, description="营销挑战目标累计趋势")
     happinessActions: list[int] = Field(default_factory=list, description="交付完成趋势")
     ironTriangle: list[int] = Field(default_factory=list, description="铁三角联动趋势")
     validLeads: list[int] = Field(default_factory=list, description="有效线索趋势")

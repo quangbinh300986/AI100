@@ -179,7 +179,7 @@ const BigScreen: React.FC = () => {
           <div className="scroll-corner-decor-bottom-left" />
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'STKaiti, KaiTi, sans-serif' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <span>⚔️</span>
               <span>百日新签合同额累计总进度 (实时达成率)</span>
             </span>

@@ -27,7 +27,7 @@ body {
   padding: 0;
   background: var(--screen-bg-image);
   color: var(--text-primary);
-  font-family: 'STKaiti', 'KaiTi', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
   user-select: none;
   transition: background 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.3s ease;
@@ -174,7 +174,6 @@ body {
   font-weight: bold;
   padding: 0.6rem 1rem;
   border-bottom: 2px solid var(--border-color);
-  font-family: 'STKaiti', 'KaiTi', sans-serif;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 

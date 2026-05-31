@@ -62,7 +62,6 @@ const LeadFunnel: React.FC<LeadFunnelProps> = ({
           borderLeft: '4px solid var(--accent-color, #b71c1c)',
           paddingLeft: '0.6rem',
           fontWeight: 'bold',
-          fontFamily: 'STKaiti, KaiTi, sans-serif',
           flexShrink: 0
         }}
       >
@@ -151,7 +150,7 @@ const LeadFunnel: React.FC<LeadFunnelProps> = ({
           }}
         >
           <span>🧱</span>
-          <span style={{ fontFamily: 'STKaiti, KaiTi, sans-serif' }}>重特大项目攻坚墙 (50万以上)</span>
+          <span>重特大项目攻坚墙 (50万以上)</span>
           {importantProjects.length > 0 && (
             <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 'bold', marginLeft: 'auto' }}>
               共 {importantProjects.length} 个

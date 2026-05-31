@@ -260,6 +260,40 @@ const AdminLayout: React.FC = () => {
               height: 64,
             }}
           />
+          {/* 蓝框核心区域：快捷进入战役大屏的精美链接按钮 */}
+          <div style={{ display: 'flex', alignItems: 'center', flex: 1, paddingLeft: '1rem' }}>
+            <a 
+              href="/screen" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                color: '#1890ff',
+                textDecoration: 'none',
+                padding: '0.4rem 1rem',
+                borderRadius: '4px',
+                background: 'rgba(24, 144, 255, 0.08)',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 1px 4px rgba(24, 144, 255, 0.1)',
+                border: '1px solid rgba(24, 144, 255, 0.2)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(24, 144, 255, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(24, 144, 255, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(24, 144, 255, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(24, 144, 255, 0.2)';
+              }}
+            >
+              <span>🖥️</span>
+              <span>进入战役作战大屏</span>
+            </a>
+          </div>
           <div style={{ marginRight: 24 }}>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Space style={{ cursor: 'pointer' }}>

@@ -57,7 +57,6 @@ const LiveFeed: React.FC<LiveFeedProps> = ({ theme = 'theme-light-red', liveFeed
           gap: '0.3rem',
           flexShrink: 0,
           boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-          fontFamily: 'STKaiti, KaiTi, sans-serif'
         }}
       >
         <span>🔥</span>

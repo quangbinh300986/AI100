@@ -142,7 +142,6 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
             color: theme === 'theme-gold' ? '#4a3c1c' : '#ffffff',
             fontWeight: 'bold',
             letterSpacing: '1px',
-            fontFamily: 'STKaiti, KaiTi, sans-serif'
           }}
         >
           攻坚倒计时
@@ -163,7 +162,6 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
             fontSize: '1.2rem',
             color: theme === 'theme-gold' ? '#4a3c1c' : '#ffffff',
             fontWeight: 'bold',
-            fontFamily: 'STKaiti, KaiTi, sans-serif'
           }}
         >
           天

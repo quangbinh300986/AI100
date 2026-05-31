@@ -490,11 +490,26 @@ async def get_dashboard_overview(
     )
     weekly_periods = weekly_dates_res.all()
 
+    # 提前批量查出每周的营销保底与挑战目标之和
+    targets_stmt = select(
+        WeeklyTarget.week_number,
+        func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0).label("base_sum"),
+        func.coalesce(func.sum(WeeklyTarget.marketing_challenge_target), 0).label("challenge_sum")
+    ).group_by(WeeklyTarget.week_number).order_by(WeeklyTarget.week_number)
+    targets_res = await db.execute(targets_stmt)
+    targets_map = {r.week_number: (float(r.base_sum), float(r.challenge_sum)) for r in targets_res.all()}
+
     trend_dates = []
     trend_contracts = []
+    trend_contracts_target = []
+    trend_contracts_challenge_target = []
     trend_happiness = []
     trend_triangle = []
     trend_leads = []
+
+    running_contracts = 0.0
+    running_base_target = 0.0
+    running_challenge_target = 0.0
 
     for w in weekly_periods:
         week_num = w.week_number
@@ -514,6 +529,14 @@ async def get_dashboard_overview(
         w_amount_res = await db.execute(w_amount_stmt)
         w_amount_val = float(w_amount_res.scalar() or 0.0)
 
+        # 累加实际新签合同额
+        running_contracts += w_amount_val
+
+        # 累加保底目标与挑战目标
+        week_base, week_challenge = targets_map.get(week_num, (0.0, 0.0))
+        running_base_target += week_base
+        running_challenge_target += week_challenge
+
         # 查询该周范围内已审核的幸福、铁三角和线索次数
         w_actual_res = await db.execute(
             select(
@@ -529,7 +552,9 @@ async def get_dashboard_overview(
         w_row = w_actual_res.one()
         
         trend_dates.append(f"第{week_num}周")
-        trend_contracts.append(round(w_amount_val, 2))
+        trend_contracts.append(round(running_contracts, 2))
+        trend_contracts_target.append(round(running_base_target, 2))
+        trend_contracts_challenge_target.append(round(running_challenge_target, 2))
         trend_happiness.append(int(w_row.happiness))
         trend_triangle.append(int(w_row.triangle))
         trend_leads.append(int(w_row.leads))
@@ -537,6 +562,8 @@ async def get_dashboard_overview(
     weekly_trend = WeeklyTrendData(
         dates=trend_dates,
         newContracts=trend_contracts,
+        newContractsTarget=trend_contracts_target,
+        newContractsChallengeTarget=trend_contracts_challenge_target,
         happinessActions=trend_happiness,
         ironTriangle=trend_triangle,
         validLeads=trend_leads
