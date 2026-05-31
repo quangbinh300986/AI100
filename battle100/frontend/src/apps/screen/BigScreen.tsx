@@ -362,14 +362,16 @@ const BigScreen: React.FC = () => {
             boxSizing: 'border-box'
           }}
         >
-          {/* 第一层：各战区战队冲刺表格 */}
-          <div style={{ flexShrink: 0 }}>
-            <ZoneLeaderboard theme={theme} zoneTeamsPK={data?.zoneTeamsPK} />
-          </div>
-
-          {/* 第二层：双轨动力 · 红黄绿灯状态（按战区横向分组还原） */}
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <DualTrackGrid theme={theme} teams={data?.dualTrackTeams} />
+          {/* 第一层与第二层并排：左侧双轨九宫格（65% 宽），右侧各战区战队周冲刺龙虎榜表格（35% 宽） */}
+          <div style={{ flex: 1, display: 'flex', gap: '1.5rem', overflow: 'hidden' }}>
+            {/* 左侧：双轨动力 3x3 九宫格 */}
+            <div style={{ flex: 6.5, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <DualTrackGrid theme={theme} teams={data?.dualTrackTeams} />
+            </div>
+            {/* 右侧：各战区战队周冲刺表格 */}
+            <div style={{ flex: 3.5, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <ZoneLeaderboard theme={theme} zoneTeamsPK={data?.zoneTeamsPK} />
+            </div>
           </div>
 
           {/* 第三层：预警与自动结算荣誉大厅 */}
