@@ -1950,14 +1950,31 @@ async def generate_daily_report(
     from app.models.organization import Team, Zone
     from app.config import settings
 
-    # 解析日期
+    # 当前实际时间
+    real_now = datetime.now()
+    
+    # 支持通过 report_date 参数模拟特定日期的生成，若有，模拟为该日期晚上 22 点，否则以当前实际时间为准
     if report_date:
         try:
-            target_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+            simulated_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+            now = datetime.combine(simulated_date, datetime.min.time()) + timedelta(hours=22)
         except:
-            target_date = date.today()
+            now = real_now
     else:
-        target_date = date.today()
+        now = real_now
+
+    # 以晚上 20:00 分水岭计算统计区间
+    if now.hour >= 20:
+        # 已过晚上 20:00，统计区间为今天的 20:00 往前推 24 小时
+        end_time = datetime(now.year, now.month, now.day, 20, 0, 0)
+    else:
+        # 还没到晚上 20:00，统计区间为昨天的 20:00 往前推 24 小时
+        end_time = datetime(now.year, now.month, now.day, 20, 0, 0) - timedelta(days=1)
+    
+    start_time = end_time - timedelta(days=1)
+    
+    # 周目标和月份统计的基准日期
+    target_date = end_time.date()
 
     # 计算周度时间范围
     start_of_week = target_date - timedelta(days=target_date.weekday())
@@ -2034,9 +2051,10 @@ async def generate_daily_report(
         d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week)
         act_val = round(m_act + d_act, 2)
 
-    # 统计当天已审核填报的增量数据
+    # 按照 20:00 统计区间筛选审核时间在此范围内的 DailyReport
     report_stmt = select(DailyReport.id).where(
-        DailyReport.report_date == target_date,
+        DailyReport.reviewed_at >= start_time,
+        DailyReport.reviewed_at <= end_time,
         DailyReport.status == ReportStatus.REVIEWED
     )
     if team_id:
@@ -2093,7 +2111,7 @@ async def generate_daily_report(
         )
         triangle_cnt = int(await db.scalar(triangle_stmt) or 0)
 
-    # 尝试直连 CRM 补充当日新增有效线索 (与填报取最大)
+    # 尝试直连 CRM 补充此统计区间内新增有效线索 (与填报取最大)
     crm_user_ids = []
     if team_id:
         users_res = await db.execute(select(User.crm_user_id).where(User.team_id == team_id))
@@ -2117,8 +2135,6 @@ async def generate_daily_report(
             )
             cur = crm_conn.cursor(pymysql.cursors.DictCursor)
             user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
-            start_of_day = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
-            end_of_day = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
             cur.execute(f"""
                 SELECT COUNT(*) as count 
                 FROM zdcrm_business_opportunity 
@@ -2127,14 +2143,17 @@ async def generate_daily_report(
                   AND (is_suspension = '0' OR is_suspension IS NULL)
                   AND market_user_id IN ({user_ids_str})
                   AND update_time BETWEEN %s AND %s
-            """, (start_of_day, end_of_day))
+            """, (start_time, end_time))
             crm_leads_cnt = cur.fetchone()["count"]
             cur.close()
             crm_conn.close()
         except Exception as crm_err:
-            logger.warning(f"当日日报获取 CRM 线索失败: {crm_err}")
+            logger.warning(f"统计区间内日报获取 CRM 线索失败: {crm_err}")
 
     valid_leads_cnt = max(valid_leads_cnt, crm_leads_cnt)
+
+    # 统计区间描述文案
+    range_str = f"（统计区间：{start_time.strftime('%Y-%m-%d %H:%M')} 至 {end_time.strftime('%Y-%m-%d %H:%M')}）"
 
     # 组装文本
     if team_id:
@@ -2145,7 +2164,7 @@ async def generate_daily_report(
         z_name = team_info_res[1] if team_info_res else ""
         
         text = (
-            f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报：\n"
+            f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
             f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
             f"今日确定有效线索：{valid_leads_cnt} 条\n"
             f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
@@ -2164,7 +2183,8 @@ async def generate_daily_report(
         )
     else:
         text = (
-            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
+            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
+            f"新签合同目标{tgt_val}万，已完成{act_val}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
