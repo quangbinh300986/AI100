@@ -139,6 +139,7 @@ class BroadcastCreate(BaseModel):
     # 新增分摊数据字段
     delivery_allocations: Optional[list[AllocationItem]] = None
     marketing_allocations: Optional[list[AllocationItem]] = None
+    attachment_urls: Optional[list[str]] = None
 
 
 class BroadcastResponse(BaseModel):
@@ -868,7 +869,8 @@ async def create_broadcast(
                         customer_name=broadcast_in.customer_name,
                         amount=alloc.amount,
                         crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                        description=f"【交付新签分摊 ({alloc.ratio}%)】{broadcast_in.content}"
+                        description=f"【交付新签分摊 ({alloc.ratio}%)】{broadcast_in.content}",
+                        attachment_urls=broadcast_in.attachment_urls
                     )
                     db.add(detail)
             
@@ -884,7 +886,8 @@ async def create_broadcast(
                         customer_name=broadcast_in.customer_name,
                         amount=alloc.amount,
                         crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                        description=f"【营销新签分摊 ({alloc.ratio}%)】{broadcast_in.content}"
+                        description=f"【营销新签分摊 ({alloc.ratio}%)】{broadcast_in.content}",
+                        attachment_urls=broadcast_in.attachment_urls
                     )
                     db.add(detail)
             
@@ -903,7 +906,8 @@ async def create_broadcast(
                     customer_name=broadcast_in.customer_name,
                     amount=amount_to_save,
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content
+                    description=broadcast_in.content,
+                    attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "lead_25":
                 report.leads_count += 1
@@ -914,7 +918,8 @@ async def create_broadcast(
                     amount=amount_to_save,
                     lead_progress="25%",
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content
+                    description=broadcast_in.content,
+                    attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "lead_75":
                 # 中标确定不作为新增线索计数
@@ -925,7 +930,8 @@ async def create_broadcast(
                     amount=amount_to_save,
                     lead_progress="75%",
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content
+                    description=broadcast_in.content,
+                    attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "triangle":
                 report.triangle_count += 1
@@ -933,7 +939,8 @@ async def create_broadcast(
                     report_id=report.id,
                     detail_type=DetailType.TRIANGLE,
                     customer_name=broadcast_in.customer_name,
-                    description=broadcast_in.content
+                    description=broadcast_in.content,
+                    attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "happiness":
                 report.happiness_actions += 1
@@ -943,7 +950,8 @@ async def create_broadcast(
                     detail_type=DetailType.HAPPINESS,
                     customer_name=broadcast_in.customer_name or "客户幸福关怀单位",
                     happiness_level=score_val,
-                    description=broadcast_in.action_description or broadcast_in.content
+                    description=broadcast_in.action_description or broadcast_in.content,
+                    attachment_urls=broadcast_in.attachment_urls
                 )
 
             if detail:

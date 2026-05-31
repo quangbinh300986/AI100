@@ -258,10 +258,31 @@ async def get_dashboard_overview(
         target_date = date.today()
 
     # 1. 战役累计数据统计
+    # 统计去重后全公司累计合同额（只统计交付维度，过滤掉营销维度以防重复计算）
+    total_amount_stmt = select(
+        func.coalesce(func.sum(ReportDetail.amount), 0)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        ~ReportDetail.description.contains("营销新签分摊")
+    )
+    total_amount_res = await db.execute(total_amount_stmt)
+    total_amount_val = float(total_amount_res.scalar() or 0.0)
+
+    # 统计去重后全公司累计新签合同笔数（以唯一的 crm_opportunity_id 计数）
+    total_count_stmt = select(
+        func.count(func.distinct(ReportDetail.crm_opportunity_id))
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        ReportDetail.crm_opportunity_id.isnot(None),
+        ReportDetail.crm_opportunity_id != ""
+    )
+    total_count_res = await db.execute(total_count_stmt)
+    total_count_val = int(total_count_res.scalar() or 0)
+
     summary_result = await db.execute(
         select(
-            func.coalesce(func.sum(DailyReport.contract_amount), 0).label("total_amount"),
-            func.coalesce(func.sum(DailyReport.contract_count), 0).label("total_count"),
             func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("total_happiness"),
             func.coalesce(func.sum(DailyReport.triangle_count), 0).label("total_triangle"),
             func.coalesce(func.sum(DailyReport.leads_count), 0).label("total_leads"),
@@ -278,7 +299,7 @@ async def get_dashboard_overview(
 
     # 构造 KPI Summary 属性
     # 新签合同
-    val_contracts = float(row.total_amount)
+    val_contracts = total_amount_val
     pct_contracts = round((val_contracts / total_contract_target) * 100, 2) if total_contract_target > 0 else 0.0
     kpi_contracts = KpiItem(value=round(val_contracts, 2), target=total_contract_target, percentage=pct_contracts)
 
@@ -403,10 +424,22 @@ async def get_dashboard_overview(
         s_date = w.start_date
         e_date = w.end_date
         
-        # 查询该周范围内已审核的真实合同额、幸福、铁三角和线索
+        # 统计去重后该周的合同总额（只统计交付维度，过滤掉营销维度以防重复计算）
+        w_amount_stmt = select(
+            func.coalesce(func.sum(ReportDetail.amount), 0)
+        ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+            DailyReport.report_date >= s_date,
+            DailyReport.report_date <= e_date,
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ~ReportDetail.description.contains("营销新签分摊")
+        )
+        w_amount_res = await db.execute(w_amount_stmt)
+        w_amount_val = float(w_amount_res.scalar() or 0.0)
+
+        # 查询该周范围内已审核的幸福、铁三角和线索次数
         w_actual_res = await db.execute(
             select(
-                func.coalesce(func.sum(DailyReport.contract_amount), 0).label("amount"),
                 func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("happiness"),
                 func.coalesce(func.sum(DailyReport.triangle_count), 0).label("triangle"),
                 func.coalesce(func.sum(DailyReport.leads_count), 0).label("leads"),
@@ -419,7 +452,7 @@ async def get_dashboard_overview(
         w_row = w_actual_res.one()
         
         trend_dates.append(f"第{week_num}周")
-        trend_contracts.append(round(float(w_row.amount), 2))
+        trend_contracts.append(round(w_amount_val, 2))
         trend_happiness.append(int(w_row.happiness))
         trend_triangle.append(int(w_row.triangle))
         trend_leads.append(int(w_row.leads))
@@ -750,9 +783,19 @@ async def get_my_cascade_stats(
     3. 个人核心KPI目标达成进度（根据岗位动态呈现）
     """
     # ====== 1. 公司盘数据 ======
+    # 统计去重后全公司累计合同额（只统计交付维度，过滤掉营销维度以防重复计算）
+    total_amount_stmt = select(
+        func.coalesce(func.sum(ReportDetail.amount), 0)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        ~ReportDetail.description.contains("营销新签分摊")
+    )
+    total_amount_res = await db.execute(total_amount_stmt)
+    total_amount_val = float(total_amount_res.scalar() or 0.0)
+
     company_summary = await db.execute(
         select(
-            func.coalesce(func.sum(DailyReport.contract_amount), 0).label("total_amount"),
             func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("total_happiness"),
             func.coalesce(func.sum(DailyReport.triangle_count), 0).label("total_triangle"),
             func.coalesce(func.sum(DailyReport.leads_count), 0).label("total_leads"),
@@ -767,7 +810,7 @@ async def get_my_cascade_stats(
     )
     total_contract_target = round(float(total_base_target_res.scalar() or 6200.0), 2)
 
-    val_contracts = float(c_row.total_amount)
+    val_contracts = total_amount_val
     pct_contracts = round((val_contracts / total_contract_target) * 100, 2) if total_contract_target > 0 else 0.0
 
     val_happiness = int(c_row.total_happiness)
