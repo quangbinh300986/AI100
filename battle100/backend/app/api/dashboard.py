@@ -534,6 +534,10 @@ async def get_dashboard_overview(
             content = f"攻坚一百天，亮剑破六千！【{team_name}】{user_name} 完成了 {d.detail_type.value} 项攻坚突破，赢战百日！"
             feed_type = "info"
             
+        # 剔除内容中的关联战报标识 \n[broadcast_id:xx]
+        if content and "\n[broadcast_id:" in content:
+            content = content.split("\n[broadcast_id:")[0]
+            
         live_feed.append(
             LiveFeedItem(
                 id=d.id,

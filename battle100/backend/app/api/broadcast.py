@@ -505,26 +505,29 @@ async def update_broadcast(
     new_opp_id = broadcast_in.crm_opportunity_id
     
     # ===== A. 联动清退扣回该战报原先关联的所有日报指标金额与计数 =====
-    if old_opp_id:
-        from app.models.report import ReportDetail
-        detail_stmt = select(ReportDetail).where(ReportDetail.crm_opportunity_id == old_opp_id)
-        detail_res = await db.execute(detail_stmt)
-        details = detail_res.scalars().all()
+    from app.models.report import ReportDetail
+    detail_stmt = select(ReportDetail).where(ReportDetail.description.like(f"%\n[broadcast_id:{event.id}]"))
+    detail_res = await db.execute(detail_stmt)
+    details = detail_res.scalars().all()
+    
+    for detail in details:
+        report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
+        report_res = await db.execute(report_stmt)
+        report = report_res.scalar_one_or_none()
         
-        for detail in details:
-            report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
-            report_res = await db.execute(report_stmt)
-            report = report_res.scalar_one_or_none()
-            
-            if report:
-                if detail.detail_type == DetailType.CONTRACT:
-                    report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
-                    report.contract_count = max(0, report.contract_count - 1)
-                elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
-                    report.leads_count = max(0, report.leads_count - 1)
-            
-            await db.delete(detail)
-        await db.flush()
+        if report:
+            if detail.detail_type == DetailType.CONTRACT:
+                report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
+                report.contract_count = max(0, report.contract_count - 1)
+            elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
+                report.leads_count = max(0, report.leads_count - 1)
+            elif detail.detail_type == DetailType.TRIANGLE:
+                report.triangle_count = max(0, report.triangle_count - 1)
+            elif detail.detail_type == DetailType.HAPPINESS:
+                report.happiness_actions = max(0, report.happiness_actions - 1)
+        
+        await db.delete(detail)
+    await db.flush()
 
     # ===== B. 更新战报基本文字、推送渠道、以及最新的 CRM 商机关联 =====
     if broadcast_in.content is not None:
@@ -601,7 +604,7 @@ async def update_broadcast(
                             customer_name=c_name,
                             amount=alloc.amount,
                             crm_opportunity_id=final_opp_id,
-                            description=f"【交付新签分摊 ({alloc.ratio}%)】{event.content}"
+                            description=f"【交付新签分摊 ({alloc.ratio}%)】{event.content}\n[broadcast_id:{event.id}]"
                         )
                         db.add(det)
                 
@@ -616,7 +619,7 @@ async def update_broadcast(
                             customer_name=c_name,
                             amount=alloc.amount,
                             crm_opportunity_id=final_opp_id,
-                            description=f"【营销新签分摊 ({alloc.ratio}%)】{event.content}"
+                            description=f"【营销新签分摊 ({alloc.ratio}%)】{event.content}\n[broadcast_id:{event.id}]"
                         )
                         db.add(det)
             else:
@@ -631,7 +634,7 @@ async def update_broadcast(
                     customer_name=c_name,
                     amount=val_amount,
                     crm_opportunity_id=final_opp_id,
-                    description=event.content
+                    description=f"{event.content}\n[broadcast_id:{event.id}]"
                 )
                 db.add(det)
                 
@@ -646,7 +649,7 @@ async def update_broadcast(
                 amount=broadcast_in.amount or 0.0,
                 lead_progress="25%",
                 crm_opportunity_id=final_opp_id,
-                description=event.content
+                description=f"{event.content}\n[broadcast_id:{event.id}]"
             )
             db.add(det)
 
@@ -691,34 +694,32 @@ async def delete_broadcast(
     # 留存删除前的状态
     before_state = to_dict(event)
         
-    # 如果有关联的 CRM 项目 ID，级联删除 ReportDetail 并重新扣减 DailyReport
-    opp_id = event.crm_opportunity_id
-    if opp_id:
-        # 查出所有关联的 ReportDetail 记录
-        detail_stmt = select(ReportDetail).where(ReportDetail.crm_opportunity_id == opp_id)
-        detail_res = await db.execute(detail_stmt)
-        details = detail_res.scalars().all()
+    # 通过描述中的 broadcast_id 关联标识，级联删除 ReportDetail 并重新扣减 DailyReport
+    from app.models.report import ReportDetail
+    detail_stmt = select(ReportDetail).where(ReportDetail.description.like(f"%\n[broadcast_id:{event.id}]"))
+    detail_res = await db.execute(detail_stmt)
+    details = detail_res.scalars().all()
+    
+    for detail in details:
+        # 找到对应的日报
+        report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
+        report_res = await db.execute(report_stmt)
+        report = report_res.scalar_one_or_none()
         
-        for detail in details:
-            # 找到对应的日报
-            report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
-            report_res = await db.execute(report_stmt)
-            report = report_res.scalar_one_or_none()
-            
-            if report:
-                # 根据明细类型进行扣减
-                if detail.detail_type == DetailType.CONTRACT:
-                    report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
-                    report.contract_count = max(0, report.contract_count - 1)
-                elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
-                    report.leads_count = max(0, report.leads_count - 1)
-                elif detail.detail_type == DetailType.TRIANGLE:
-                    report.triangle_count = max(0, report.triangle_count - 1)
-                elif detail.detail_type == DetailType.HAPPINESS:
-                    report.happiness_actions = max(0, report.happiness_actions - 1)
-            
-            # 删除明细
-            await db.delete(detail)
+        if report:
+            # 根据明细类型进行扣减
+            if detail.detail_type == DetailType.CONTRACT:
+                report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
+                report.contract_count = max(0, report.contract_count - 1)
+            elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
+                report.leads_count = max(0, report.leads_count - 1)
+            elif detail.detail_type == DetailType.TRIANGLE:
+                report.triangle_count = max(0, report.triangle_count - 1)
+            elif detail.detail_type == DetailType.HAPPINESS:
+                report.happiness_actions = max(0, report.happiness_actions - 1)
+        
+        # 删除明细
+        await db.delete(detail)
             
     # 删除战报事件本身
     await db.delete(event)
@@ -763,29 +764,32 @@ async def batch_delete_broadcasts(
         if not event:
             continue
             
-        opp_id = event.crm_opportunity_id
-        if opp_id:
-            detail_stmt = select(ReportDetail).where(ReportDetail.crm_opportunity_id == opp_id)
-            detail_res = await db.execute(detail_stmt)
-            details = detail_res.scalars().all()
+        # 通过描述中的 broadcast_id 关联标识，级联删除 ReportDetail 并重新扣减 DailyReport
+        from app.models.report import ReportDetail
+        detail_stmt = select(ReportDetail).where(ReportDetail.description.like(f"%\n[broadcast_id:{event.id}]"))
+        detail_res = await db.execute(detail_stmt)
+        details = detail_res.scalars().all()
+        
+        for detail in details:
+            # 找到对应的日报
+            report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
+            report_res = await db.execute(report_stmt)
+            report = report_res.scalar_one_or_none()
             
-            for detail in details:
-                report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
-                report_res = await db.execute(report_stmt)
-                report = report_res.scalar_one_or_none()
-                
-                if report:
-                    if detail.detail_type == DetailType.CONTRACT:
-                        report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
-                        report.contract_count = max(0, report.contract_count - 1)
-                    elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
-                        report.leads_count = max(0, report.leads_count - 1)
-                    elif detail.detail_type == DetailType.TRIANGLE:
-                        report.triangle_count = max(0, report.triangle_count - 1)
-                    elif detail.detail_type == DetailType.HAPPINESS:
-                        report.happiness_actions = max(0, report.happiness_actions - 1)
-                
-                await db.delete(detail)
+            if report:
+                # 根据明细类型进行扣减
+                if detail.detail_type == DetailType.CONTRACT:
+                    report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
+                    report.contract_count = max(0, report.contract_count - 1)
+                elif detail.detail_type == DetailType.LEAD and detail.lead_progress == "25%":
+                    report.leads_count = max(0, report.leads_count - 1)
+                elif detail.detail_type == DetailType.TRIANGLE:
+                    report.triangle_count = max(0, report.triangle_count - 1)
+                elif detail.detail_type == DetailType.HAPPINESS:
+                    report.happiness_actions = max(0, report.happiness_actions - 1)
+            
+            # 删除明细
+            await db.delete(detail)
                 
         await db.delete(event)
         
@@ -911,7 +915,7 @@ async def create_broadcast(
                         customer_name=broadcast_in.customer_name,
                         amount=alloc.amount,
                         crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                        description=f"【交付新签分摊 ({alloc.ratio}%)】{broadcast_in.content}",
+                        description=f"【交付新签分摊 ({alloc.ratio}%)】{broadcast_in.content}\n[broadcast_id:{event.id}]",
                         attachment_urls=broadcast_in.attachment_urls
                     )
                     db.add(detail)
@@ -928,7 +932,7 @@ async def create_broadcast(
                         customer_name=broadcast_in.customer_name,
                         amount=alloc.amount,
                         crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                        description=f"【营销新签分摊 ({alloc.ratio}%)】{broadcast_in.content}",
+                        description=f"【营销新签分摊 ({alloc.ratio}%)】{broadcast_in.content}\n[broadcast_id:{event.id}]",
                         attachment_urls=broadcast_in.attachment_urls
                     )
                     db.add(detail)
@@ -948,7 +952,7 @@ async def create_broadcast(
                     customer_name=broadcast_in.customer_name,
                     amount=amount_to_save,
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content,
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "lead_25":
@@ -960,7 +964,7 @@ async def create_broadcast(
                     amount=amount_to_save,
                     lead_progress="25%",
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content,
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "lead_75":
@@ -972,7 +976,7 @@ async def create_broadcast(
                     amount=amount_to_save,
                     lead_progress="75%",
                     crm_opportunity_id=broadcast_in.crm_opportunity_id,
-                    description=broadcast_in.content,
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "triangle":
@@ -981,7 +985,7 @@ async def create_broadcast(
                     report_id=report.id,
                     detail_type=DetailType.TRIANGLE,
                     customer_name=broadcast_in.customer_name,
-                    description=broadcast_in.content,
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "happiness":
@@ -992,7 +996,7 @@ async def create_broadcast(
                     detail_type=DetailType.HAPPINESS,
                     customer_name=broadcast_in.customer_name or "客户幸福关怀单位",
                     happiness_level=score_val,
-                    description=broadcast_in.action_description or broadcast_in.content,
+                    description=f"{broadcast_in.action_description or broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
 
@@ -1013,7 +1017,7 @@ async def create_broadcast(
     # 记录操作审计日志
     await log_action(
         db, current_user, "CREATE", "broadcast", str(event.id),
-        f"创建了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
+        f"发布了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
         before_state=None,
         after_state=to_dict(event)
     )
