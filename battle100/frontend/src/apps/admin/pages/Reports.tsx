@@ -306,15 +306,28 @@ const Reports: React.FC = () => {
   }
 
   // 触发获取特定拓展进度的 CRM 项目
-  const fetchCRMProjects = async (progress: number, initialProject?: any) => {
+  const fetchCRMProjects = async (progress: number, initialProject?: any, includeOppId?: string) => {
     setCrmLoading(true)
     try {
-      const res = await get<any>(`/broadcast/crm-projects?progress=${progress}`)
+      let url = `/broadcast/crm-projects?progress=${progress}`
+      if (includeOppId) {
+        url += `&include_opp_id=${includeOppId}`
+      }
+      const res = await get<any>(url)
       const data = res?.data ? res.data : res
       let list = (data && Array.isArray(data)) ? data : []
       if (initialProject) {
-        list = list.filter((p: any) => p.id !== initialProject.id)
-        list = [initialProject, ...list]
+        // 检查后端是否返回了该商机的真实数据
+        const existRealProj = list.find((p: any) => p.id === initialProject.id)
+        if (existRealProj) {
+          // 若有真实数据，则保留并优先放到最前面显示
+          list = list.filter((p: any) => p.id !== initialProject.id)
+          list = [existRealProj, ...list]
+        } else {
+          // 否则使用临时拼凑的 initialProject 兜底
+          list = list.filter((p: any) => p.id !== initialProject.id)
+          list = [initialProject, ...list]
+        }
       }
       setCrmProjects(list)
     } catch (err) {
@@ -769,7 +782,7 @@ const Reports: React.FC = () => {
               if (record.event_type === 'lead_25') progress = 25
 
               if (['contract_signed', 'lead_75', 'lead_25'].includes(record.event_type)) {
-                fetchCRMProjects(progress, initialProj)
+                fetchCRMProjects(progress, initialProj, record.crm_opportunity_id)
               }
 
               editForm.setFieldsValue({

@@ -466,7 +466,6 @@ async def get_dashboard_overview(
     )
 
     # 4. 实时动态滚动播报 liveFeed
-    from app.models.report import ReportDetail, DetailType
 
     feed_details_res = await db.execute(
         select(ReportDetail)

@@ -16,8 +16,10 @@ from app.models.user import User, UserRole
 from app.models.broadcast import BroadcastEvent, EventType, PushStatus
 from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
 from app.api.deps import get_current_user
+from app.services.audit_service import log_action, to_dict
 
 logger = logging.getLogger("battle100")
+
 
 
 async def trigger_broadcast_push(broadcast_id: int):
@@ -165,6 +167,7 @@ class BroadcastResponse(BaseModel):
 @router.get("/crm-projects", summary="直连 CRM 获取特定拓展进度的项目列表")
 async def get_crm_projects(
     progress: int = Query(..., description="拓展进度（25、75、90）"),
+    include_opp_id: Optional[str] = Query(None, description="强制包含的已绑定商机ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -190,16 +193,17 @@ async def get_crm_projects(
         cur = conn.cursor(pymysql.cursors.DictCursor)
         
         # 只查询未删除、非暂停状态的项目，同时拉取营销人员列 market_user_id
+        # 若指定了 include_opp_id，也会一同查出
         query = """
             SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
             FROM zdcrm_business_opportunity
-            WHERE progress = %s
+            WHERE (progress = %s OR id = %s)
               AND is_del = '0'
               AND (is_suspension = '0' OR is_suspension IS NULL)
             ORDER BY create_time DESC
             LIMIT 500
         """
-        cur.execute(query, (progress,))
+        cur.execute(query, (progress, include_opp_id))
         projects = cur.fetchall()
         
         # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID
@@ -209,6 +213,8 @@ async def get_crm_projects(
         )
         used_opp_res = await db.execute(used_opp_stmt)
         used_opp_ids = set(used_opp_res.scalars().all())
+        if include_opp_id and include_opp_id in used_opp_ids:
+            used_opp_ids.discard(include_opp_id)
 
         # 批量获取关联人员的中文姓名与本地系统 ID 以免陷入 O(N) 循环查询
         all_user_codes = set()
@@ -492,6 +498,9 @@ async def update_broadcast(
     if not event:
         raise HTTPException(status_code=404, detail="战报不存在")
         
+    # 留存修改前的状态
+    before_state_dict = to_dict(event)
+        
     old_opp_id = event.crm_opportunity_id
     new_opp_id = broadcast_in.crm_opportunity_id
     
@@ -644,6 +653,14 @@ async def update_broadcast(
     await db.commit()
     await db.refresh(event)
 
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "UPDATE", "broadcast", str(event.id),
+        f"修改了战报播报内容",
+        before_state=before_state_dict,
+        after_state=to_dict(event)
+    )
+
     # 异步触发钉钉播报推送
     if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
         background_tasks.add_task(trigger_broadcast_push, event.id)
@@ -670,6 +687,9 @@ async def delete_broadcast(
     event = res.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="战报不存在")
+        
+    # 留存删除前的状态
+    before_state = to_dict(event)
         
     # 如果有关联的 CRM 项目 ID，级联删除 ReportDetail 并重新扣减 DailyReport
     opp_id = event.crm_opportunity_id
@@ -704,6 +724,14 @@ async def delete_broadcast(
     await db.delete(event)
     await db.commit()
     
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "DELETE", "broadcast", str(id),
+        f"删除了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
+        before_state=before_state,
+        after_state=None
+    )
+    
     # 触发大屏 WebSocket 更新
     try:
         from app.services.websocket import ws_manager
@@ -721,6 +749,12 @@ async def batch_delete_broadcasts(
     current_user: User = Depends(get_current_user),
 ):
     """批量删除战报，并自动级联扣减金额"""
+    # 备份待删除的数据以留存日志
+    stmt_to_backup = select(BroadcastEvent).where(BroadcastEvent.id.in_(req.ids))
+    res_to_backup = await db.execute(stmt_to_backup)
+    events_to_delete = res_to_backup.scalars().all()
+    before_state = [to_dict(e) for e in events_to_delete]
+
     for id_val in req.ids:
         # 复用单条删除逻辑以确保数据一致性
         stmt = select(BroadcastEvent).where(BroadcastEvent.id == id_val)
@@ -756,6 +790,14 @@ async def batch_delete_broadcasts(
         await db.delete(event)
         
     await db.commit()
+    
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "DELETE", "broadcast", ",".join(map(str, req.ids)),
+        f"批量删除了 {len(req.ids)} 条战报播报记录",
+        before_state=before_state,
+        after_state=None
+    )
     
     # 触发大屏 WebSocket 更新
     try:
@@ -967,6 +1009,14 @@ async def create_broadcast(
 
     await db.commit()
     await db.refresh(event)
+
+    # 记录操作审计日志
+    await log_action(
+        db, current_user, "CREATE", "broadcast", str(event.id),
+        f"创建了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
+        before_state=None,
+        after_state=to_dict(event)
+    )
 
     # 异步触发钉钉播报推送
     if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
