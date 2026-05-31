@@ -75,6 +75,205 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  // 铁三角与幸福度下钻状态
+  const [trianglesModalVisible, setTrianglesModalVisible] = useState(false)
+  const [trianglesLoading, setTrianglesLoading] = useState(false)
+  const [trianglesList, setTrianglesList] = useState<any[]>([])
+  const [currentTriangleTeamName, setCurrentTriangleTeamName] = useState<string>('')
+
+  const [happinessModalVisible, setHappinessModalVisible] = useState(false)
+  const [happinessLoading, setHappinessLoading] = useState(false)
+  const [happinessList, setHappinessList] = useState<any[]>([])
+  const [currentHappinessTeamName, setCurrentHappinessTeamName] = useState<string>('')
+
+  // 获取战队售前铁三角联动明细
+  const handleViewTrianglesList = async (teamId: number, teamName: string) => {
+    setTrianglesModalVisible(true)
+    setTrianglesLoading(true)
+    setTrianglesList([])
+    setCurrentTriangleTeamName(teamName)
+    try {
+      const res = await get<any[]>(`/dashboard/team-triangles?team_id=${teamId}`)
+      if (res && Array.isArray(res)) {
+        setTrianglesList(res)
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || '获取铁三角明细列表失败'
+      message.error(errMsg)
+      setTrianglesModalVisible(false)
+    } finally {
+      setTrianglesLoading(false)
+    }
+  }
+
+  // 获取战队客户幸福动作明细
+  const handleViewHappinessList = async (teamId: number, teamName: string) => {
+    setHappinessModalVisible(true)
+    setHappinessLoading(true)
+    setHappinessList([])
+    setCurrentHappinessTeamName(teamName)
+    try {
+      const res = await get<any[]>(`/dashboard/team-happiness?team_id=${teamId}`)
+      if (res && Array.isArray(res)) {
+        setHappinessList(res)
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || '获取客户幸福动作明细列表失败'
+      message.error(errMsg)
+      setHappinessModalVisible(false)
+    } finally {
+      setHappinessLoading(false)
+    }
+  }
+
+  // 二级铁三角明细表格列定义
+  const trianglesColumns = [
+    {
+      title: '填报日期',
+      dataIndex: 'report_date',
+      key: 'report_date',
+      width: 110,
+      align: 'center' as const
+    },
+    {
+      title: '提报人',
+      dataIndex: 'reporter_name',
+      key: 'reporter_name',
+      width: 100,
+      align: 'center' as const
+    },
+    {
+      title: '客户名称',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      width: 240
+    },
+    {
+      title: '联动搭档',
+      dataIndex: 'partner_name',
+      key: 'partner_name',
+      width: 110,
+      align: 'center' as const
+    },
+    {
+      title: '联动描述说明',
+      dataIndex: 'description',
+      key: 'description',
+      render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
+    }
+  ]
+
+  // 二级幸福动作明细表格列定义
+  const happinessColumns = [
+    {
+      title: '填报日期',
+      dataIndex: 'report_date',
+      key: 'report_date',
+      width: 110,
+      align: 'center' as const
+    },
+    {
+      title: '提报人',
+      dataIndex: 'reporter_name',
+      key: 'reporter_name',
+      width: 100,
+      align: 'center' as const
+    },
+    {
+      title: '客户名称',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      width: 240
+    },
+    {
+      title: '标准分值',
+      dataIndex: 'level',
+      key: 'level',
+      width: 110,
+      align: 'center' as const,
+      render: (val: string) => <strong style={{ color: '#3f51b5' }}>{val}</strong>
+    },
+    {
+      title: '客户关怀与拜访动作描述',
+      dataIndex: 'description',
+      key: 'description',
+      render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
+    }
+  ]
+
+  // 新签合同明细下钻状态
+  const [contractsModalVisible, setContractsModalVisible] = useState(false)
+  const [contractsLoading, setContractsLoading] = useState(false)
+  const [contractsList, setContractsList] = useState<any[]>([])
+  const [currentContractType, setCurrentContractType] = useState<string>('')
+  const [currentContractTeamName, setCurrentContractTeamName] = useState<string>('')
+
+  // 获取战队合同/新签项目明细数据
+  const handleViewContractsList = async (teamId: number, contractType: 'marketing' | 'delivery', teamName: string) => {
+    setContractsModalVisible(true)
+    setContractsLoading(true)
+    setContractsList([])
+    setCurrentContractType(contractType === 'marketing' ? '营销新签项目' : '交付新签项目')
+    setCurrentContractTeamName(teamName)
+    try {
+      const res = await get<any>(`/dashboard/team-contracts?team_id=${teamId}&contract_type=${contractType}`)
+      if (res && Array.isArray(res)) {
+        setContractsList(res)
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || '获取新签合同明细列表失败'
+      message.error(errMsg)
+      setContractsModalVisible(false)
+    } finally {
+      setContractsLoading(false)
+    }
+  }
+
+  // 二级合同新签项目明细列表表格列定义
+  const contractsColumns = [
+    {
+      title: '签单日期',
+      dataIndex: 'report_date',
+      key: 'report_date',
+      width: 110,
+      align: 'center' as const
+    },
+    {
+      title: '提报人',
+      dataIndex: 'reporter_name',
+      key: 'reporter_name',
+      width: 100,
+      align: 'center' as const
+    },
+    {
+      title: '客户名称',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      width: 240
+    },
+    {
+      title: '新签金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 120,
+      align: 'right' as const,
+      render: (val: number) => <strong style={{ color: '#cf1322' }}>{val !== undefined ? `${val} 万元` : '0.0 万元'}</strong>
+    },
+    {
+      title: '协同搭档',
+      dataIndex: 'partner_name',
+      key: 'partner_name',
+      width: 100,
+      align: 'center' as const
+    },
+    {
+      title: '项目描述与分摊说明',
+      dataIndex: 'description',
+      key: 'description',
+      render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
+    }
+  ]
+
   // 二级线索列表表格列定义
   const leadsColumns = [
     {
@@ -227,6 +426,7 @@ const Dashboard: React.FC = () => {
         budgetMoney: '',
         expectMoney: '',
         deliveryAllocations: defaultDelivery,
+        marketingAllocations: [],
         employeeName: allValues.employeeName || user?.name || '',
         happinessScore: 20,
         actionDescription: '',
@@ -261,17 +461,32 @@ const Dashboard: React.FC = () => {
         if (proj.marketing_users) {
           setSelectedProjectMarketingUsers(proj.marketing_users)
           const validMarketingUsers = proj.marketing_users.filter((mu: any) => mu.local_user_id !== null)
-          const marketingInit: any = {}
+          
+          let defaultMarketingAllocations: any[] = []
           if (validMarketingUsers.length === 1) {
-            marketingInit[`marketingRatio_${validMarketingUsers[0].local_user_id}`] = 100
+            defaultMarketingAllocations = [{
+              userId: validMarketingUsers[0].local_user_id,
+              ratio: 100
+            }]
           } else {
-            validMarketingUsers.forEach((mu: any) => {
-              marketingInit[`marketingRatio_${mu.local_user_id}`] = undefined
-            })
+            const count = validMarketingUsers.length
+            if (count > 0) {
+              const avgRatio = Math.floor(100 / count)
+              defaultMarketingAllocations = validMarketingUsers.map((mu: any, idx: number) => ({
+                userId: mu.local_user_id,
+                ratio: idx === count - 1 ? (100 - avgRatio * (count - 1)) : avgRatio
+              }))
+            }
           }
-          broadcastForm.setFieldsValue(marketingInit)
+          
+          broadcastForm.setFieldsValue({
+            marketingAllocations: defaultMarketingAllocations
+          })
         } else {
           setSelectedProjectMarketingUsers([])
+          broadcastForm.setFieldsValue({
+            marketingAllocations: []
+          })
         }
       } else {
         setSelectedProjectMarketingUsers([])
@@ -413,19 +628,28 @@ const Dashboard: React.FC = () => {
         }
 
         // B. 校验营销业绩分配比例
-        const validMarketingUsers = selectedProjectMarketingUsers.filter(mu => mu.local_user_id !== null)
-        if (validMarketingUsers.length > 0) {
+        if (values.marketingAllocations && values.marketingAllocations.length > 0) {
           let marketingRatioSum = 0
-          for (const mu of validMarketingUsers) {
-            const ratioKey = `marketingRatio_${mu.local_user_id}`
-            const ratio = parseFloat(values[ratioKey] || 0)
+          const userSet = new Set()
+          for (const item of values.marketingAllocations) {
+            if (!item.userId) {
+              message.error('营销业绩分配中存在未选择员工的记录！')
+              return
+            }
+            if (userSet.has(item.userId)) {
+              message.error('营销业绩分配人员不能重复！')
+              return
+            }
+            userSet.add(item.userId)
+            
+            const ratio = parseFloat(item.ratio || 0)
             if (isNaN(ratio) || ratio <= 0) {
-              message.error(`请为营销人员 ${mu.name} 输入合法的比例！`)
+              message.error('每个营销分摊人员的比例必须大于 0%！')
               return
             }
             marketingRatioSum += ratio
             marketingAllocations.push({
-              user_id: mu.local_user_id,
+              user_id: item.userId,
               ratio: ratio,
               amount: (ratio * contractAmt) / 100
             })
@@ -436,7 +660,7 @@ const Dashboard: React.FC = () => {
             return
           }
         } else {
-          message.error('该项目在百日系统中没有已绑定系统账号的营销人员，请先在用户管理中配置关联 CRM 用户！')
+          message.error('请添加营销新签业绩分配人员！')
           return
         }
       }
@@ -909,8 +1133,16 @@ const Dashboard: React.FC = () => {
           renderItem={(item) => (
             <List.Item>
               <Space>
-                <Tag color={item.type === 'contract' ? 'error' : item.type === 'achievement' ? 'success' : 'processing'}>
-                  {item.type === 'contract' ? '合同新签' : item.type === 'achievement' ? '幸福动作' : '工作动态'}
+                <Tag color={
+                  item.type === 'contract' ? 'error' : 
+                  item.type === 'achievement' ? 'success' : 
+                  item.type === 'milestone' ? 'warning' : 'processing'
+                }>
+                  {
+                    item.type === 'contract' ? '合同新签' : 
+                    item.type === 'achievement' ? '有效线索' : 
+                    item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '工作动态'
+                  }
                 </Tag>
                 <Text>{item.content}</Text>
               </Space>
@@ -1026,9 +1258,8 @@ const Dashboard: React.FC = () => {
             const deliveryRatioTotal = deliveryAllocationsVal.reduce((acc: number, curr: any) => acc + parseFloat(curr?.ratio || 0), 0);
             
             // 实时累计已分配的营销比例
-            const marketingRatioTotal = selectedProjectMarketingUsers
-              .filter(mu => mu.local_user_id !== null)
-              .reduce((acc: number, curr: any) => acc + parseFloat(broadcastForm.getFieldValue(`marketingRatio_${curr.local_user_id}`) || 0), 0);
+            const marketingAllocationsVal = broadcastForm.getFieldValue('marketingAllocations') || [];
+            const marketingRatioTotal = marketingAllocationsVal.reduce((acc: number, curr: any) => acc + parseFloat(curr?.ratio || 0), 0);
               
             return (
               <>
@@ -1127,75 +1358,105 @@ const Dashboard: React.FC = () => {
                 </div>
 
                 {/* 营销新签业绩分配 */}
-                {selectedProjectMarketingUsers.length > 0 && (
-                  <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
-                      营销新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
-                      <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                        (当前 CRM 项目对应的营销人员)
-                      </span>
-                    </div>
-                    {selectedProjectMarketingUsers.map((mu) => {
-                      if (mu.local_user_id === null) {
-                        return (
-                          <Row key={mu.crm_user_id} align="middle" style={{ marginBottom: 8, padding: '4px 0' }}>
-                            <Col span={10}>
-                              <span style={{ color: '#aaa', textDecoration: 'line-through' }}>
-                                {mu.name}
-                              </span>
-                            </Col>
-                            <Col span={14}>
-                              <span style={{ color: '#ff4d4f', fontSize: 12 }}>
-                                (未绑定系统账号，无法在此系统分摊)
-                              </span>
-                            </Col>
-                          </Row>
-                        );
-                      }
-                      
-                      const ratio = parseFloat(broadcastForm.getFieldValue(`marketingRatio_${mu.local_user_id}`) || 0);
-                      const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
-                      
-                      return (
-                        <Row key={mu.crm_user_id} align="middle" style={{ marginBottom: 8 }}>
-                          <Col span={10}>
-                            <span>
-                              {mu.name}（营销岗）
-                            </span>
-                          </Col>
-                          <Col span={10}>
-                            <Form.Item
-                              name={`marketingRatio_${mu.local_user_id}`}
-                              rules={[{ required: true, message: '请输入比例' }]}
-                              noStyle
-                            >
-                              <Input
-                                type="number"
-                                placeholder="比例 (%)"
-                                suffix="%"
-                                style={{ width: '100%' }}
-                              />
-                            </Form.Item>
-                          </Col>
-                          <Col span={4} style={{ paddingLeft: 12 }}>
-                            <span style={{ fontSize: 12, color: '#888' }}>
-                              {allocatedAmount} 万元
-                            </span>
-                          </Col>
-                        </Row>
-                      );
-                    })}
-                    
-                    {/* 营销比率统计 */}
-                    <div style={{ marginTop: 8, fontSize: 12, textAlign: 'right', color: '#666' }}>
-                      已分配累计比例：
-                      <span style={{ fontWeight: 'bold', color: Math.abs(marketingRatioTotal - 100) < 0.01 ? 'green' : 'red' }}>
-                        {marketingRatioTotal.toFixed(2)} %
-                      </span>
-                      （必须等于 100%）
-                    </div>
+                <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                    营销新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
+                    <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                      (当前 CRM 项目对应的营销人员分摊，支持手动增删与微调)
+                    </span>
                   </div>
-                )}
+
+                  {/* 未绑定提示 */}
+                  {selectedProjectMarketingUsers.some(mu => mu.local_user_id === null) && (
+                    <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px dashed #ffa39e', backgroundColor: '#fff1f0', borderRadius: 6 }}>
+                      <div style={{ color: '#cf1322', fontSize: 12, fontWeight: 'bold' }}>
+                        ⚠️ 提示：当前 CRM 项目的以下营销人员未绑定本系统账号，无法自动分摊：
+                      </div>
+                      <ul style={{ margin: '4px 0 0 16px', padding: 0, fontSize: 12, color: '#cf1322' }}>
+                        {selectedProjectMarketingUsers.filter(mu => mu.local_user_id === null).map(mu => (
+                          <li key={mu.crm_user_id}>{mu.name} (CRM账户ID: {mu.crm_user_id})</li>
+                        ))}
+                      </ul>
+                      <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+                        请在下方点击“+ 添加营销分摊员工”手动指定参与分配的营销人员。
+                      </div>
+                    </div>
+                  )}
+
+                  <Form.List name="marketingAllocations">
+                    {(fields, { add, remove }) => (
+                      <>
+                        {fields.map(({ key, name, ...restField }) => {
+                          const ratio = parseFloat(broadcastForm.getFieldValue(['marketingAllocations', name, 'ratio']) || 0);
+                          const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
+                          return (
+                            <Row key={key} gutter={16} align="middle" style={{ marginBottom: 8 }}>
+                              <Col span={10}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'userId']}
+                                  rules={[{ required: true, message: '请选择营销员工' }]}
+                                  noStyle
+                                >
+                                  <Select
+                                    showSearch
+                                    placeholder="选择营销分摊员工"
+                                    optionFilterProp="label"
+                                    options={usersList
+                                      .filter(u => u.position_type === 'marketing' || u.role === 'marketing_staff' || u.role === 'admin')
+                                      .map(u => ({
+                                        value: u.id,
+                                        label: `${u.name} | ${u.position || '营销/销售'}`
+                                      }))}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'ratio']}
+                                  rules={[{ required: true, message: '比例' }]}
+                                  noStyle
+                                >
+                                  <Input
+                                    type="number"
+                                    placeholder="比例 (%)"
+                                    suffix="%"
+                                    style={{ width: '100%' }}
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={4} style={{ paddingLeft: 8 }}>
+                                <span style={{ fontSize: 12, color: '#888' }}>
+                                  {allocatedAmount} 万元
+                                </span>
+                              </Col>
+                              <Col span={2}>
+                                <Button type="link" danger onClick={() => remove(name)}>
+                                  删除
+                                </Button>
+                              </Col>
+                            </Row>
+                          );
+                        })}
+                        <Form.Item noStyle>
+                          <Button type="dashed" onClick={() => add()} block style={{ marginTop: 8 }}>
+                            + 添加营销分摊员工
+                          </Button>
+                        </Form.Item>
+                      </>
+                    )}
+                  </Form.List>
+                  
+                  {/* 营销比率统计 */}
+                  <div style={{ marginTop: 8, fontSize: 12, textAlign: 'right', color: '#666' }}>
+                    已分配累计比例：
+                    <span style={{ fontWeight: 'bold', color: Math.abs(marketingRatioTotal - 100) < 0.01 ? 'green' : 'red' }}>
+                      {marketingRatioTotal.toFixed(2)} %
+                    </span>
+                    （必须等于 100%）
+                  </div>
+                </div>
                 
                 {/* 隐藏字段用来兼容之前逻辑 */}
                 <Form.Item name="amount" noStyle><Input type="hidden" /></Form.Item>
@@ -1384,7 +1645,11 @@ const Dashboard: React.FC = () => {
                   width: 130, 
                   render: (val: string, record: any) => {
                     const isLeads = record.key === 'valid_leads' || record.key === 'potential_leads';
-                    const hasValue = val && val !== '—';
+                    const isContracts = record.key === 'm_contract' || record.key === 'd_contract';
+                    const isTriangle = record.key === 'triangle';
+                    const isHappiness = record.key === 'happiness';
+                    const hasValue = val && val !== '—' && !val.startsWith('0 条') && !val.startsWith('0.0 条');
+                    
                     if (isLeads && hasValue) {
                       if (!hasPerm('drilldown_leads')) {
                         return <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>{val}</span>;
@@ -1406,7 +1671,70 @@ const Dashboard: React.FC = () => {
                         </a>
                       );
                     }
-                    return <span style={{ color: '#1677ff', fontWeight: 'bold' }}>{val}</span>;
+                    
+                    // 新签合同额下钻：仅当有实际金额且金额不为0时，才允许下钻
+                    const hasContractValue = val && val !== '—' && !val.startsWith('0 万元') && !val.startsWith('0.0 万元');
+                    if (isContracts && hasContractValue) {
+                      return (
+                        <a 
+                          style={{ 
+                            color: '#1677ff', 
+                            fontWeight: 'bold', 
+                            textDecoration: 'underline', 
+                            cursor: 'pointer' 
+                          }}
+                          onClick={() => {
+                            const contractType = record.key === 'm_contract' ? 'marketing' : 'delivery';
+                            handleViewContractsList(selectedTeamMetrics.team_id, contractType, selectedTeamMetrics.team_name);
+                          }}
+                        >
+                          {val}
+                        </a>
+                      );
+                    }
+
+                    // 售前铁三角联动下钻：仅当有实际次数且次数不为0时，才允许下钻
+                    const hasTriangleValue = val && val !== '—' && !val.startsWith('0 次') && !val.startsWith('0.0 次');
+                    if (isTriangle && hasTriangleValue) {
+                      return (
+                        <a 
+                          style={{ 
+                            color: '#1677ff', 
+                            fontWeight: 'bold', 
+                            textDecoration: 'underline', 
+                            cursor: 'pointer' 
+                          }}
+                          onClick={() => {
+                            handleViewTrianglesList(selectedTeamMetrics.team_id, selectedTeamMetrics.team_name);
+                          }}
+                        >
+                          {val}
+                        </a>
+                      );
+                    }
+
+                    // 客户幸福标准动作下钻：仅当有实际次数且次数不为0时，才允许下钻
+                    const hasHappinessValue = val && val !== '—' && !val.startsWith('0 次') && !val.startsWith('0.0 次');
+                    if (isHappiness && hasHappinessValue) {
+                      return (
+                        <a 
+                          style={{ 
+                            color: '#1677ff', 
+                            fontWeight: 'bold', 
+                            textDecoration: 'underline', 
+                            cursor: 'pointer' 
+                          }}
+                          onClick={() => {
+                            handleViewHappinessList(selectedTeamMetrics.team_id, selectedTeamMetrics.team_name);
+                          }}
+                        >
+                          {val}
+                        </a>
+                      );
+                    }
+                    
+                    // 不支持下钻（或者值为0、未考核的项目），渲染为常规无下划线的加粗状态，不再误导用户点击
+                    return <span style={{ color: '#262626', fontWeight: 'bold' }}>{val}</span>;
                   }
                 },
                 { 
@@ -1454,6 +1782,90 @@ const Dashboard: React.FC = () => {
           rowKey="id"
           pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条数据` }}
           scroll={{ x: 1800, y: 500 }}
+          bordered
+          size="small"
+        />
+      </Modal>
+
+      {/* 战队合同明细下钻 Modal */}
+      <Modal
+        title={selectedTeamMetrics ? `🔍 【${currentContractTeamName}】${currentContractType}明细列表` : "新签合同明细列表"}
+        open={contractsModalVisible}
+        onCancel={() => {
+          setContractsModalVisible(false)
+          setContractsList([])
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setContractsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1100}
+        destroyOnClose
+      >
+        <Table
+          dataSource={contractsList}
+          columns={contractsColumns}
+          loading={contractsLoading}
+          rowKey="id"
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条数据` }}
+          scroll={{ y: 500 }}
+          bordered
+          size="small"
+        />
+      </Modal>
+
+      {/* 战队售前铁三角明细下钻 Modal */}
+      <Modal
+        title={selectedTeamMetrics ? `🔍 【${currentTriangleTeamName}】售前铁三角明细列表` : "售前铁三角明细列表"}
+        open={trianglesModalVisible}
+        onCancel={() => {
+          setTrianglesModalVisible(false)
+          setTrianglesList([])
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setTrianglesModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1100}
+        destroyOnClose
+      >
+        <Table
+          dataSource={trianglesList}
+          columns={trianglesColumns}
+          loading={trianglesLoading}
+          rowKey="id"
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条数据` }}
+          scroll={{ y: 500 }}
+          bordered
+          size="small"
+        />
+      </Modal>
+
+      {/* 战队客户幸福动作明细下钻 Modal */}
+      <Modal
+        title={selectedTeamMetrics ? `🔍 【${currentHappinessTeamName}】客户幸福动作明细列表` : "客户幸福动作明细列表"}
+        open={happinessModalVisible}
+        onCancel={() => {
+          setHappinessModalVisible(false)
+          setHappinessList([])
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setHappinessModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1100}
+        destroyOnClose
+      >
+        <Table
+          dataSource={happinessList}
+          columns={happinessColumns}
+          loading={happinessLoading}
+          rowKey="id"
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条数据` }}
+          scroll={{ y: 500 }}
           bordered
           size="small"
         />

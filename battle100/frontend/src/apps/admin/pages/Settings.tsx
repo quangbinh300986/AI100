@@ -42,10 +42,10 @@ const PERMISSIONS = [
   { key: 'view_dashboard', group: '📊 作战仪表盘', label: '查看作战仪表盘', desc: '允许进入后台经营作战仪表盘页面，查看整体 PK 与实绩大盘' },
   { key: 'drilldown_leads', group: '📊 作战仪表盘', label: '下钻查看 CRM 线索明细', desc: '允许在指标详情弹窗中，点击有效/潜力线索数值以下钻查看具体的 CRM 线索明细列表' },
   
-  // 填报审核
-  { key: 'view_reports', group: '✍️ 填报审核', label: '访问填报审核页面', desc: '允许进入填报审核页面，查看公司与战队成员提交的历史申报日报列表' },
-  { key: 'approve_report', group: '✍️ 填报审核', label: '日报审核通过操作', desc: '允许执行“一键通过”或者“审核通过”动作，对数据予以确认归档' },
-  { key: 'reject_report', group: '✍️ 填报审核', label: '日报审核退回操作', desc: '允许执行“退回修改”动作，将日报打回给申报人重新填写' },
+  // 播报管理
+  { key: 'view_reports', group: '📢 播报管理', label: '访问播报管理页面', desc: '允许进入播报管理页面，查看公司与战队成员提交的历史申报日报列表' },
+  { key: 'approve_report', group: '📢 播报管理', label: '日报审核通过操作', desc: '允许执行“一键通过”或者“审核通过”动作，对数据予以确认归档' },
+  { key: 'reject_report', group: '📢 播报管理', label: '日报审核退回操作', desc: '允许执行“退回修改”动作，将日报打回给申报人重新填写' },
 
   // 目标管理
   { key: 'view_goals', group: '🎯 目标导入与管理', label: '访问目标管理页面', desc: '允许进入目标管理模块，查看四大指标的设定和周目标分解列表' },
@@ -309,7 +309,7 @@ const Settings: React.FC = () => {
         const moduleMap: Record<string, string> = {
           user: '员工用户',
           goal: '指标目标',
-          report: '填报审核',
+          report: '播报管理',
           role_permission: '权限配置',
         }
         return <Tag color="geekblue">{moduleMap[text] || text}</Tag>
@@ -477,7 +477,7 @@ const Settings: React.FC = () => {
             <Divider style={{ margin: '12px 0' }} />
 
             {/* 分组渲染细粒度权限 */}
-            {['📊 作战仪表盘', '✍️ 填报审核', '🎯 目标导入与管理', '⚙️ 系统设置'].map((group) => {
+            {['📊 作战仪表盘', '📢 播报管理', '🎯 目标导入与管理', '⚙️ 系统设置'].map((group) => {
               const groupPerms = PERMISSIONS.filter(p => p.group === group)
               return (
                 <Card
@@ -565,7 +565,7 @@ const Settings: React.FC = () => {
               >
                 <Select.Option value="user">员工用户</Select.Option>
                 <Select.Option value="goal">指标目标</Select.Option>
-                <Select.Option value="report">填报审核</Select.Option>
+                <Select.Option value="report">播报管理</Select.Option>
                 <Select.Option value="role_permission">权限配置</Select.Option>
               </Select>
               
@@ -657,7 +657,7 @@ const Settings: React.FC = () => {
                 <Descriptions.Item label="操作模块">
                   {selectedLog.target_module === 'user' ? '员工用户 (user)' :
                    selectedLog.target_module === 'goal' ? '指标目标 (goal)' :
-                   selectedLog.target_module === 'report' ? '填报审核 (report)' :
+                   selectedLog.target_module === 'report' ? '播报管理 (report)' :
                    selectedLog.target_module === 'role_permission' ? '权限配置 (role_permission)' : selectedLog.target_module}
                 </Descriptions.Item>
                 <Descriptions.Item label="操作类型">

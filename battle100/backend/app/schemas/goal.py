@@ -17,6 +17,7 @@ class PersonalGoalCreate(BaseModel):
     challenge_target: float = Field(default=0, description="挑战目标值")
     unit: Optional[str] = Field(None, description="单位")
     period: Optional[str] = Field(None, description="目标周期")
+    actual_value: Optional[float] = Field(None, description="实际完成值")
 
 
 class PersonalGoalResponse(PersonalGoalCreate):

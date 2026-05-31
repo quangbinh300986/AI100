@@ -156,6 +156,7 @@ class BroadcastResponse(BaseModel):
     event_time: Optional[datetime] = None
     created_at: datetime
     crm_opportunity_id: Optional[str] = None
+    crm_opportunity_name: Optional[str] = None
     user_name: Optional[str] = None
     team_name: Optional[str] = None
     delivery_allocations: Optional[list[AllocationItem]] = None
@@ -423,6 +424,38 @@ async def list_broadcasts(
     
     # 批量抓取这些 rows 中 crm_opportunity_id 相关的业绩分摊明细，避免 N+1
     opp_ids = [r.crm_opportunity_id for r in rows if r.crm_opportunity_id]
+    
+    # 批量从外部 CRM 系统库中拉取项目名称
+    opp_names = {}
+    if opp_ids:
+        import pymysql
+        from app.config import settings
+        try:
+            conn = pymysql.connect(
+                host=settings.CRM_DB_HOST,
+                port=settings.CRM_DB_PORT,
+                user=settings.CRM_DB_USER,
+                password=settings.CRM_DB_PASSWORD,
+                database=settings.CRM_DB_NAME,
+                charset='utf8mb4',
+                connect_timeout=3
+            )
+            cur = conn.cursor(pymysql.cursors.DictCursor)
+            placeholders = ', '.join(['%s'] * len(opp_ids))
+            query = f"""
+                SELECT id, name
+                FROM zdcrm_business_opportunity
+                WHERE id IN ({placeholders})
+            """
+            cur.execute(query, tuple(opp_ids))
+            opp_rows = cur.fetchall()
+            for o_row in opp_rows:
+                opp_names[o_row["id"]] = o_row["name"]
+            cur.close()
+            conn.close()
+        except Exception as crm_err:
+            logger.error(f"批量读取CRM项目名称失败: {crm_err}")
+
     opp_allocs = {}
     if opp_ids:
         from app.models.report import ReportDetail, DailyReport
@@ -462,6 +495,7 @@ async def list_broadcasts(
     for row in rows:
         crm_opp = row.crm_opportunity_id
         allocs = opp_allocs.get(crm_opp) if crm_opp else None
+        opp_name = opp_names.get(crm_opp) if crm_opp else None
         
         items.append(BroadcastResponse(
             id=row.id,
@@ -474,6 +508,7 @@ async def list_broadcasts(
             event_time=row.event_time,
             created_at=row.created_at,
             crm_opportunity_id=row.crm_opportunity_id,
+            crm_opportunity_name=opp_name,
             user_name=row.user_name,
             team_name=row.team_name,
             delivery_allocations=allocs["delivery"] if allocs else None,

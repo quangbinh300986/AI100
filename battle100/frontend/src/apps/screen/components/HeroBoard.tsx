@@ -6,57 +6,55 @@ interface HeroBoardProps {
   heroBoard?: RankingItem[]
   happinessBoard?: RankingItem[]
   triangleBoard?: RankingItem[]
+  leadsBoard?: RankingItem[]
 }
 
-type TabType = 'marketing' | 'happiness' | 'triangle'
+type TabType = 'marketing' | 'leads' | 'happiness' | 'triangle'
 
 const HeroBoard: React.FC<HeroBoardProps> = ({
   theme = 'theme-light-red',
   heroBoard = [],
   happinessBoard = [],
-  triangleBoard = []
+  triangleBoard = [],
+  leadsBoard = []
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('marketing')
   const timerRef = useRef<any>(null)
 
-  // 默认补齐数据，确保大屏看起来饱满
+  // 默认周签约 Mock 兜底数据（对齐截图一数据）
   const defaultHeroes: RankingItem[] = [
-    { rank: 1, name: '苏志辉', teamName: '清远战队', score: 138.5, trend: 'up' },
-    { rank: 2, name: '周展图', teamName: '广州二战队', score: 100.0, trend: 'up' },
-    { rank: 3, name: '罗志成', teamName: '东莞战队', score: 100.0, trend: 'same' },
-    { rank: 4, name: '唐焕仪', teamName: '广州一战队', score: 93.5, trend: 'down' },
-    { rank: 5, name: '张桂春', teamName: '佛山战队', score: 93.5, trend: 'up' },
-    { rank: 6, name: '何锦泉', teamName: '广州三战队（大数据）', score: 85.0, trend: 'up' },
-    { rank: 7, name: '陈文杰', teamName: '云浮战队', score: 80.0, trend: 'same' },
-    { rank: 8, name: '李晓华', teamName: '湛江战队', score: 75.0, trend: 'down' },
-    { rank: 9, name: '曾志强', teamName: '茂名战队', score: 70.0, trend: 'up' },
-    { rank: 10, name: '梁永昌', teamName: '茂名战队', score: 68.0, trend: 'same' }
+    { rank: 1, name: '董卓佼', teamName: '东莞战队', score: 21.55, trend: 'up' },
+    { rank: 2, name: '郑子鹏', teamName: '清远战队', score: 5.0, trend: 'up' },
+    { rank: 3, name: '刘训东', teamName: '茂名战队', score: 1.94, trend: 'up' },
+    { rank: 4, name: '李泽源', teamName: '广州一战队', score: 0.0, trend: 'same' },
+    { rank: 5, name: '文思凡', teamName: '广州一战队', score: 0.0, trend: 'same' }
   ]
 
+  // 默认周有效线索 Mock 兜底数据 (线索先锋奖)
+  const defaultLeads: RankingItem[] = [
+    { rank: 1, name: '苏志辉', teamName: '清远战队', score: 15, trend: 'up' },
+    { rank: 2, name: '陈露', teamName: '佛山战队', score: 11, trend: 'up' },
+    { rank: 3, name: '曾志强', teamName: '湛江战队', score: 9, trend: 'same' },
+    { rank: 4, name: '项斌强', teamName: '广州一战队', score: 7, trend: 'up' },
+    { rank: 5, name: '尹晓明', teamName: '云浮战队', score: 5, trend: 'down' }
+  ]
+
+  // 默认周客户幸福动作 Mock 兜底数据 (幸福动作卷王)
   const defaultHappiness: RankingItem[] = [
-    { rank: 1, name: '陈露', teamName: '佛山战队', score: 28.0, trend: 'up' },
-    { rank: 2, name: '梁少芬', teamName: '清远战队', score: 24.0, trend: 'up' },
-    { rank: 3, name: '温国荣', teamName: '东莞战队', score: 21.0, trend: 'same' },
-    { rank: 4, name: '唐焕仪', teamName: '广州一战队', score: 18.0, trend: 'up' },
-    { rank: 5, name: '何锦泉', teamName: '茂名战队', score: 15.0, trend: 'same' },
-    { rank: 6, name: '罗志成', teamName: '东莞战队', score: 14.0, trend: 'up' },
-    { rank: 7, name: '苏志辉', teamName: '清远战队', score: 12.0, trend: 'down' },
-    { rank: 8, name: '曾志强', teamName: '湛江战队', score: 10.0, trend: 'up' },
-    { rank: 9, name: '周展图', teamName: '广州二战队', score: 9.0, trend: 'same' },
-    { rank: 10, name: '林金龙', teamName: '云浮战队', score: 8.0, trend: 'up' }
+    { rank: 1, name: '陈露', teamName: '佛山战队', score: 18, trend: 'up' },
+    { rank: 2, name: '梁少芬', teamName: '清远战队', score: 14, trend: 'up' },
+    { rank: 3, name: '林金龙', teamName: '云浮战队', score: 11, trend: 'same' },
+    { rank: 4, name: '罗志成', teamName: '东莞战队', score: 9, trend: 'up' },
+    { rank: 5, name: '周展图', teamName: '广州二战队', score: 8, trend: 'same' }
   ]
 
+  // 默认周铁三角协作 Mock 兜底数据 (协作标杆)
   const defaultTriangle: RankingItem[] = [
-    { rank: 1, name: '项斌强', teamName: '广州一战队', score: 19.0, trend: 'up' },
-    { rank: 2, name: '曾志强', teamName: '茂名战队', score: 16.0, trend: 'up' },
-    { rank: 3, name: '黄伟明', teamName: '湛江战队', score: 14.0, trend: 'same' },
-    { rank: 4, name: '罗志成', teamName: '东莞战队', score: 11.0, trend: 'down' },
-    { rank: 5, name: '苏志辉', teamName: '清远战队', score: 9.0, trend: 'up' },
-    { rank: 6, name: '梁永昌', teamName: '茂名战队', score: 8.0, trend: 'same' },
-    { rank: 7, name: '陈露', teamName: '佛山战队', score: 7.0, trend: 'up' },
-    { rank: 8, name: '林金龙', teamName: '云浮战队', score: 7.0, trend: 'up' },
-    { rank: 9, name: '温国荣', teamName: '东莞战队', score: 6.0, trend: 'down' },
-    { rank: 10, name: '周展图', teamName: '广州二战队', score: 5.0, trend: 'same' }
+    { rank: 1, name: '项斌强', teamName: '广州一战队', score: 12, trend: 'up' },
+    { rank: 2, name: '苏志辉', teamName: '清远战队', score: 10, trend: 'up' },
+    { rank: 3, name: '曾志强', teamName: '茂名战队', score: 8, trend: 'same' },
+    { rank: 4, name: '温国荣', teamName: '东莞战队', score: 6, trend: 'down' },
+    { rank: 5, name: '梁永昌', teamName: '茂名战队', score: 5, trend: 'same' }
   ]
 
   // 定时轮播函数
@@ -66,7 +64,8 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
     }
     timerRef.current = setInterval(() => {
       setActiveTab((prev) => {
-        if (prev === 'marketing') return 'happiness'
+        if (prev === 'marketing') return 'leads'
+        if (prev === 'leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
         return 'marketing'
       })
@@ -89,9 +88,17 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
   // 获得对应榜单的数据及标题、单位
   const getTabDetails = () => {
     switch (activeTab) {
+      case 'leads':
+        return {
+          title: '🔍 周线索先锋奖榜 (当周新增有效线索)',
+          unit: '条',
+          isFloat: false,
+          list: leadsBoard.length > 0 ? leadsBoard : defaultLeads,
+          color: '#1890ff'
+        }
       case 'happiness':
         return {
-          title: '🌟 客户幸福之星榜 (交付/支撑动作累计)',
+          title: '🌟 周客户幸福动作卷王榜 (当周幸福动作次数)',
           unit: '次',
           isFloat: false,
           list: happinessBoard.length > 0 ? happinessBoard : defaultHappiness,
@@ -99,7 +106,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
         }
       case 'triangle':
         return {
-          title: '🤝 铁三角协作标杆榜 (跨部门协同联动)',
+          title: '🤝 周铁三角协作标杆榜 (当周跨部门协同联动)',
           unit: '次',
           isFloat: false,
           list: triangleBoard.length > 0 ? triangleBoard : defaultTriangle,
@@ -108,11 +115,11 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
       case 'marketing':
       default:
         return {
-          title: '🏆 签单先锋战将榜 (前线新签合同业绩)',
+          title: '🏆 签单先锋周战将榜 (当周新签合同额)',
           unit: '万',
           isFloat: true,
           list: heroBoard.length > 0 ? heroBoard : defaultHeroes,
-          color: 'var(--accent-color)'
+          color: 'var(--accent-color, #b71c1c)'
         }
     }
   }
@@ -133,7 +140,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
       <div className="scroll-corner-decor-top-right" />
       <div className="scroll-corner-decor-bottom-left" />
 
-      {/* 顶部三合一 Tab 按钮切换区 */}
+      {/* 顶部四合一 Tab 按钮切换区 */}
       <div
         style={{
           display: 'flex',
@@ -145,10 +152,11 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           {[
             { id: 'marketing', label: '签单战将' },
-            { id: 'happiness', label: '客户幸福' },
+            { id: 'leads', label: '线索先锋' },
+            { id: 'happiness', label: '幸福动作卷王' },
             { id: 'triangle', label: '铁三角协作' },
           ].map((tab) => {
             const isActive = activeTab === tab.id
@@ -162,12 +170,12 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                   background: isActive
                     ? 'linear-gradient(90deg, #b71c1c 0%, #ff4d4f 100%)'
                     : 'rgba(0,0,0,0.04)',
-                  color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                  padding: '0.4rem 0.9rem',
+                  color: isActive ? '#ffffff' : 'var(--text-secondary, #666666)',
+                  padding: '0.4rem 0.8rem',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 'bold',
-                  fontSize: '0.9rem',
+                  fontSize: '0.85rem',
                   transition: 'all 0.3s ease',
                   boxShadow: isActive ? '0 2px 8px rgba(183,28,28,0.25)' : 'none',
                 }}
@@ -177,7 +185,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
             )
           })}
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}>
           <span>⏳</span>
           8s 轮播中
         </div>
@@ -208,10 +216,10 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           paddingRight: '2px',
         }}
       >
-        {list.map((item, idx) => {
+        {list.slice(0, 5).map((item, idx) => {
           // 金银铜牌与数字名次背景色
           let badgeBg = 'transparent'
-          let badgeColor = 'var(--text-secondary)'
+          let badgeColor = 'var(--text-secondary, #666666)'
           let badgeBorder = '1px solid var(--border-color)'
 
           if (idx === 0) {
@@ -271,12 +279,12 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                     style={{
                       fontSize: '0.95rem',
                       fontWeight: 'bold',
-                      color: idx < 3 ? 'var(--accent-color)' : 'var(--text-primary)',
+                      color: idx < 3 ? 'var(--accent-color, #b71c1c)' : 'var(--text-primary)',
                     }}
                   >
                     {item.name}
                   </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.8rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', marginLeft: '0.8rem' }}>
                     {item.teamName}
                   </span>
                 </div>
@@ -285,8 +293,8 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
               {/* 业绩分数 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span className="glow-number" style={{ fontSize: '1.1rem', color: color }}>
-                  {isFloat ? item.score.toFixed(1) : Math.round(item.score)}
-                  <span style={{ fontSize: '0.8rem', marginLeft: '0.15rem', color: 'var(--text-secondary)', textShadow: 'none', fontWeight: 'bold' }}>
+                  {isFloat ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)}
+                  <span style={{ fontSize: '0.8rem', marginLeft: '0.15rem', color: 'var(--text-secondary, #666666)', textShadow: 'none', fontWeight: 'bold' }}>
                     {unit}
                   </span>
                 </span>

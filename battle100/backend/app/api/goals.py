@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.organization import Team
 from app.models.goal import PersonalGoal, TeamGoal, WeeklyTarget, GoalType, TeamGoalCategory
+from app.models.report import DailyReport, ReportDetail, DetailType, ReportStatus
 from app.schemas.goal import (
     PersonalGoalCreate,
     PersonalGoalResponse,
@@ -74,6 +75,7 @@ class PersonalGoalUpdateIn(BaseModel):
     challenge_target: float = Field(..., description="挑战目标")
     unit: Optional[str] = None
     period: Optional[str] = None
+    actual_value: Optional[float] = None
 
 
 class PersonalGoalCreateIn(BaseModel):
@@ -83,6 +85,7 @@ class PersonalGoalCreateIn(BaseModel):
     challenge_target: float = Field(..., description="挑战目标")
     unit: Optional[str] = None
     period: Optional[str] = None
+    actual_value: Optional[float] = None
 
 
 class TeamGoalUpdateIn(BaseModel):
@@ -186,6 +189,105 @@ async def sync_team_goals_from_weekly(db: AsyncSession, team_id: int):
     await db.flush()
 
 
+async def fetch_users_system_actual_values(db: AsyncSession, user_ids: List[int]) -> dict:
+    """
+    批量计算一组用户的 8 个指标的系统实际完成值。
+    返回格式：{user_id: {goal_type_str: actual_value}}
+    """
+    if not user_ids:
+        return {}
+    
+    # 初始化结果字典，将 8 项指标值初始化为 0.0
+    result = {uid: {gt.value: 0.0 for gt in GoalType} for uid in user_ids}
+    
+    # 1. 聚合幸福行动、铁三角拜访、线索数量、新签合同单数
+    stmt_reports = select(
+        DailyReport.user_id,
+        func.sum(DailyReport.happiness_actions).label("happiness_actions"),
+        func.sum(DailyReport.triangle_count).label("triangle_count"),
+        func.sum(DailyReport.leads_count).label("leads_count"),
+        func.sum(DailyReport.contract_count).label("contract_count")
+    ).where(
+        DailyReport.user_id.in_(user_ids),
+        DailyReport.status == ReportStatus.REVIEWED
+    ).group_by(DailyReport.user_id)
+    
+    res_reports = await db.execute(stmt_reports)
+    for row in res_reports.all():
+        uid = row.user_id
+        result[uid][GoalType.HAPPINESS_ACTION.value] = float(row.happiness_actions or 0.0)
+        result[uid][GoalType.TRIANGLE_COUNT.value] = float(row.triangle_count or 0.0)
+        result[uid][GoalType.LEADS_COUNT.value] = float(row.leads_count or 0.0)
+        result[uid][GoalType.CONTRACT_COUNT.value] = float(row.contract_count or 0.0)
+        
+    # 2. 聚合新签/续签合同额 (包含填报人和协同人)
+    stmt_details = select(
+        DailyReport.user_id.label("creator_id"),
+        ReportDetail.partner_user_id,
+        ReportDetail.amount
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        (DailyReport.user_id.in_(user_ids) | ReportDetail.partner_user_id.in_(user_ids))
+    )
+    
+    res_details = await db.execute(stmt_details)
+    for row in res_details.all():
+        # 累加给填报人
+        creator = row.creator_id
+        if creator in result:
+            result[creator][GoalType.CONTRACT_AMOUNT.value] += float(row.amount or 0.0)
+        # 累加给协同人
+        partner = row.partner_user_id
+        if partner and partner in result:
+            result[partner][GoalType.CONTRACT_AMOUNT.value] += float(row.amount or 0.0)
+            
+    # 3. 聚合新客户数 (去重客户名)
+    stmt_customers = select(
+        DailyReport.user_id,
+        ReportDetail.customer_name
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        DailyReport.user_id.in_(user_ids)
+    ).distinct()
+    
+    res_customers = await db.execute(stmt_customers)
+    # 内存去重计数
+    user_customers = {uid: set() for uid in user_ids}
+    for row in res_customers.all():
+        uid = row.user_id
+        if uid in user_customers and row.customer_name:
+            user_customers[uid].add(row.customer_name)
+    for uid, cust_set in user_customers.items():
+        result[uid][GoalType.NEW_CUSTOMER_COUNT.value] = float(len(cust_set))
+        
+    # 4. 聚合客户幸福故事数 (说明不为空的幸福填报明细数)
+    stmt_stories = select(
+        DailyReport.user_id,
+        func.count(ReportDetail.id).label("story_count")
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.HAPPINESS,
+        ReportDetail.description != None,
+        ReportDetail.description != '',
+        DailyReport.user_id.in_(user_ids)
+    ).group_by(DailyReport.user_id)
+    
+    res_stories = await db.execute(stmt_stories)
+    for row in res_stories.all():
+        uid = row.user_id
+        result[uid][GoalType.HAPPINESS_STORY_COUNT.value] = float(row.story_count or 0.0)
+        
+    # 5. 计算线索转化率 (合同单数 / 线索数量 * 100)
+    for uid in user_ids:
+        l_count = result[uid][GoalType.LEADS_COUNT.value]
+        c_count = result[uid][GoalType.CONTRACT_COUNT.value]
+        result[uid][GoalType.LEADS_CONVERSION_RATE.value] = round((c_count / l_count * 100), 2) if l_count > 0 else 0.0
+        
+    return result
+
+
 # ===== 1. 个人目标 (PersonalGoal) =====
 
 @router.get("/personal", response_model=list[PersonalGoalResponse], summary="获取个人目标列表(老接口兼容)")
@@ -272,8 +374,15 @@ async def list_personal_goals_paginated(
     team_res = await db.execute(select(Team))
     team_map = {t.id: t.name for t in team_res.scalars().all()}
     
+    user_ids = list(set(g.user_id for g, u in rows))
+    system_actuals = await fetch_users_system_actual_values(db, user_ids)
+
     items = []
     for goal, user in rows:
+        user_sys_vals = system_actuals.get(goal.user_id, {})
+        sys_val = user_sys_vals.get(goal.goal_type.value if hasattr(goal.goal_type, 'value') else goal.goal_type, 0.0)
+        final_actual = goal.actual_value if goal.actual_value is not None else sys_val
+
         items.append({
             "id": goal.id,
             "user_id": goal.user_id,
@@ -283,11 +392,14 @@ async def list_personal_goals_paginated(
             "team_id": user.team_id,
             "position": user.position,
             "position_type": user.position_type,
-            "goal_type": goal.goal_type,
+            "goal_type": goal.goal_type.value if hasattr(goal.goal_type, 'value') else goal.goal_type,
             "base_target": goal.base_target,
             "challenge_target": goal.challenge_target,
             "unit": goal.unit,
             "period": goal.period,
+            "actual_value": goal.actual_value,
+            "system_value": sys_val,
+            "actual": final_actual,
             "created_at": goal.created_at,
             "updated_at": goal.updated_at
         })
@@ -348,6 +460,7 @@ async def update_personal_goal(
     goal.challenge_target = goal_in.challenge_target
     goal.unit = goal_in.unit
     goal.period = goal_in.period
+    goal.actual_value = goal_in.actual_value
     
     db.add(goal)
     await db.flush()
@@ -429,6 +542,7 @@ class PersonalRecordUpdate(BaseModel):
     challenge_target: float
     unit: Optional[str] = None
     period: Optional[str] = None
+    actual_value: Optional[float] = None
 
 
 @router.post("/personal/batch-update-user-goals", summary="批量创建或更新某个员工的多维度奋斗目标")
@@ -467,6 +581,7 @@ async def batch_update_user_goals(
             pg.unit = r.unit
         if r.period is not None:
             pg.period = r.period
+        pg.actual_value = r.actual_value
         db.add(pg)
         
     await db.flush()

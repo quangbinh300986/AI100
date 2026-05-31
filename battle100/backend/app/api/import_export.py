@@ -4,11 +4,11 @@ Excel导入导出接口
 """
 
 from io import BytesIO
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 import pymysql
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from openpyxl import Workbook, load_workbook
 
 from app.database import get_db
@@ -110,7 +110,7 @@ async def import_users(
         user=current_user,
         action_type="IMPORT",
         target_module="user",
-        target_id=0,
+        target_id="0",
         description=f"Excel批量导入用户，成功导入 {imported_count} 个用户",
         before_state=None,
         after_state={"imported_count": imported_count, "errors": errors},
@@ -408,7 +408,7 @@ async def import_goals_weekly(
         user=current_user,
         action_type="IMPORT",
         target_module="goal",
-        target_id=0,
+        target_id="0",
         description=f"Excel批量导入周分解目标，成功导入 {imported_count} 条数据",
         before_state=None,
         after_state={"imported_count": imported_count, "errors": errors},
@@ -595,7 +595,7 @@ async def import_goals_personal(
         user=current_user,
         action_type="IMPORT",
         target_module="goal",
-        target_id=0,
+        target_id="0",
         description=f"Excel批量导入个人与战队多Sheet目标，成功同步 {imported_count} 条数据",
         before_state=None,
         after_state={"imported_count": imported_count, "errors": errors},
@@ -1044,5 +1044,144 @@ async def sync_goals_from_crm(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"同步线索数据失败: {str(e)}")
+
+
+@router.get("/goals/personal/export", summary="导出个人奋斗目标与完成情况Excel")
+async def export_personal_goals(
+    export_type: str = Query("goals", description="导出类型: goals(奋斗目标) 或 actuals(完成情况)"),
+    keyword: str | None = Query(None, description="姓名或手机号模糊搜索"),
+    team_id: int | None = Query(None, description="战队ID筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. 查询符合条件的所有个人目标和用户信息
+    stmt = select(PersonalGoal, User).join(User, PersonalGoal.user_id == User.id)
+    
+    if keyword:
+        keyword_filter = or_(User.name.contains(keyword), User.phone.contains(keyword))
+        stmt = stmt.where(keyword_filter)
+        
+    if team_id:
+        stmt = stmt.where(User.team_id == team_id)
+        
+    stmt = stmt.order_by(User.id, PersonalGoal.id)
+    results = await db.execute(stmt)
+    rows = results.all()
+    
+    # 2. 转换战队映射
+    team_res = await db.execute(select(Team))
+    team_map = {t.id: t.name for t in team_res.scalars().all()}
+    
+    # 3. 按用户做聚合（Pivot）
+    user_goals = {}
+    user_info = {}
+    for goal, user in rows:
+        uid = user.id
+        if uid not in user_goals:
+            user_goals[uid] = {}
+            user_info[uid] = user
+        user_goals[uid][goal.goal_type.value if hasattr(goal.goal_type, 'value') else goal.goal_type] = goal
+
+    # 如果是实际完成情况，则需要计算系统实际值
+    system_actuals = {}
+    if export_type == "actuals" and user_goals:
+        from app.api.goals import fetch_users_system_actual_values
+        system_actuals = await fetch_users_system_actual_values(db, list(user_goals.keys()))
+
+    # 4. 用 openpyxl 写入 Excel
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "个人实际完成情况" if export_type == "actuals" else "个人奋斗目标"
+    
+    from app.models.goal import GoalType
+    kpis = [
+        (GoalType.CONTRACT_AMOUNT.value, "新签/续签合同额", "万元"),
+        (GoalType.HAPPINESS_ACTION.value, "客户幸福动作完成数", "次"),
+        (GoalType.TRIANGLE_COUNT.value, "售前铁三角联动次数", "次"),
+        (GoalType.LEADS_COUNT.value, "有效线索数", "条"),
+        (GoalType.LEADS_CONVERSION_RATE.value, "线索转化率", "%"),
+        (GoalType.NEW_CUSTOMER_COUNT.value, "新客户数", "个"),
+        (GoalType.HAPPINESS_STORY_COUNT.value, "幸福故事数", "个"),
+        (GoalType.CONTRACT_COUNT.value, "新签合同单数", "个")
+    ]
+    
+    # 写入表头
+    if export_type == "goals":
+        headers = ["姓名", "岗位", "手机号", "战区", "归属战队"]
+        for _, label, unit in kpis:
+            headers.extend([f"{label}({unit}) - 基础", f"{label}({unit}) - 挑战"])
+        ws.append(headers)
+    else:
+        # 完成情况：实际/目标
+        headers = ["姓名", "岗位", "手机号", "战区", "归属战队"]
+        for _, label, unit in kpis:
+            headers.append(f"{label}(实际/基础){unit}")
+        ws.append(headers)
+        
+    def get_zone_name_by_team_id(tid: int | None) -> str:
+        if not tid:
+            return "未分配"
+        if tid in [1, 2, 3]:
+            return "第一战区"
+        if tid in [4, 5, 6]:
+            return "第二战区"
+        if tid in [7, 8, 9]:
+            return "第三战区"
+        return "未分配"
+
+    # 写入数据行
+    for uid, goals in user_goals.items():
+        user = user_info[uid]
+        team_name = team_map.get(user.team_id, "未分配") if user.team_id else "未分配"
+        zone_name = get_zone_name_by_team_id(user.team_id)
+        
+        row_data = [user.name, user.position or "—", user.phone, zone_name, team_name]
+        
+        for kpi_key, _, _ in kpis:
+            goal = goals.get(kpi_key)
+            if export_type == "goals":
+                if goal:
+                    row_data.extend([goal.base_target, goal.challenge_target])
+                else:
+                    row_data.extend(["—", "—"])
+            else:
+                # 实际完成值 / 基础目标值
+                if not goal and kpi_key != GoalType.CONTRACT_AMOUNT.value:
+                    row_data.append("—")
+                else:
+                    user_sys_vals = system_actuals.get(uid, {})
+                    sys_val = user_sys_vals.get(kpi_key, 0.0)
+                    actual_val = goal.actual_value if (goal and goal.actual_value is not None) else sys_val
+                    base_target = goal.base_target if goal else 0.0
+                    
+                    # 格式为： 实际 / 目标
+                    row_data.append(f"{actual_val} / {base_target}")
+                    
+        ws.append(row_data)
+        
+    # 保存并返回二进制文件流
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = "personal_actuals_export.xlsx" if export_type == "actuals" else "personal_goals_export.xlsx"
+    
+    # 记录审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="EXPORT",
+        target_module="goal",
+        target_id="0",
+        description=f"导出了个人目标数据，类型: {export_type}",
+        before_state=None,
+        after_state=None,
+    )
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 

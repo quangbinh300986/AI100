@@ -531,6 +531,11 @@ const Goals: React.FC = () => {
   const [editingPivotPersonal, setEditingPivotPersonal] = useState<PersonalPivotRow | null>(null)
   const [personalForm] = Form.useForm()
 
+  // 个人目标完成情况 Tab 独享状态
+  const [personalActualModalVisible, setPersonalActualModalVisible] = useState(false)
+  const [editingActualPivotRow, setEditingActualPivotRow] = useState<PersonalPivotRow | null>(null)
+  const [personalActualForm] = Form.useForm()
+
   const pivotPersonalGoals = (rawGoals: any[]): PersonalPivotRow[] => {
     const userMap: Record<number, PersonalPivotRow> = {}
     rawGoals.forEach(g => {
@@ -551,7 +556,10 @@ const Goals: React.FC = () => {
       userMap[uid].goals[g.goal_type] = {
         id: g.id,
         base_target: g.base_target,
-        challenge_target: g.challenge_target
+        challenge_target: g.challenge_target,
+        actual_value: g.actual_value,
+        system_value: g.system_value,
+        actual: g.actual
       }
     })
     return Object.values(userMap)
@@ -581,7 +589,7 @@ const Goals: React.FC = () => {
   }, [personalKeyword, personalFilterTeam])
 
   useEffect(() => {
-    if (activeTab === 'personal') {
+    if (activeTab === 'personal' || activeTab === 'personal_actual') {
       loadPersonalGoals()
     }
   }, [loadPersonalGoals, activeTab])
@@ -725,6 +733,169 @@ const Goals: React.FC = () => {
         }
       },
     })
+  }
+
+  // ==========================================
+  // 个人实际完成值 Tab 交互处理方法
+  // ==========================================
+  const handleEditPersonalActualClick = (record: PersonalPivotRow) => {
+    setEditingActualPivotRow(record)
+    setPersonalActualModalVisible(true)
+    
+    const formVals: Record<string, any> = {}
+    PERSONAL_KPI_CONFIG.forEach(kpi => {
+      const goal = record.goals[kpi.key]
+      formVals[`${kpi.key}_actual`] = goal?.actual_value ?? null
+    })
+    
+    personalActualForm.setFieldsValue({
+      user_id: record.user_id,
+      ...formVals
+    })
+  }
+
+  const handleSavePersonalActual = async () => {
+    try {
+      const values = await personalActualForm.validateFields()
+      const targetUserId = editingActualPivotRow ? editingActualPivotRow.user_id : values.user_id
+      
+      if (!targetUserId) {
+        message.warning('请选择目标员工')
+        return
+      }
+
+      const recordsToUpdate: any[] = []
+      PERSONAL_KPI_CONFIG.forEach(kpi => {
+        const goal = editingActualPivotRow?.goals[kpi.key]
+        
+        // 只有当该指标是新签额，或者该用户已分配了该目标的奋斗目标时，我们才允许并去保存它的 actual_value
+        if (kpi.key === 'contract_amount' || goal !== undefined) {
+          const actualInput = values[`${kpi.key}_actual`]
+          
+          recordsToUpdate.push({
+            user_id: targetUserId,
+            goal_type: kpi.key,
+            base_target: goal?.base_target ?? 0.0,
+            challenge_target: goal?.challenge_target ?? 0.0,
+            unit: kpi.unit,
+            period: '100天',
+            actual_value: actualInput === undefined || actualInput === '' ? null : actualInput
+          })
+        }
+      })
+
+      if (recordsToUpdate.length === 0) {
+        message.warning('无可更新的指标数据')
+        return
+      }
+
+      const res = await post<any>('/goals/personal/batch-update-user-goals', recordsToUpdate)
+      if (res) {
+        message.success('保存个人实际完成情况成功')
+        setPersonalActualModalVisible(false)
+        setEditingActualPivotRow(null)
+        loadPersonalGoals()
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '保存个人实际完成情况失败')
+    }
+  }
+
+  const handleClearPersonalActualRow = (record: PersonalPivotRow) => {
+    Modal.confirm({
+      title: '确认清空该员工的所有手动实际值吗?',
+      icon: <ExclamationCircleFilled />,
+      content: `这将会清除员工【${record.user_name}】旗下的所有手动修改的实际完成值，使其重新恢复为系统计算。`,
+      okText: '确认清空',
+      okType: 'danger',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const recordsToUpdate: any[] = []
+          PERSONAL_KPI_CONFIG.forEach(kpi => {
+            const goal = record.goals[kpi.key]
+            if (goal || kpi.key === 'contract_amount') {
+              recordsToUpdate.push({
+                user_id: record.user_id,
+                goal_type: kpi.key,
+                base_target: goal?.base_target ?? 0.0,
+                challenge_target: goal?.challenge_target ?? 0.0,
+                unit: kpi.unit,
+                period: '100天',
+                actual_value: null
+              })
+            }
+          })
+          
+          if (recordsToUpdate.length > 0) {
+            await post('/goals/personal/batch-update-user-goals', recordsToUpdate)
+          }
+          message.success('已恢复系统计算实际值')
+          loadPersonalGoals()
+        } catch (err) {
+          message.error('恢复系统计算实际值失败')
+        }
+      },
+    })
+  }
+
+  const handleBatchClearPersonalActual = () => {
+    Modal.confirm({
+      title: '确认批量清空选中员工的所有手动实际值吗?',
+      icon: <ExclamationCircleFilled />,
+      content: `这将会清空选中的 ${selectedPersonalRowKeys.length} 个员工的所有手动覆盖实绩。`,
+      okText: '确认清空',
+      okType: 'danger',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const recordsToUpdate: any[] = []
+          selectedPersonalRowKeys.forEach(uid => {
+            const pRow = personalPivotData.find(x => x.user_id === Number(uid))
+            if (pRow) {
+              PERSONAL_KPI_CONFIG.forEach(kpi => {
+                const goal = pRow.goals[kpi.key]
+                if (goal || kpi.key === 'contract_amount') {
+                  recordsToUpdate.push({
+                    user_id: pRow.user_id,
+                    goal_type: kpi.key,
+                    base_target: goal?.base_target ?? 0.0,
+                    challenge_target: goal?.challenge_target ?? 0.0,
+                    unit: kpi.unit,
+                    period: '100天',
+                    actual_value: null
+                  })
+                }
+              })
+            }
+          })
+          
+          if (recordsToUpdate.length > 0) {
+            await post('/goals/personal/batch-update-user-goals', recordsToUpdate)
+          }
+          message.success('批量恢复系统自动计算成功')
+          setSelectedPersonalRowKeys([])
+          loadPersonalGoals()
+        } catch (err) {
+          message.error('批量清空失败')
+        }
+      },
+    })
+  }
+
+  // 个人奋斗目标/实际完成值 Excel 统一导出方法
+  const handleExportPersonal = (exportType: 'goals' | 'actuals') => {
+    const token = localStorage.getItem('battle100_token') || ''
+    const keyword = personalKeyword || ''
+    const teamId = personalFilterTeam || ''
+    
+    const params = new URLSearchParams()
+    params.append('export_type', exportType)
+    params.append('token', token)
+    if (keyword) params.append('keyword', keyword)
+    if (teamId) params.append('team_id', teamId)
+    
+    window.location.href = `/api/v1/import-export/goals/personal/export?${params.toString()}`
   }
 
 
@@ -1319,6 +1490,130 @@ const Goals: React.FC = () => {
     }
   ]
 
+  // Tab 2.5：个人目标实际完成情况列定义
+  const personalActualColumns = [
+    { 
+      title: '基本信息',
+      fixed: 'left' as const,
+      children: [
+        { title: '姓名', dataIndex: 'user_name', key: 'user_name', width: 95, fixed: 'left' as const, render: (val: string) => <strong>{val}</strong> },
+        { title: '岗位', dataIndex: 'position', key: 'position', width: 120, fixed: 'left' as const },
+        { title: '手机号', dataIndex: 'user_phone', key: 'user_phone', width: 125, fixed: 'left' as const },
+        { 
+          title: '战区', 
+          key: 'zone_name', 
+          width: 100, 
+          fixed: 'left' as const, 
+          render: (_: any, record: PersonalPivotRow) => {
+            const tId = record.team_id;
+            if (!tId) return <span style={{ color: '#999' }}>未分配战区</span>;
+            
+            const zoneName = getZoneName(tId);
+            let tagColor = 'default';
+            if (zoneName === '第一战区') tagColor = 'blue';
+            if (zoneName === '第二战区') tagColor = 'purple';
+            if (zoneName === '第三战区') tagColor = 'magenta';
+            
+            return <Tag color={tagColor}>{zoneName}</Tag>;
+          } 
+        },
+        { title: '归属战队', dataIndex: 'team_name', key: 'team_name', width: 125, fixed: 'left' as const }
+      ]
+    },
+    ...PERSONAL_KPI_CONFIG.map(kpi => {
+      let headerBg = '#fafafa'
+      let titleColor = 'rgba(0, 0, 0, 0.85)'
+      if (kpi.key === 'contract_amount') {
+        headerBg = '#e6f7ff'
+        titleColor = '#096dd9'
+      } else if (kpi.key === 'happiness_action') {
+        headerBg = '#feffe6'
+        titleColor = '#ad8b00'
+      } else if (kpi.key === 'triangle_count') {
+        headerBg = '#f6ffed'
+        titleColor = '#389e0d'
+      } else if (kpi.key === 'leads_count') {
+        headerBg = '#fff2e8'
+        titleColor = '#d4380d'
+      } else if (kpi.key === 'leads_conversion_rate') {
+        headerBg = '#f9f0ff'
+        titleColor = '#531dab'
+      } else if (kpi.key === 'new_customer_count') {
+        headerBg = '#fcffe6'
+        titleColor = '#5b8c00'
+      } else if (kpi.key === 'happiness_story_count') {
+        headerBg = '#fff0f6'
+        titleColor = '#c41d7f'
+      } else if (kpi.key === 'contract_count') {
+        headerBg = '#e6fffb'
+        titleColor = '#08979c'
+      }
+
+      return {
+        title: (
+          <div style={{ 
+            background: headerBg, 
+            color: titleColor,
+            padding: '12px 8px', 
+            margin: '-16px -8px', 
+            textAlign: 'center',
+            fontWeight: 'bold',
+            borderBottom: '1px solid #f0f0f0',
+            borderRadius: '4px 4px 0 0'
+          }}>
+            {kpi.label} ({kpi.unit})
+          </div>
+        ),
+        key: kpi.key,
+        width: 140,
+        align: 'center' as const,
+        render: (_: any, record: PersonalPivotRow) => {
+          const goal = record.goals[kpi.key]
+          // 如果非新签额指标，且用户未配有该目标的奋斗目标，说明不考核，显示置灰的“—”
+          if (!goal && kpi.key !== 'contract_amount') {
+            return <span style={{ color: '#ccc' }}>—</span>
+          }
+          
+          const val = goal ? goal.actual : 0.0
+          const baseTarget = goal ? goal.base_target : 0.0
+          const isManual = goal && goal.actual_value !== null && goal.actual_value !== undefined
+
+          const actualNode = isManual ? (
+            <span 
+              style={{ color: '#2f54eb', fontWeight: 'bold', cursor: 'help' }} 
+              title={`已由管理员手动覆盖（系统计算原值: ${goal.system_value ?? 0}）`}
+            >
+              {val} <span style={{ fontSize: '10px' }}>✍️</span>
+            </span>
+          ) : (
+            <span style={{ fontWeight: '500' }}>{val}</span>
+          )
+
+          return (
+            <div>
+              {actualNode}
+              <span style={{ color: '#8c8c8c', marginLeft: 4 }} title="基础目标">/ {baseTarget}</span>
+            </div>
+          )
+        }
+      }
+    }),
+    {
+      title: '操作',
+      key: 'action',
+      width: 120,
+      fixed: 'right' as const,
+      render: (_: any, record: PersonalPivotRow) => (
+        <Space size="small">
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={!hasPerm('manage_base_targets')} onClick={() => handleEditPersonalActualClick(record)}>编辑</Button>
+          {(isAdmin || isTargetOfficer) && (
+            <Button type="link" size="small" danger disabled={!hasPerm('clear_targets')} onClick={() => handleClearPersonalActualRow(record)}>清空</Button>
+          )}
+        </Space>
+      )
+    }
+  ]
+
   // Tab 3：战队总目标列定义
   const teamGoalColumns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
@@ -1567,7 +1862,7 @@ const Goals: React.FC = () => {
         } else {
           message.success(`${info.file.name} 个人目标导入成功！共导入/更新 ${response?.imported_count || 0} 条。`)
         }
-        if (activeTab === 'personal') loadPersonalGoals()
+        if (activeTab === 'personal' || activeTab === 'personal_actual') loadPersonalGoals()
       } else if (info.file.status === 'error') {
         message.error(`${info.file.name} 导入失败`)
       }
@@ -1741,6 +2036,9 @@ const Goals: React.FC = () => {
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             extra={
               <Space>
+                <Button type="primary" ghost icon={<FileExcelOutlined />} onClick={() => handleExportPersonal('goals')}>
+                  导出目标 Excel
+                </Button>
                 {(isAdmin || isTargetOfficer) && (
                   <Button type="primary" icon={<PlusOutlined />} disabled={!hasPerm('manage_base_targets')} onClick={handleCreatePersonalClick}>
                     手动新增个人目标
@@ -1854,6 +2152,74 @@ const Goals: React.FC = () => {
               scroll={{ x: 'max-content' }}
               bordered
               rowClassName={(record, index) => index >= 18 ? 'pivot-total-row' : ''}
+            />
+          </Card>
+        </TabPane>
+
+        {/* ================================================================= */}
+        {/* TAB 5: 个人目标实际完成情况 */}
+        {/* ================================================================= */}
+        <TabPane tab="📈 个人目标完成情况" key="personal_actual">
+          <Card
+            title={`个人奋斗目标实际完成矩阵大盘（共 ${personalTotal} 人已配目标）`}
+            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+            extra={
+              <Space>
+                <Button type="primary" ghost icon={<FileExcelOutlined />} onClick={() => handleExportPersonal('actuals')}>
+                  导出实绩 Excel
+                </Button>
+                {(isAdmin || isTargetOfficer) && selectedPersonalRowKeys.length > 0 && (
+                  <Button danger icon={<DeleteOutlined />} disabled={!hasPerm('clear_targets')} onClick={handleBatchClearPersonalActual}>
+                    批量清空实际完成值 ({selectedPersonalRowKeys.length})
+                  </Button>
+                )}
+              </Space>
+            }
+          >
+            <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+              <Col xs={24} sm={12} md={6}>
+                <Input.Search
+                  placeholder="搜索姓名或手机号"
+                  allowClear
+                  value={personalKeyword}
+                  onChange={(e) => setPersonalKeyword(e.target.value)}
+                  onSearch={handlePersonalSearch}
+                  enterButton={<SearchOutlined />}
+                />
+              </Col>
+              <Col xs={12} sm={6} md={5}>
+                <Select
+                  style={{ width: '100%' }}
+                  value={personalFilterTeam}
+                  placeholder="筛选战队"
+                  onChange={(val) => { setPersonalFilterTeam(val); setPersonalPage(1); }}
+                  options={TEAM_OPTIONS}
+                />
+              </Col>
+            </Row>
+
+            <Table
+              rowSelection={{
+                selectedRowKeys: selectedPersonalRowKeys,
+                onChange: (keys) => setSelectedPersonalRowKeys(keys)
+              }}
+              dataSource={personalPivotData}
+              columns={personalActualColumns}
+              rowKey="user_id"
+              loading={personalLoading}
+              pagination={{
+                current: personalPage,
+                pageSize: personalPageSize,
+                total: personalTotal,
+                showSizeChanger: true,
+                showTotal: (t) => `共 ${t} 人已配目标`,
+                onChange: (p, ps) => {
+                  setPersonalPage(p)
+                  setPersonalPageSize(ps)
+                }
+              }}
+              scroll={{ x: 'max-content' }}
+              bordered
             />
           </Card>
         </TabPane>
@@ -2047,6 +2413,58 @@ const Goals: React.FC = () => {
                 </Row>
               </Card>
             ))}
+          </div>
+        </Form>
+      </Modal>
+
+      {/* 2.5 个人目标实际完成情况修改 Modal */}
+      <Modal
+        title="编辑个人实际完成情况"
+        open={personalActualModalVisible}
+        onOk={handleSavePersonalActual}
+        onCancel={() => {
+          setPersonalActualModalVisible(false)
+          setEditingActualPivotRow(null)
+        }}
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: !hasPerm('manage_base_targets') }}
+        width={550}
+        destroyOnClose
+      >
+        <Form form={personalActualForm} layout="vertical" style={{ paddingTop: 12 }}>
+          {editingActualPivotRow && (
+            <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f5f5f5', borderRadius: 4 }}>
+              <strong>当前编辑员工：</strong>
+              <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{editingActualPivotRow.user_name}</span> 
+              （岗位：{editingActualPivotRow.position || '未设置'}，手机号：{editingActualPivotRow.user_phone}）
+            </div>
+          )}
+
+          <div style={{ maxHeight: '420px', overflowY: 'auto', paddingRight: 8 }}>
+            {editingActualPivotRow && PERSONAL_KPI_CONFIG
+              .filter(kpi => kpi.key === 'contract_amount' || editingActualPivotRow.goals[kpi.key] !== undefined)
+              .map(kpi => {
+                const goal = editingActualPivotRow.goals[kpi.key]
+                const sysVal = goal?.system_value ?? 0
+                return (
+                  <Card 
+                    key={kpi.key} 
+                    size="small" 
+                    title={<span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>{kpi.label} ({kpi.unit})</span>}
+                    style={{ marginBottom: 12, border: '1px solid #f0f0f0', borderRadius: 6, boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}
+                  >
+                    <Form.Item 
+                      name={`${kpi.key}_actual`} 
+                      label="实际完成值" 
+                      style={{ marginBottom: 0 }}
+                      help={<span style={{ color: '#8c8c8c', fontSize: '12px' }}>留空表示：清空手动覆盖，恢复由系统自动计算实绩（系统当前计算值: <strong>{sysVal}</strong>）</span>}
+                    >
+                      <InputNumber style={{ width: '100%' }} placeholder={`系统计算中: ${sysVal}`} />
+                    </Form.Item>
+                  </Card>
+                )
+              })}
           </div>
         </Form>
       </Modal>

@@ -73,6 +73,7 @@ class DashboardResponse(BaseModel):
     heroBoard: list[RankingItem] = Field(default_factory=list, description="签单先锋榜TOP10")
     happinessBoard: list[RankingItem] = Field(default_factory=list, description="客户幸福之星榜TOP10")
     triangleBoard: list[RankingItem] = Field(default_factory=list, description="铁三角协作标杆榜TOP10")
+    leadsBoard: list[RankingItem] = Field(default_factory=list, description="线索先锋榜TOP10")
     zoneTeamsPK: dict[str, list[RankingItem]] = Field(default_factory=dict, description="战区内部战队相互PK榜单")
     dualTrackTeams: list[DualTrackTeam] = Field(default_factory=list, description="九宫格双轨战队数据")
     countdown: int = Field(default=71, description="百日倒计时天数")

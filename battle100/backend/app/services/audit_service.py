@@ -71,12 +71,13 @@ async def log_action(
         if isinstance(after_state, dict):
             after_state = {k: (v.isoformat() if isinstance(v, (datetime, date)) else (v.value if hasattr(v, "value") else v)) for k, v in after_state.items()}
 
+        target_id_str = str(target_id) if target_id is not None else None
         log = AuditLog(
             user_id=user_id,
             user_name=user_name,
             action_type=action_type,
             target_module=target_module,
-            target_id=target_id,
+            target_id=target_id_str,
             description=description,
             before_state=before_state,
             after_state=after_state

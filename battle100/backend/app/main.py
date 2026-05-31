@@ -44,10 +44,10 @@ async def init_db():
 
     # 异步预置角色权限默认配置
     from sqlalchemy import select
-    from app.database import SessionLocal
+    from app.database import AsyncSessionLocal
     from app.models.user import RolePermission
 
-    async with SessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         try:
             # 检查是否有权限记录
             count_res = await db.execute(select(RolePermission))

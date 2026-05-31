@@ -50,6 +50,9 @@ class PersonalGoal(BaseModel):
     period: Mapped[str | None] = mapped_column(
         String(50), nullable=True, comment="目标周期（如：2024Q1）"
     )
+    actual_value: Mapped[float | None] = mapped_column(
+        Float, nullable=True, comment="实际完成值（为Null表示由系统自动计算）"
+    )
 
     # ===== 关联关系 =====
     user = relationship("User", back_populates="personal_goals")

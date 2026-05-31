@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react'
 import HeaderBanner from './components/HeaderBanner'
 import KpiCards from './components/KpiCards'
-import ZoneRanking from './components/ZoneRanking' // 虽然保留但不再在主视图使用，替换为全新的三层结构
 import TrendChart from './components/TrendChart'
 import LiveFeed from './components/LiveFeed'
-import HeroBoard from './components/HeroBoard'
 import ZoneLeaderboard from './components/ZoneLeaderboard'
 import DualTrackGrid from './components/DualTrackGrid'
 import HonorHall from './components/HonorHall'
+import LeadFunnel from './components/LeadFunnel'
+import HeroBoard from './components/HeroBoard'
 import { getDashboardData } from '@shared/api/dashboard'
 import type { DashboardData } from '@shared/types'
 
@@ -16,21 +16,26 @@ const BigScreen: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null)
   const pollTimerRef = useRef<any>(null)
 
-  // 1. 锁定唯一大屏主题：烈阳红金（白天激昂）
+  // 1. 舱段控制状态
+  // 0: 指挥舱 (战区表格排名、双轨九宫格、荣誉大厅)
+  // 1: 分析舱 (四大KPI指标卡、周趋势对比图、商机漏斗、周个人排行榜三栏)
+  const [viewMode, setViewMode] = useState<0 | 1>(0)
+  const [autoRotate, setAutoRotate] = useState<boolean>(true)
+
+  // 2. 锁定唯一大屏主题：烈阳红金（白天激昂）
   const theme = 'theme-light-red'
 
-  // 2. 锁定全局 body 类
+  // 3. 锁定全局 body 类
   useEffect(() => {
     const body = document.body
     body.className = theme
   }, [])
 
-  // 3. 自动计算 4K 屏幕的 rem 基准
+  // 4. 自动计算 4K 屏幕的 rem 基准
   useEffect(() => {
     const handleResize = () => {
       const designWidth = 3840
       const currentWidth = window.innerWidth
-      // 核心调整：原系数为16，现改为28，让整个大屏字体和使用rem布局的卡片全量放大约1.75倍
       const rem = (currentWidth / designWidth) * 28
       document.documentElement.style.fontSize = `${Math.max(rem, 8)}px`
     }
@@ -40,7 +45,7 @@ const BigScreen: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // 4. 加载大屏核心数据
+  // 5. 加载大屏核心数据
   const loadScreenData = async () => {
     try {
       const res = await getDashboardData()
@@ -52,7 +57,7 @@ const BigScreen: React.FC = () => {
     }
   }
 
-  // 5. 建立 WebSocket 连接与重连心跳逻辑
+  // 6. 建立 WebSocket 连接与重连心跳逻辑
   useEffect(() => {
     loadScreenData()
 
@@ -107,6 +112,15 @@ const BigScreen: React.FC = () => {
     }
   }, [])
 
+  // 7. 自动轮播逻辑 (20秒切换一次舱段)
+  useEffect(() => {
+    if (!autoRotate) return
+    const timer = setInterval(() => {
+      setViewMode((prev) => (prev === 0 ? 1 : 0))
+    }, 20000)
+    return () => clearInterval(timer)
+  }, [autoRotate])
+
   // 计算总签约保底额完成率
   const newContractsValue = data?.kpiSummary?.newContracts?.value ?? 5578.0
   const newContractsTarget = data?.kpiSummary?.newContracts?.target ?? 12400.0
@@ -124,7 +138,16 @@ const BigScreen: React.FC = () => {
         paddingBottom: '2.5rem', // 底部留出实时横向捷报滚动条高度
       }}
     >
-      {/* 移除悬浮的主题皮肤切换控制器，锁定激昂主题 */}
+      {/* 渐入切换动画 */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fadeInCabin {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .cabin-container {
+          animation: fadeInCabin 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+        }
+      `}} />
 
       {/* 1. 顶部 HeaderBanner */}
       <HeaderBanner
@@ -134,16 +157,19 @@ const BigScreen: React.FC = () => {
         campaignName={data?.campaignName ?? '中地顾问百日奋战'}
       />
 
-      {/* 2. 百日新签合同额总进度大卡片 */}
-      <div style={{ padding: '0 2rem', marginTop: '1rem', flexShrink: 0 }}>
+      {/* 2. 总进度大卡片与舱段控制面板 */}
+      <div style={{ padding: '0 2rem', marginTop: '1rem', flexShrink: 0, display: 'flex', gap: '1.5rem' }}>
+        {/* 左侧：累计总进度卡片 */}
         <div
           className="screen-card scroll-paper"
           style={{
-            padding: '1.2rem 2.2rem',
+            flex: 3,
+            padding: '1.1rem 2.2rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.8rem',
-            border: '3px solid var(--border-color)'
+            gap: '0.7rem',
+            border: '3px solid var(--border-color)',
+            position: 'relative'
           }}
         >
           <div className="scroll-corner-decor-top-right" />
@@ -163,7 +189,7 @@ const BigScreen: React.FC = () => {
           </div>
 
           {/* 进度条轨道与红线标记 */}
-          <div style={{ position: 'relative', marginTop: '0.2rem' }}>
+          <div style={{ position: 'relative', marginTop: '0.1rem' }}>
             <div className="progress-track" style={{ height: '24px', borderRadius: '12px' }}>
               <div
                 className="progress-bar-glow"
@@ -177,7 +203,7 @@ const BigScreen: React.FC = () => {
               />
             </div>
 
-            {/* 保底红线 (设定在 60% 目标，对应大约 7440 万) */}
+            {/* 保底红线 (设定在 60% 目标) */}
             <div
               style={{
                 position: 'absolute',
@@ -212,38 +238,187 @@ const BigScreen: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* 右侧：舱段控制台卡片 */}
+        <div
+          className="screen-card scroll-paper"
+          style={{
+            flex: 1,
+            padding: '0.8rem 1.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1.2rem',
+            border: '3px solid var(--border-color)',
+            position: 'relative'
+          }}
+        >
+          <div className="scroll-corner-decor-top-right" />
+          <div className="scroll-corner-decor-bottom-left" />
+
+          {/* 切换按钮组 */}
+          <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                setViewMode(0)
+                setAutoRotate(false) // 手动点击后暂停自动轮播
+              }}
+              style={{
+                padding: '0.45rem 1rem',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                borderRadius: '6px',
+                border: viewMode === 0 ? '2px solid #b71c1c' : '1px solid var(--border-color)',
+                backgroundColor: viewMode === 0 ? '#b71c1c' : 'rgba(0,0,0,0.03)',
+                color: viewMode === 0 ? '#ffffff' : 'var(--text-primary)',
+                boxShadow: viewMode === 0 ? '0 0 10px rgba(183, 28, 28, 0.35)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+            >
+              <span>⚔️</span>
+              <span>指挥舱</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setViewMode(1)
+                setAutoRotate(false) // 手动点击后暂停自动轮播
+              }}
+              style={{
+                padding: '0.45rem 1rem',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                borderRadius: '6px',
+                border: viewMode === 1 ? '2px solid #fa8c16' : '1px solid var(--border-color)',
+                backgroundColor: viewMode === 1 ? '#fa8c16' : 'rgba(0,0,0,0.03)',
+                color: viewMode === 1 ? '#ffffff' : 'var(--text-primary)',
+                boxShadow: viewMode === 1 ? '0 0 10px rgba(250, 140, 22, 0.35)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+            >
+              <span>📊</span>
+              <span>分析舱</span>
+            </button>
+          </div>
+
+          {/* 自动轮播开关 (Switch) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-secondary, #666666)' }}>
+              自动轮播
+            </span>
+            <div
+              onClick={() => setAutoRotate(!autoRotate)}
+              style={{
+                width: '3rem',
+                height: '1.5rem',
+                borderRadius: '0.75rem',
+                backgroundColor: autoRotate ? '#b71c1c' : '#bfbfbf',
+                padding: '0.1rem',
+                cursor: 'pointer',
+                transition: 'background-color 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: autoRotate ? 'flex-end' : 'flex-start'
+              }}
+            >
+              <div
+                style={{
+                  width: '1.3rem',
+                  height: '1.3rem',
+                  borderRadius: '50%',
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  transition: 'all 0.3s ease'
+                }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 3. 主体指挥部大视窗：照抄最新红黄绿灯布局 */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '1.25rem 2.2rem 0 2.2rem',
-          gap: '1.5rem',
-          overflow: 'hidden',
-          boxSizing: 'border-box'
-        }}
-      >
-        {/* 第一层：战区龙虎榜与奖励结算 */}
-        <div style={{ flexShrink: 0 }}>
-          <ZoneLeaderboard theme={theme} zoneRanking={data?.zoneRanking} />
-        </div>
+      {/* 3. 主体舱段切换 */}
+      {viewMode === 0 ? (
+        <div
+          key="cabin-command"
+          className="cabin-container"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '1.25rem 2.2rem 0 2.2rem',
+            gap: '1.5rem',
+            overflow: 'hidden',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* 第一层：各战区战队冲刺表格 */}
+          <div style={{ flexShrink: 0 }}>
+            <ZoneLeaderboard theme={theme} zoneTeamsPK={data?.zoneTeamsPK} />
+          </div>
 
-        {/* 第二层：双轨动力 · 红黄绿灯状态（核心3x3九宫格） */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <DualTrackGrid theme={theme} teams={data?.dualTrackTeams} />
-        </div>
+          {/* 第二层：双轨动力 · 红黄绿灯状态（按战区横向分组还原） */}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <DualTrackGrid theme={theme} teams={data?.dualTrackTeams} />
+          </div>
 
-        {/* 第三层：预警与自动结算荣誉大厅 */}
-        <div style={{ flexShrink: 0, paddingBottom: '0.5rem' }}>
-          <HonorHall theme={theme} teams={data?.dualTrackTeams} />
+          {/* 第三层：预警与自动结算荣誉大厅 */}
+          <div style={{ flexShrink: 0, paddingBottom: '0.5rem' }}>
+            <HonorHall theme={theme} teams={data?.dualTrackTeams} />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div
+          key="cabin-analysis"
+          className="cabin-container"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '1.25rem 2.2rem 0 2.2rem',
+            gap: '1.5rem',
+            overflow: 'hidden',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* 第一层：KpiCards指标卡片 */}
+          <div style={{ flexShrink: 0 }}>
+            <KpiCards theme={theme} kpiSummary={data?.kpiSummary} />
+          </div>
 
-      {/* 4. 最底端：横向走马灯无缝捷报滚动栏（按需求暂缓，待开发完毕开启） */}
-      {/* <LiveFeed theme={theme} liveFeed={data?.liveFeed} /> */}
+          {/* 第二层：趋势图、线索漏斗、英雄榜周排行三栏并排 */}
+          <div style={{ flex: 1, display: 'flex', gap: '1.5rem', overflow: 'hidden', paddingBottom: '0.5rem' }}>
+            {/* 左侧：趋势对比图 */}
+            <div style={{ flex: 4, height: '100%' }}>
+              <TrendChart theme={theme} weeklyTrend={data?.weeklyTrend} />
+            </div>
+            {/* 中间：铁三角线索漏斗与重特大项目攻坚墙 */}
+            <div style={{ flex: 3, height: '100%' }}>
+              <LeadFunnel theme={theme} />
+            </div>
+            {/* 右侧：个人周排行榜榜单 */}
+            <div style={{ flex: 3, height: '100%' }}>
+              <HeroBoard
+                theme={theme}
+                heroBoard={data?.heroBoard}
+                happinessBoard={data?.happinessBoard}
+                triangleBoard={data?.triangleBoard}
+                leadsBoard={data?.leadsBoard}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. 最底端：横向走马灯无缝捷报滚动栏 */}
+      <LiveFeed theme={theme} liveFeed={data?.liveFeed} />
     </div>
   )
 }

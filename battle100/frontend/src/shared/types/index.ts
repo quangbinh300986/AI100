@@ -184,6 +184,8 @@ export interface DashboardData {
   happinessBoard?: RankingItem[]
   /** 铁三角协作标杆榜TOP10 */
   triangleBoard?: RankingItem[]
+  /** 线索先锋榜TOP10 */
+  leadsBoard?: RankingItem[]
   /** 战区内部战队相互PK数据 */
   zoneTeamsPK?: Record<string, RankingItem[]>
   /** 九宫格双轨战队数据 */

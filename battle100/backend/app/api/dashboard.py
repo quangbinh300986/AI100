@@ -28,7 +28,7 @@ logger = logging.getLogger("battle100")
 PartnerUser = aliased(User)
 
 async def get_team_marketing_actual(db: AsyncSession, team_id: int) -> float:
-    """计算战队的真实营销新签合同额（填报人是该战队营销岗，或者搭档是该战队营销岗）"""
+    """计算战队的真实营销新签合同额"""
     query = (
         select(func.coalesce(func.sum(ReportDetail.amount), 0))
         .select_from(ReportDetail)
@@ -39,15 +39,24 @@ async def get_team_marketing_actual(db: AsyncSession, team_id: int) -> float:
             DailyReport.status == ReportStatus.REVIEWED,
             ReportDetail.detail_type == DetailType.CONTRACT,
             (
-                ((User.team_id == team_id) & (User.position_type == PositionType.MARKETING)) |
-                ((PartnerUser.team_id == team_id) & (PartnerUser.position_type == PositionType.MARKETING))
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("交付新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])))
+                    )
+                )
             )
         )
     )
     return float(await db.scalar(query) or 0.0)
 
 async def get_team_delivery_actual(db: AsyncSession, team_id: int) -> float:
-    """计算战队的真实交付新签合同额（填报人是该战队交付岗，或者搭档是该战队交付岗）"""
+    """计算战队的真实交付新签合同额"""
     query = (
         select(func.coalesce(func.sum(ReportDetail.amount), 0))
         .select_from(ReportDetail)
@@ -58,8 +67,17 @@ async def get_team_delivery_actual(db: AsyncSession, team_id: int) -> float:
             DailyReport.status == ReportStatus.REVIEWED,
             ReportDetail.detail_type == DetailType.CONTRACT,
             (
-                ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
-                ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                (
+                    (ReportDetail.description.contains("交付新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("营销新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                    )
+                )
             )
         )
     )
@@ -82,13 +100,29 @@ async def get_team_weekly_marketing_actual(db: AsyncSession, start_date: date, e
     if team_id:
         query = query.where(
             (
-                ((User.team_id == team_id) & (User.position_type == PositionType.MARKETING)) |
-                ((PartnerUser.team_id == team_id) & (PartnerUser.position_type == PositionType.MARKETING))
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("交付新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])))
+                    )
+                )
             )
         )
     else:
         query = query.where(
-            (User.position_type == PositionType.MARKETING) | (PartnerUser.position_type == PositionType.MARKETING)
+            (ReportDetail.description.contains("营销新签分摊")) |
+            (
+                (~ReportDetail.description.contains("交付新签分摊")) &
+                (
+                    (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])) |
+                    (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))
+                )
+            )
         )
     return float(await db.scalar(query) or 0.0)
 
@@ -109,14 +143,29 @@ async def get_team_weekly_delivery_actual(db: AsyncSession, start_date: date, en
     if team_id:
         query = query.where(
             (
-                ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
-                ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                (
+                    (ReportDetail.description.contains("交付新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("营销新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                    )
+                )
             )
         )
     else:
         query = query.where(
-            (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])) | 
-            (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))
+            (ReportDetail.description.contains("交付新签分摊")) |
+            (
+                (~ReportDetail.description.contains("营销新签分摊")) &
+                (
+                    (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])) | 
+                    (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))
+                )
+            )
         )
     return float(await db.scalar(query) or 0.0)
 
@@ -257,6 +306,11 @@ async def get_dashboard_overview(
     if target_date is None:
         target_date = date.today()
 
+    # 计算当周区间 (每周周一开始清零重新统计周数据)
+    from datetime import timedelta
+    start_of_week = target_date - timedelta(days=target_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
     # 1. 战役累计数据统计
     # 统计去重后全公司累计合同额（只统计交付维度，过滤掉营销维度以防重复计算）
     total_amount_stmt = select(
@@ -325,7 +379,7 @@ async def get_dashboard_overview(
         validLeads=kpi_leads
     )
 
-    # 2. 战区赛马竞速榜 (实时百分比)
+    # 2. 战区赛马竞速榜 (当周新签达成率排名，每周一清零)
     zones_res = await db.execute(select(Zone).order_by(Zone.sort_order))
     zones = zones_res.scalars().all()
 
@@ -336,19 +390,31 @@ async def get_dashboard_overview(
         t_res = await db.execute(select(Team).where(Team.zone_id == z.id))
         zone_teams = t_res.scalars().all()
         
-        # 统计该战区下所有战队的已审核营销新签实际值之和作为战区实际
+        # 统计该战区下所有战队的已审核营销新签当周实际值与当周目标值之和
         z_actual = 0.0
+        z_target = 0.0
         for t in zone_teams:
-            z_actual += await get_team_marketing_actual(db, t.id)
+            t_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
+            z_actual += t_act
 
-        # 查询该战区下所有战队的目标新签保底额之和（仅包含营销新签目标，并保留两位小数）
-        z_target_res = await db.execute(
-            select(func.coalesce(func.sum(TeamGoal.base_target), 0))
-            .select_from(Team)
-            .join(TeamGoal, Team.id == TeamGoal.team_id)
-            .where(Team.zone_id == z.id, TeamGoal.category == TeamGoalCategory.MARKETING)
-        )
-        z_target = round(float(z_target_res.scalar() or 2000.0), 2)
+            # 查询该战队当周的目标
+            wt_stmt = select(WeeklyTarget).where(
+                WeeklyTarget.team_id == t.id,
+                WeeklyTarget.week_start <= target_date,
+                WeeklyTarget.week_end >= target_date
+            )
+            wt_res = await db.execute(wt_stmt)
+            wt_obj = wt_res.scalar_one_or_none()
+            t_tgt = wt_obj.marketing_base_target if wt_obj else 0.0
+            if t_tgt == 0:
+                # 兜底：均摊周度营销目标
+                g_res = await db.execute(
+                    select(TeamGoal.base_target)
+                    .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.MARKETING)
+                )
+                m_target_total = float(g_res.scalar() or 0.0)
+                t_tgt = round(m_target_total / 12, 2) if m_target_total > 0 else 50.0
+            z_target += t_tgt
 
         z_pct = round((z_actual / z_target) * 100, 2) if z_target > 0 else 0.0
         zone_ranking_list.append({
@@ -358,15 +424,26 @@ async def get_dashboard_overview(
         
         team_pk_items = []
         for t in zone_teams:
-            # 统计该战队已审核真实营销签约额
-            t_actual = await get_team_marketing_actual(db, t.id)
+            # 统计该战队已审核真实营销签约额 (周度)
+            t_actual = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, t.id)
 
-            # 获取该战队新签基准目标
-            t_target_res = await db.execute(
-                select(TeamGoal.base_target)
-                .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.MARKETING)
+            # 获取该战队当周新签目标 (周度)
+            wt_stmt = select(WeeklyTarget).where(
+                WeeklyTarget.team_id == t.id,
+                WeeklyTarget.week_start <= target_date,
+                WeeklyTarget.week_end >= target_date
             )
-            t_target = float(t_target_res.scalar() or 600.0)
+            wt_res = await db.execute(wt_stmt)
+            wt_obj = wt_res.scalar_one_or_none()
+            t_target = wt_obj.marketing_base_target if wt_obj else 0.0
+            if t_target == 0:
+                # 兜底：均摊周度营销目标
+                g_res = await db.execute(
+                    select(TeamGoal.base_target)
+                    .where(TeamGoal.team_id == t.id, TeamGoal.category == TeamGoalCategory.MARKETING)
+                )
+                m_target_total = float(g_res.scalar() or 0.0)
+                t_target = round(m_target_total / 12, 2) if m_target_total > 0 else 50.0
 
             t_pct = round((t_actual / t_target) * 100, 2) if t_target > 0 else 0.0
             team_pk_items.append({
@@ -547,7 +624,7 @@ async def get_dashboard_overview(
             )
         )
 
-    # 5. 个人英雄战将榜 TOP 10 (按新签金额降序)
+    # 5. 个人签约周战将榜 TOP 10 (按当周新签金额降序，每周一清零)
     hero_query = await db.execute(
         select(
             User.name,
@@ -556,7 +633,11 @@ async def get_dashboard_overview(
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
         .join(DailyReport, User.id == DailyReport.user_id)
-        .where(DailyReport.status == ReportStatus.REVIEWED)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week
+        )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
         .limit(10)
@@ -575,7 +656,7 @@ async def get_dashboard_overview(
             )
         )
         
-    # 6. 客户幸福之星榜 TOP 10 (按幸福动作次数降序)
+    # 6. 周客户幸福动作卷王榜 TOP 10 (按当周幸福动作次数降序，每周一清零)
     happiness_query = await db.execute(
         select(
             User.name,
@@ -584,7 +665,11 @@ async def get_dashboard_overview(
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
         .join(DailyReport, User.id == DailyReport.user_id)
-        .where(DailyReport.status == ReportStatus.REVIEWED)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week
+        )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
         .limit(10)
@@ -604,7 +689,7 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 7. 铁三角协作标杆榜 TOP 10 (按铁三角协作次数降序)
+    # 7. 周铁三角协作标杆榜 TOP 10 (按当周铁三角协作次数降序，每周一清零)
     triangle_query = await db.execute(
         select(
             User.name,
@@ -613,7 +698,11 @@ async def get_dashboard_overview(
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
         .join(DailyReport, User.id == DailyReport.user_id)
-        .where(DailyReport.status == ReportStatus.REVIEWED)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week
+        )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
         .limit(10)
@@ -624,6 +713,39 @@ async def get_dashboard_overview(
     for idx, row in enumerate(triangle_rows):
         if row.score > 0:
             triangle_board.append(
+                RankingItem(
+                    rank=idx + 1,
+                    name=row.name,
+                    teamName=row.team_name,
+                    score=float(row.score),
+                    trend="up" if idx == 0 else "same"
+                )
+            )
+
+    # 7.5. 周线索先锋奖榜 TOP 10 (按当周新增有效线索数降序，每周一清零)
+    leads_query = await db.execute(
+        select(
+            User.name,
+            Team.name.label("team_name"),
+            func.coalesce(func.sum(DailyReport.leads_count), 0).label("score")
+        ).select_from(User)
+        .join(Team, User.team_id == Team.id)
+        .join(DailyReport, User.id == DailyReport.user_id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week
+        )
+        .group_by(User.id, User.name, Team.name)
+        .order_by(desc("score"))
+        .limit(10)
+    )
+    leads_rows = leads_query.all()
+
+    leads_board = []
+    for idx, row in enumerate(leads_rows):
+        if row.score > 0:
+            leads_board.append(
                 RankingItem(
                     rank=idx + 1,
                     name=row.name,
@@ -707,7 +829,6 @@ async def get_dashboard_overview(
         campaign_end_date = date(2026, 9, 13)
     
     countdown = max(0, (campaign_end_date - target_date).days + 1)
-
     return DashboardResponse(
         kpiSummary=kpi_summary,
         zoneRanking=zone_ranking,
@@ -716,13 +837,13 @@ async def get_dashboard_overview(
         heroBoard=hero_board,
         happinessBoard=happiness_board,
         triangleBoard=triangle_board,
+        leadsBoard=leads_board,
         zoneTeamsPK=zone_teams_pk,
         dualTrackTeams=dual_track_teams,
         countdown=countdown,
         campaignName="中地顾问「百日奋战」经营冲刺大屏",
         slogan="攻坚一百天，亮剑破六千！"
     )
-
 
 @router.get("/weekly-trend", response_model=list[WeeklyTrend], summary="获取周度趋势")
 async def get_weekly_trend(
@@ -1365,3 +1486,194 @@ async def get_team_leads(
         raise HTTPException(status_code=503, detail="连接 CRM 数据库失败，无法获取线索详情")
         
     return leads_list
+
+
+@router.get("/team-contracts", summary="获取战队营销/交付新签合同明细列表")
+async def get_team_contracts(
+    team_id: int,
+    contract_type: str = Query(..., description="合同类型: marketing(营销) 或 delivery(交付)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    直连本地填报明细数据，获取战队营销或交付新签合同项目的列表
+    """
+    # 1. 验证战队是否存在
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team = team_res.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="战队不存在")
+
+    stmt = (
+        select(
+            ReportDetail.id,
+            DailyReport.report_date,
+            User.name.label("reporter_name"),
+            ReportDetail.customer_name,
+            ReportDetail.amount,
+            PartnerUser.name.label("partner_name"),
+            ReportDetail.description,
+        )
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+        )
+    )
+    
+    if contract_type == "marketing":
+        stmt = stmt.where(
+            (
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("交付新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])))
+                    )
+                )
+            )
+        )
+    elif contract_type == "delivery":
+        stmt = stmt.where(
+            (
+                (
+                    (ReportDetail.description.contains("交付新签分摊")) &
+                    ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                ) |
+                (
+                    (~ReportDetail.description.contains("营销新签分摊")) &
+                    (
+                        ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
+                        ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                    )
+                )
+            )
+        )
+    else:
+        raise HTTPException(status_code=400, detail="无效的合同新签类型")
+        
+    stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r.id,
+            "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+            "reporter_name": r.reporter_name,
+            "customer_name": r.customer_name or "—",
+            "amount": r.amount or 0.0,
+            "partner_name": r.partner_name or "—",
+            "description": r.description or "—",
+        })
+    return result
+
+
+@router.get("/team-triangles", summary="获取战队售前铁三角联动明细列表")
+async def get_team_triangles(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    直连本地填报明细数据，获取战队售前铁三角联动项目的明细列表
+    """
+    # 验证战队是否存在
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team = team_res.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="战队不存在")
+
+    stmt = (
+        select(
+            ReportDetail.id,
+            DailyReport.report_date,
+            User.name.label("reporter_name"),
+            ReportDetail.customer_name,
+            PartnerUser.name.label("partner_name"),
+            ReportDetail.description,
+        )
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.TRIANGLE,
+            User.team_id == team_id
+        )
+        .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+    )
+    
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r.id,
+            "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+            "reporter_name": r.reporter_name,
+            "customer_name": r.customer_name or "—",
+            "partner_name": r.partner_name or "—",
+            "description": r.description or "—",
+        })
+    return result
+
+
+@router.get("/team-happiness", summary="获取战队客户幸福标准动作明细列表")
+async def get_team_happiness(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    直连本地填报明细数据，获取战队客户幸福标准动作的明细列表
+    """
+    # 验证战队是否存在
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team = team_res.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="战队不存在")
+
+    stmt = (
+        select(
+            ReportDetail.id,
+            DailyReport.report_date,
+            User.name.label("reporter_name"),
+            ReportDetail.customer_name,
+            ReportDetail.happiness_level,
+            ReportDetail.description,
+        )
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.HAPPINESS,
+            User.team_id == team_id
+        )
+        .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+    )
+    
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r.id,
+            "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+            "reporter_name": r.reporter_name,
+            "customer_name": r.customer_name or "—",
+            "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
+            "description": r.description or "—",
+        })
+    return result
+
+

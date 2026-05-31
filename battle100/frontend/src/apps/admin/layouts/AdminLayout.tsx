@@ -99,7 +99,7 @@ const AdminLayout: React.FC = () => {
     }
     
     if (path.includes('/admin/reports') && !checkPermission('2', 'view_reports')) {
-      message.warning('无权访问填报审核页面')
+      message.warning('无权访问播报管理页面')
       navigate('/admin/dashboard')
     } else if (path.includes('/admin/goals') && !checkPermission('3', 'view_goals')) {
       message.warning('无权访问目标管理页面')
@@ -199,7 +199,7 @@ const AdminLayout: React.FC = () => {
     {
       key: '2',
       icon: <CheckSquareOutlined />,
-      label: '填报审核',
+      label: '播报管理',
     },
     {
       key: '3',

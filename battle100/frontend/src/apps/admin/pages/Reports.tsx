@@ -89,6 +89,7 @@ interface BroadcastItem {
   event_time?: string
   created_at: string
   crm_opportunity_id?: string
+  crm_opportunity_name?: string
   user_name?: string
   team_name?: string
   delivery_allocations?: any[]
@@ -719,18 +720,40 @@ const Reports: React.FC = () => {
       title: 'CRM商机关联',
       dataIndex: 'crm_opportunity_id',
       key: 'crm_opportunity_id',
-      width: 140,
-      render: (val: string) => {
+      width: 180,
+      render: (val: string, record: BroadcastItem) => {
         if (!val) return <span style={{ color: '#ccc' }}>未关联</span>
         return (
-          <Space>
-            <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#666' }}>{val}</span>
-            <Button 
-              type="text" 
-              size="small" 
-              icon={<CopyOutlined style={{ fontSize: 11, color: '#1890ff' }} />} 
-              onClick={() => copyToClipboard(val)} 
-            />
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            {record.crm_opportunity_name ? (
+              <div 
+                style={{ 
+                  fontWeight: 'bold', 
+                  color: '#262626', 
+                  whiteSpace: 'normal', 
+                  wordBreak: 'break-all',
+                  fontSize: 13 
+                }}
+              >
+                {record.crm_opportunity_name}
+              </div>
+            ) : (
+              <span style={{ color: '#8c8c8c', fontSize: 12 }}>（暂无项目名称）</span>
+            )}
+            <Space size={4}>
+              <Tooltip title={val} placement="topLeft">
+                <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#8c8c8c' }}>
+                  {val.length > 8 ? `${val.substring(0, 8)}...` : val}
+                </span>
+              </Tooltip>
+              <Button 
+                type="text" 
+                size="small" 
+                style={{ height: 20, width: 20, padding: 0 }}
+                icon={<CopyOutlined style={{ fontSize: 10, color: '#1890ff' }} />} 
+                onClick={() => copyToClipboard(val)} 
+              />
+            </Space>
           </Space>
         )
       }
