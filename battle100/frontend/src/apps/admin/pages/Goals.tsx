@@ -296,6 +296,9 @@ const Goals: React.FC = () => {
   const [editingUser, setEditingUser] = useState<UserItem | null>(null)
   const [editForm] = Form.useForm()
 
+  const [createUserModalVisible, setCreateUserModalVisible] = useState(false)
+  const [createForm] = Form.useForm()
+
   const [assignTeamModalVisible, setAssignTeamModalVisible] = useState(false)
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
 
@@ -431,6 +434,38 @@ const Goals: React.FC = () => {
       loadUsers()
     } catch (err: any) {
       message.error(err?.response?.data?.detail || '保存修改失败')
+    }
+  }
+
+  const handleCreateUserClick = () => {
+    setCreateUserModalVisible(true)
+    createForm.resetFields()
+    createForm.setFieldsValue({
+      password: '123456',
+      role: 'staff'
+    })
+  }
+
+  const handleSaveCreateUser = async () => {
+    try {
+      const values = await createForm.validateFields()
+      await post('/users', {
+        name: values.name,
+        phone: values.phone,
+        password: values.password,
+        position: values.position || null,
+        position_type: values.position_type || null,
+        third_class_bar: values.third_class_bar || null,
+        team_id: values.team_id || null,
+        role: values.role,
+        dingtalk_id: values.dingtalk_id || null,
+        crm_user_id: values.crm_user_id || null
+      })
+      message.success('新员工已成功创建')
+      setCreateUserModalVisible(false)
+      loadUsers()
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '创建员工失败')
     }
   }
 
@@ -1947,22 +1982,27 @@ const Goals: React.FC = () => {
             title={`员工列表与目标官配置（共 ${usersTotal} 人）`}
             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
             extra={
-              selectedUserRowKeys.length > 0 && (
-                <Space>
-                  <Button type="primary" icon={<UserOutlined />} onClick={() => setAssignRoleModalVisible(true)}>
-                    批量分配角色 ({selectedUserRowKeys.length})
-                  </Button>
-                  <Button type="primary" icon={<TagsOutlined />} onClick={() => setAssignPosTypeModalVisible(true)}>
-                    批量分配岗位 ({selectedUserRowKeys.length})
-                  </Button>
-                  <Button type="primary" icon={<TeamOutlined />} onClick={() => setAssignTeamModalVisible(true)}>
-                    批量分配战队 ({selectedUserRowKeys.length})
-                  </Button>
-                  <Button danger icon={<DeleteOutlined />} onClick={handleBatchDeleteUsers}>
-                    批量删除 ({selectedUserRowKeys.length})
-                  </Button>
-                </Space>
-              )
+              <Space>
+                {selectedUserRowKeys.length > 0 && (
+                  <>
+                    <Button type="primary" icon={<UserOutlined />} onClick={() => setAssignRoleModalVisible(true)}>
+                      批量分配角色 ({selectedUserRowKeys.length})
+                    </Button>
+                    <Button type="primary" icon={<TagsOutlined />} onClick={() => setAssignPosTypeModalVisible(true)}>
+                      批量分配岗位 ({selectedUserRowKeys.length})
+                    </Button>
+                    <Button type="primary" icon={<TeamOutlined />} onClick={() => setAssignTeamModalVisible(true)}>
+                      批量分配战队 ({selectedUserRowKeys.length})
+                    </Button>
+                    <Button danger icon={<DeleteOutlined />} onClick={handleBatchDeleteUsers}>
+                      批量删除 ({selectedUserRowKeys.length})
+                    </Button>
+                  </>
+                )}
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateUserClick}>
+                  新增用户
+                </Button>
+              </Space>
             }
           >
             <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
@@ -2342,6 +2382,71 @@ const Goals: React.FC = () => {
                 <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
               ))}
             </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 新增员工 Modal */}
+      <Modal
+        title="新增员工"
+        open={createUserModalVisible}
+        onOk={handleSaveCreateUser}
+        onCancel={() => {
+          setCreateUserModalVisible(false)
+        }}
+        okText="确认创建"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" style={{ paddingTop: 12 }}>
+          <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入员工姓名' }]}>
+            <Input placeholder="请输入姓名" />
+          </Form.Item>
+          <Form.Item name="phone" label="手机号" rules={[
+            { required: true, message: '请输入手机号' },
+            { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式' }
+          ]}>
+            <Input placeholder="请输入手机号" />
+          </Form.Item>
+          <Form.Item name="password" label="初始登录密码" rules={[
+            { required: true, message: '请输入初始登录密码' },
+            { min: 6, message: '密码长度不能少于6位' }
+          ]}>
+            <Input.Password placeholder="请输入初始密码（默认预填：123456）" />
+          </Form.Item>
+          <Form.Item name="position" label="岗位">
+            <Input placeholder="请输入岗位描述" />
+          </Form.Item>
+          <Form.Item name="third_class_bar" label="三级巴">
+            <Input placeholder="请输入三级巴（如：技术8巴（江门））" />
+          </Form.Item>
+          <Form.Item name="position_type" label="岗位类别" rules={[{ required: true, message: '请选择岗位类别' }]}>
+            <Select placeholder="请选择岗位类别">
+              {POSITION_TYPE_OPTIONS.filter(o => o.value !== '').map(o => (
+                <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="team_id" label="归属战队">
+            <Select placeholder="请选择归属战队">
+              <Select.Option value={null}>未分配 (空)</Select.Option>
+              {TEAM_SELECT_OPTIONS.map(o => (
+                <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="role" label="系统角色/权限" rules={[{ required: true, message: '请选择系统权限' }]}>
+            <Select placeholder="请选择系统权限">
+              {ROLE_OPTIONS.filter(o => o.value !== '').map(o => (
+                <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="dingtalk_id" label="钉钉用户ID">
+            <Input placeholder="请输入钉钉用户ID（选填，用于考勤或消息对接）" />
+          </Form.Item>
+          <Form.Item name="crm_user_id" label="CRM系统用户ID">
+            <Input placeholder="请输入CRM系统用户ID（选填，用于新签业绩自动关联）" />
           </Form.Item>
         </Form>
       </Modal>
