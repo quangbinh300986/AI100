@@ -125,7 +125,7 @@ const BigScreen: React.FC = () => {
         width: '100vw',
         overflow: 'hidden',
         boxSizing: 'border-box',
-        paddingBottom: '0.5rem', // 暂停底部滚动播报后收回高度
+        paddingBottom: '3.5rem', // 开启底部滚动播报并留出足够高度
       }}
     >
       {/* 渐入切换动画 */}
@@ -279,6 +279,9 @@ const BigScreen: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* 底部实时战报走马灯滚动播报 */}
+      <LiveFeed theme={theme} liveFeed={data?.liveFeed} />
     </div>
   )
 }
