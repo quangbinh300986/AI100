@@ -180,12 +180,12 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.5rem',
+          gap: '0.3rem', // 压缩间隙，使 10 名展示得更紧凑
           overflowY: 'auto',
           paddingRight: '2px',
         }}
       >
-        {list.slice(0, 5).map((item, idx) => {
+        {list.slice(0, 10).map((item, idx) => {
           // 金银铜牌与数字名次背景色
           let badgeBg = 'transparent'
           let badgeColor = 'var(--text-secondary, #666666)'
@@ -212,7 +212,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '0.5rem 0.9rem',
+                padding: '0.32rem 0.6rem', // 缩减内边距，减少单项高度
                 background: idx < 3 
                   ? 'rgba(183, 28, 28, 0.04)' 
                   : 'rgba(0, 0, 0, 0.01)',
@@ -223,12 +223,12 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                 transition: 'all 0.3s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 {/* 排名圆形徽章 */}
                 <div
                   style={{
-                    width: '26px',
-                    height: '26px',
+                    width: '24px',
+                    height: '24px',
                     borderRadius: '50%',
                     background: badgeBg,
                     color: badgeColor,
@@ -237,7 +237,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 'bold',
-                    fontSize: '0.85rem',
+                    fontSize: '0.8rem',
                     boxShadow: idx < 3 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
                   }}
                 >
@@ -246,28 +246,28 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                 <div>
                   <span
                     style={{
-                      fontSize: '0.95rem',
+                      fontSize: '0.9rem',
                       fontWeight: 'bold',
                       color: idx < 3 ? 'var(--accent-color, #b71c1c)' : 'var(--text-primary)',
                     }}
                   >
                     {item.name}
                   </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', marginLeft: '0.8rem' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #666666)', marginLeft: '0.6rem' }}>
                     {item.teamName}
                   </span>
                 </div>
               </div>
 
               {/* 业绩分数 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <span className="glow-number" style={{ fontSize: '1.1rem', color: color }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="glow-number" style={{ fontSize: '1.0rem', color: color }}>
                   {isFloat ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)}
-                  <span style={{ fontSize: '0.8rem', marginLeft: '0.15rem', color: 'var(--text-secondary, #666666)', textShadow: 'none', fontWeight: 'bold' }}>
+                  <span style={{ fontSize: '0.75rem', marginLeft: '0.15rem', color: 'var(--text-secondary, #666666)', textShadow: 'none', fontWeight: 'bold' }}>
                     {unit}
                   </span>
                 </span>
-                <span style={{ fontSize: '0.85rem' }}>
+                <span style={{ fontSize: '0.8rem' }}>
                   {item.trend === 'up' ? '🔺' : item.trend === 'down' ? '🔻' : '➖'}
                 </span>
               </div>
