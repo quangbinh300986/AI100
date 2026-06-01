@@ -100,15 +100,16 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
     <div
       className="screen-card scroll-paper"
       style={{
-        padding: '1.5rem 1.8rem',
-        height: 'calc(100% - 3rem)',
+        padding: '1.25rem 1.5rem', // 对齐中间栏内间距
+        height: '100%', // 高度设为 100% 自适应
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box' // 强制使用 border-box 对齐底部
       }}
     >
       {/* 宣纸四角包边 */}
-      <div className="scroll-corner-decor-top-right" />
-      <div className="scroll-corner-decor-bottom-left" />
+      <div className="scroll-corner-decor-top-right" style={{ transform: 'scale(0.6)' }} />
+      <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.6)' }} />
 
       {/* 顶部四合一 Tab 按钮切换区 */}
       <div

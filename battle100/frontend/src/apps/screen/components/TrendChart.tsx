@@ -90,7 +90,7 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: '10%', // 增大底部留白，保证 X 轴文本在容器内完美显现，不被截断
       top: '15%',
       containLabel: true
     },
@@ -155,29 +155,31 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
     <div
       className={`screen-card ${isScrollTheme ? 'scroll-paper' : ''}`}
       style={{
-        padding: isScrollTheme ? '1.5rem 1.8rem' : '1.5rem',
-        height: 'calc(100% - 3rem)',
+        padding: isScrollTheme ? '1.25rem 1.5rem' : '1.25rem', // 对齐中间栏 padding
+        height: '100%', // 高度设为 100% 自适应
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box' // 强制使用 border-box 避免向下溢出
       }}
     >
       {/* 宣纸四角包边 */}
-      {isScrollTheme && <div className="scroll-corner-decor-top-right" />}
-      {isScrollTheme && <div className="scroll-corner-decor-bottom-left" />}
+      {isScrollTheme && <div className="scroll-corner-decor-top-right" style={{ transform: 'scale(0.6)' }} />}
+      {isScrollTheme && <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.6)' }} />}
 
       <h3
         style={{
-          margin: '0 0 1rem 0',
-          fontSize: '1.2rem',
+          margin: '0 0 0.8rem 0', // 压缩底部边距
+          fontSize: '1.15rem', // 对齐中间栏标题字号
           color: lineColor,
           borderBottom: '2px solid var(--border-color)',
-          paddingBottom: '0.8rem',
-          fontWeight: 'bold'
+          paddingBottom: '0.6rem', // 对齐中间栏标题间隙
+          fontWeight: 'bold',
+          flexShrink: 0
         }}
       >
         📈 累计合同新签周趋势对比 (万元)
       </h3>
-      <div style={{ flex: 1, width: '100%' }}>
+      <div style={{ flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' }}>
         <ReactECharts key={theme} option={option} style={{ height: '100%', width: '100%' }} />
       </div>
     </div>
