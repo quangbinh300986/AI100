@@ -329,8 +329,8 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'flex-start',
-                        gap: '0.25rem', // 压缩内部行间距
-                        padding: '0.35rem 0.5rem', // 压缩卡片内边距使卡片精致变矮
+                        gap: '0.45rem', // 调大间隙以自然填充空间
+                        padding: '0.55rem 0.75rem', // 调大内边距以使字号舒展，消除空白
                         border: '1px solid rgba(0,0,0,0.06)',
                         borderRadius: '6px',
                         background: '#ffffff',

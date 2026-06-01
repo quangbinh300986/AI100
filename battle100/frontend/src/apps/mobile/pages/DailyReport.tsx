@@ -1147,7 +1147,7 @@ export default function DailyReport() {
                       clickable
                       onClick={() => handleAddAllocMember(u.id)}
                     >
-                      <span style={{ fontSize: 13 }}>{u.name} ({u.role === 'admin' ? '管理员' : u.role === 'team_leader' ? '战队长' : '开发员工'})</span>
+                      <span style={{ fontSize: 13 }}>{u.name}{u.role === 'admin' ? ' (管理员)' : u.role === 'team_leader' ? ' (战队长)' : ''}</span>
                     </List.Item>
                   ))}
                 </List>
