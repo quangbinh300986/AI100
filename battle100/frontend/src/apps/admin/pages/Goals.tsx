@@ -195,7 +195,7 @@ const WEEK_RANGES = [
   { week: 12, range: '8.17-8.23' },
   { week: 13, range: '8.24-8.30' },
   { week: 14, range: '8.31-9.6' },
-  { week: 15, range: '9.7-9.13' },
+  { week: 15, range: '9.7-9.8' },
 ]
 
 /* 战队与指标行的透视渲染模板 */

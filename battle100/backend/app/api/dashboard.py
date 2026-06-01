@@ -582,7 +582,7 @@ async def get_dashboard_overview(
         12: (date(2026, 8, 17), date(2026, 8, 23)),
         13: (date(2026, 8, 24), date(2026, 8, 30)),
         14: (date(2026, 8, 31), date(2026, 9, 6)),
-        15: (date(2026, 9, 7), date(2026, 9, 13))
+        15: (date(2026, 9, 7), date(2026, 9, 8))
     }
     for w in weekly_periods:
         week_num = w.week_number
@@ -1101,7 +1101,7 @@ async def get_dashboard_overview(
     max_end_date_res = await db.execute(select(func.max(WeeklyTarget.week_end)))
     campaign_end_date = max_end_date_res.scalar()
     if not campaign_end_date:
-        campaign_end_date = date(2026, 9, 13)
+        campaign_end_date = date(2026, 9, 8)
     
     countdown = max(0, (campaign_end_date - target_date).days + 1)
     return DashboardResponse(
@@ -1160,7 +1160,7 @@ async def get_weekly_trend(
         12: (date(2026, 8, 17), date(2026, 8, 23)),
         13: (date(2026, 8, 24), date(2026, 8, 30)),
         14: (date(2026, 8, 31), date(2026, 9, 6)),
-        15: (date(2026, 9, 7), date(2026, 9, 13))
+        15: (date(2026, 9, 7), date(2026, 9, 8))
     }
     for row in target_rows:
         week_num = row.week_number
@@ -2037,7 +2037,7 @@ async def generate_daily_report(
     max_end_date_res = await db.execute(select(func.max(WeeklyTarget.week_end)))
     campaign_end_date = max_end_date_res.scalar()
     if not campaign_end_date:
-        campaign_end_date = date(2026, 9, 13)
+        campaign_end_date = date(2026, 9, 8)
     countdown = max(0, (campaign_end_date - target_date).days + 1)
     campaign_day = 101 - countdown
     if campaign_day < 1:

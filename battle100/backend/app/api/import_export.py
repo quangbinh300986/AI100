@@ -233,7 +233,7 @@ async def import_goals_weekly(
         12: (date(2026, 8, 17), date(2026, 8, 23)),
         13: (date(2026, 8, 24), date(2026, 8, 30)),
         14: (date(2026, 8, 31), date(2026, 9, 6)),
-        15: (date(2026, 9, 7), date(2026, 9, 13))
+        15: (date(2026, 9, 7), date(2026, 9, 8))
     }
 
     week_columns = {}
