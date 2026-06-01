@@ -503,7 +503,11 @@ async def get_dashboard_overview(
 
             team_pk_items.append({
                 "name": t.name,
-                "score": t_pct
+                "score": t_pct,
+                "weeklyMarketingActual": round(t_m_actual, 2),
+                "weeklyMarketingTarget": round(t_m_target, 2),
+                "weeklyDeliveryActual": round(t_d_actual, 2),
+                "weeklyDeliveryTarget": round(t_d_target, 2)
             })
             
         # 在战区组内，按完成百分比降序排列
@@ -516,7 +520,11 @@ async def get_dashboard_overview(
                     name=item["name"],
                     score=item["score"],
                     teamName=z.name,
-                    trend="up" if t_idx == 0 else "same"
+                    trend="up" if t_idx == 0 else "same",
+                    weeklyMarketingActual=item["weeklyMarketingActual"],
+                    weeklyMarketingTarget=item["weeklyMarketingTarget"],
+                    weeklyDeliveryActual=item["weeklyDeliveryActual"],
+                    weeklyDeliveryTarget=item["weeklyDeliveryTarget"]
                 )
             )
         zone_teams_pk[z.name] = ranking_items
@@ -661,7 +669,12 @@ async def get_dashboard_overview(
         team_name = t.name if t else "冲刺大本营"
         user_name = u.name if u else "冲刺队员"
         
-        time_str = d.report.reviewed_at.strftime("%H:%M") if (d.report and d.report.reviewed_at) else "刚刚"
+        if d.report and d.report.reviewed_at:
+            # reviewed_at 储存为 UTC 时间，加 8 小时转换为东八区中国时间
+            local_time = d.report.reviewed_at + timedelta(hours=8)
+            time_str = local_time.strftime("%H:%M")
+        else:
+            time_str = "刚刚"
         content = ""
         feed_type = "info"
         

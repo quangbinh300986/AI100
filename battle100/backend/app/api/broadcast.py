@@ -142,6 +142,8 @@ class BroadcastCreate(BaseModel):
     delivery_allocations: Optional[list[AllocationItem]] = None
     marketing_allocations: Optional[list[AllocationItem]] = None
     attachment_urls: Optional[list[str]] = None
+    copartners: Optional[list[str]] = None
+    marketing_copartners: Optional[list[str]] = None
 
 
 class BroadcastResponse(BaseModel):
@@ -198,18 +200,69 @@ async def get_crm_projects(
         )
         cur = conn.cursor(pymysql.cursors.DictCursor)
         
-        # 只查询未删除、非暂停状态，且最后更新时间在当月（含）以后的项目，同时拉取营销人员列 market_user_id
-        query = """
-            SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
-            FROM zdcrm_business_opportunity
-            WHERE progress = %s
-              AND update_time >= %s
-              AND is_del = '0'
-              AND (is_suspension = '0' OR is_suspension IS NULL)
-            ORDER BY create_time DESC
-            LIMIT 500
-        """
-        cur.execute(query, (progress, start_of_month))
+        # 如果是中标确定 (progress=75)，从新表 tender_base_info 中取数
+        if progress == 75:
+            query = """
+                SELECT
+                    t.id,
+                    t.project_name AS name,
+                    t.customer_company AS customer_name,
+                    t.tender_money AS budget_money,
+                    t1.win_money AS expect_money,
+                    75 AS progress
+                FROM
+                    tender_base_info t
+                LEFT JOIN(
+                    SELECT tender_base_info_id, win_money, tenderer 
+                    FROM tender_company_info
+                    WHERE status='0' AND win_status='1' AND parent_id = '0'
+                ) t1 ON t.id = t1.tender_base_info_id
+                WHERE t.status='0'
+                  AND (t1.tenderer LIKE '%%广东中地土地房地产评估与规划设计有限公司%%' 
+                       OR t1.tenderer LIKE '%%德恒城乡规划设计研究（广东）有限公司%%')
+                  AND t.win_status = '1'
+                  AND COALESCE(t.win_confirm_time, t.confirm_time) >= '2026-06-01 00:00:00'
+                ORDER BY COALESCE(t.win_confirm_time, t.confirm_time) DESC
+                LIMIT 500
+            """
+            cur.execute(query)
+        elif progress == 90:
+            # 如果是已完成合同 (progress=90)，从 contract 表中取数
+            query = """
+                SELECT 
+                    c.id, 
+                    c.contract_name AS name, 
+                    c.contract_no,
+                    c.contract_money,
+                    cc.customer_name,
+                    ba.province,
+                    ba.city,
+                    ba.district,
+                    c.signer,
+                    90 AS progress
+                FROM contract c 
+                LEFT JOIN crm_customer cc ON cc.id = c.owner AND cc.status ='0'
+                LEFT JOIN bus_address ba ON ba.bus_id = c.id AND ba.bus_type ='contract' AND ba.status ='0'
+                WHERE c.status ='0'
+                  AND c.contract_status IN ('已签订','已验收')
+                  AND c.signing_date >= '2026-06-01 00:00:00'
+                ORDER BY c.signing_date DESC
+                LIMIT 500
+            """
+            cur.execute(query)
+        else:
+            # 只查询未删除、非暂停状态，且最后更新时间在当月（含）以后的项目，同时拉取营销人员列 market_user_id
+            query = """
+                SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
+                FROM zdcrm_business_opportunity
+                WHERE progress = %s
+                  AND update_time >= %s
+                  AND is_del = '0'
+                  AND (is_suspension = '0' OR is_suspension IS NULL)
+                ORDER BY create_time DESC
+                LIMIT 500
+            """
+            cur.execute(query, (progress, start_of_month))
         projects = cur.fetchall()
         
         # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID
@@ -218,19 +271,23 @@ async def get_crm_projects(
             ReportDetail.crm_opportunity_id != ""
         )
         used_opp_res = await db.execute(used_opp_stmt)
-        used_opp_ids = set(used_opp_res.scalars().all())
-        if include_opp_id and include_opp_id in used_opp_ids:
-            used_opp_ids.discard(include_opp_id)
+        used_opp_ids = set(str(x) for x in used_opp_res.scalars().all())
+        if include_opp_id and str(include_opp_id) in used_opp_ids:
+            used_opp_ids.discard(str(include_opp_id))
 
         # 批量获取关联人员的中文姓名与本地系统 ID 以免陷入 O(N) 循环查询
         all_user_codes = set()
+        all_signers = set()
         for p in projects:
-            if p["id"] in used_opp_ids:
+            if str(p["id"]) in used_opp_ids:
                 continue
             m_user_str = p.get("market_user_id")
             if m_user_str:
                 codes = [c.strip() for c in m_user_str.split(",") if c.strip()]
                 all_user_codes.update(codes)
+            signer_name = p.get("signer")
+            if signer_name:
+                all_signers.add(signer_name.strip())
 
         user_code_to_name = {}
         if all_user_codes:
@@ -240,12 +297,12 @@ async def get_crm_projects(
             for row in cur.fetchall():
                 user_code_to_name[row["user_code"]] = row["user_name"]
 
-        # 从本地系统批量根据【中文人名】查询映射
+        # 从本地系统批量根据【中文人名】查询映射 (融合 sys_user 与 contract signer 人名)
         local_user_map = {}
-        if user_code_to_name:
-            all_names = list(user_code_to_name.values())
+        target_names = list(user_code_to_name.values()) + list(all_signers)
+        if target_names:
             stmt = select(User.id, User.name).where(
-                User.name.in_(all_names),
+                User.name.in_(target_names),
                 User.is_active == True
             )
             local_users_res = await db.execute(stmt)
@@ -254,28 +311,46 @@ async def get_crm_projects(
 
         results = []
         for p in projects:
-            if p["id"] in used_opp_ids:
+            opp_id_str = str(p["id"])
+            if opp_id_str in used_opp_ids:
                 continue
             m_users = []
-            m_user_str = p.get("market_user_id")
-            if m_user_str:
-                codes = [c.strip() for c in m_user_str.split(",") if c.strip()]
-                for code in codes:
-                    uname = user_code_to_name.get(code, code)
-                    # 通过真实姓名（人名）匹配本地系统 ID
-                    uid = local_user_map.get(uname)
+            
+            if progress == 90:
+                signer_name = p.get("signer")
+                if signer_name:
+                    signer_name = signer_name.strip()
+                    uid = local_user_map.get(signer_name)
                     m_users.append({
-                        "crm_user_id": code,
-                        "name": uname,
+                        "crm_user_id": signer_name,
+                        "name": signer_name,
                         "local_user_id": uid
                     })
+            else:
+                m_user_str = p.get("market_user_id")
+                if m_user_str:
+                    codes = [c.strip() for c in m_user_str.split(",") if c.strip()]
+                    for code in codes:
+                        uname = user_code_to_name.get(code, code)
+                        # 通过真实姓名（人名）匹配本地系统 ID
+                        uid = local_user_map.get(uname)
+                        m_users.append({
+                            "crm_user_id": code,
+                            "name": uname,
+                            "local_user_id": uid
+                        })
+
+            # 合同额单位是元，需除以 10000 转换为万元
+            raw_money = float(p.get("contract_money") or 0.0) / 10000.0 if progress == 90 else 0.0
+            budget_money = raw_money if progress == 90 else float(p.get("budget_money") or 0.0)
+            expect_money = raw_money if progress == 90 else float(p.get("expect_money") or 0.0)
 
             results.append({
-                "id": p["id"],
+                "id": opp_id_str,
                 "name": p["name"] or "未命名项目",
                 "customer_name": p["customer_name"] or "未知业主单位",
-                "budget_money": float(p["budget_money"] or 0.0),
-                "expect_money": float(p["expect_money"] or 0.0),
+                "budget_money": budget_money,
+                "expect_money": expect_money,
                 "progress": float(p["progress"] or 0.0),
                 "marketing_users": m_users
             })
@@ -307,6 +382,9 @@ class BroadcastUpdate(BaseModel):
     marketing_allocations: Optional[list[AllocationItem]] = None
     happiness_score: Optional[int] = None
     action_description: Optional[str] = None
+    employee_name: Optional[str] = None
+    copartners: Optional[list[str]] = None
+    marketing_copartners: Optional[list[str]] = None
 
 
 class BatchDeleteBroadcastRequest(BaseModel):
@@ -447,15 +525,38 @@ async def list_broadcasts(
             )
             cur = conn.cursor(pymysql.cursors.DictCursor)
             placeholders = ', '.join(['%s'] * len(opp_ids))
-            query = f"""
+            # 1. 从原商机表查询项目名称
+            query_opp = f"""
                 SELECT id, name
                 FROM zdcrm_business_opportunity
                 WHERE id IN ({placeholders})
             """
-            cur.execute(query, tuple(opp_ids))
+            cur.execute(query_opp, tuple(opp_ids))
             opp_rows = cur.fetchall()
             for o_row in opp_rows:
-                opp_names[o_row["id"]] = o_row["name"]
+                opp_names[str(o_row["id"])] = o_row["name"]
+
+            # 2. 从新招标中标表查询项目名称
+            query_tender = f"""
+                SELECT id, project_name AS name
+                FROM tender_base_info
+                WHERE id IN ({placeholders})
+            """
+            cur.execute(query_tender, tuple(opp_ids))
+            tender_rows = cur.fetchall()
+            for t_row in tender_rows:
+                opp_names[str(t_row["id"])] = t_row["name"]
+
+            # 3. 从新合同表查询项目名称
+            query_contract = f"""
+                SELECT id, contract_name AS name
+                FROM contract
+                WHERE id IN ({placeholders})
+            """
+            cur.execute(query_contract, tuple(opp_ids))
+            contract_rows = cur.fetchall()
+            for c_row in contract_rows:
+                opp_names[str(c_row["id"])] = c_row["name"]
             cur.close()
             conn.close()
         except Exception as crm_err:
@@ -550,12 +651,14 @@ async def update_broadcast(
     detail_res = await db.execute(detail_stmt)
     details = detail_res.scalars().all()
     
+    old_detail_user_ids = []
     for detail in details:
         report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
         report_res = await db.execute(report_stmt)
         report = report_res.scalar_one_or_none()
         
         if report:
+            old_detail_user_ids.append(report.user_id)
             if detail.detail_type == DetailType.CONTRACT:
                 report.contract_amount = max(0.0, report.contract_amount - (detail.amount or 0.0))
                 report.contract_count = max(0, report.contract_count - 1)
@@ -589,7 +692,7 @@ async def update_broadcast(
     final_opp_id = event.crm_opportunity_id
     
     # 只有当前三种关联 CRM 时，且类型是合同新签或线索，才重新计入系统数据 (中标确定不更新系统实绩)
-    if final_opp_id and event.event_type in ["contract_signed", "lead_25"]:
+    if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type == "triangle"):
         report_date = event.created_at.date() if event.created_at else datetime.now(timezone.utc).date()
         
         async def get_or_create_report(uid: int) -> DailyReport:
@@ -692,6 +795,59 @@ async def update_broadcast(
                 description=f"{event.content}\n[broadcast_id:{event.id}]"
             )
             db.add(det)
+        elif event.event_type == "triangle":
+            # 铁三角联动重新录入
+            user_ids_to_add = set()
+            
+            # 如果前端传入了新的人员参数，则用新的计算；否则复用原来的 old_detail_user_ids
+            has_new_partners = (
+                broadcast_in.employee_name is not None or 
+                broadcast_in.copartners is not None or 
+                broadcast_in.marketing_copartners is not None
+            )
+            
+            if has_new_partners:
+                # 1. 目标员工（用户自己）
+                emp_user_id = event.user_id or current_user.id
+                if broadcast_in.employee_name:
+                    emp_user_stmt = select(User.id).where(User.name == broadcast_in.employee_name, User.is_active == True)
+                    emp_user_res = await db.execute(emp_user_stmt)
+                    val_emp_id = emp_user_res.scalar_one_or_none()
+                    if val_emp_id:
+                        emp_user_id = val_emp_id
+                user_ids_to_add.add(emp_user_id)
+                
+                # 2. 联动人
+                if broadcast_in.copartners:
+                    copartners_users = await db.execute(
+                        select(User.id).where(User.name.in_(broadcast_in.copartners), User.is_active == True)
+                    )
+                    for uid in copartners_users.scalars().all():
+                        user_ids_to_add.add(uid)
+                        
+                # 3. 营销联动人
+                if broadcast_in.marketing_copartners:
+                    marketing_users = await db.execute(
+                        select(User.id).where(User.name.in_(broadcast_in.marketing_copartners), User.is_active == True)
+                    )
+                    for uid in marketing_users.scalars().all():
+                        user_ids_to_add.add(uid)
+            else:
+                # 复用原来的
+                for uid in old_detail_user_ids:
+                    user_ids_to_add.add(uid)
+            
+            c_name = broadcast_in.customer_name or event.content
+            for uid in user_ids_to_add:
+                rep = await get_or_create_report(uid)
+                rep.triangle_count += 1
+                det = ReportDetail(
+                    report_id=rep.id,
+                    detail_type=DetailType.TRIANGLE,
+                    customer_name=c_name,
+                    description=f"{event.content}\n[broadcast_id:{event.id}]" if "\n[broadcast_id:" not in event.content else event.content
+                )
+                db.add(det)
 
     await db.commit()
     await db.refresh(event)
@@ -1020,14 +1176,44 @@ async def create_broadcast(
                     attachment_urls=broadcast_in.attachment_urls
                 )
             elif action == "triangle":
-                report.triangle_count += 1
-                detail = ReportDetail(
-                    report_id=report.id,
-                    detail_type=DetailType.TRIANGLE,
-                    customer_name=broadcast_in.customer_name,
-                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
-                    attachment_urls=broadcast_in.attachment_urls
-                )
+                # 收集所有需要加次数的用户 ID
+                user_ids_to_add = set()
+                
+                # 1. 目标员工（用户自己）
+                user_ids_to_add.add(target_user_id)
+                
+                # 2. 联动人
+                if broadcast_in.copartners:
+                    copartners_users = await db.execute(
+                        select(User.id).where(User.name.in_(broadcast_in.copartners), User.is_active == True)
+                    )
+                    for uid in copartners_users.scalars().all():
+                        user_ids_to_add.add(uid)
+                        
+                # 3. 营销联动人
+                if broadcast_in.marketing_copartners:
+                    marketing_users = await db.execute(
+                        select(User.id).where(User.name.in_(broadcast_in.marketing_copartners), User.is_active == True)
+                    )
+                    for uid in marketing_users.scalars().all():
+                        user_ids_to_add.add(uid)
+                
+                # 为所有人累加次数并创建明细
+                for uid in user_ids_to_add:
+                    rep = await get_or_create_report(uid)
+                    rep.triangle_count += 1
+                    
+                    det = ReportDetail(
+                        report_id=rep.id,
+                        detail_type=DetailType.TRIANGLE,
+                        customer_name=broadcast_in.customer_name,
+                        description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
+                        attachment_urls=broadcast_in.attachment_urls
+                    )
+                    db.add(det)
+                
+                # 设为 None 避免外层再次 add
+                detail = None
             elif action == "happiness":
                 report.happiness_actions += 1
                 score_val = broadcast_in.happiness_score or 20

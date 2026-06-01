@@ -138,6 +138,10 @@ export interface RankingItem {
   score: number
   /** 变化趋势：上升/下降/不变 */
   trend: 'up' | 'down' | 'same'
+  weeklyMarketingActual?: number
+  weeklyMarketingTarget?: number
+  weeklyDeliveryActual?: number
+  weeklyDeliveryTarget?: number
 }
 
 /** 双轨动力战队状态卡片 */

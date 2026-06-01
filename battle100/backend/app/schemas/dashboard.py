@@ -31,6 +31,10 @@ class RankingItem(BaseModel):
     teamName: Optional[str] = Field(default=None, description="所属战队")
     score: float = Field(..., description="完成值（百分比或绝对值）")
     trend: str = Field(default="same", description="变化趋势(up/down/same)")
+    weeklyMarketingActual: Optional[float] = Field(default=None, description="周营销新签实际")
+    weeklyMarketingTarget: Optional[float] = Field(default=None, description="周营销基础目标")
+    weeklyDeliveryActual: Optional[float] = Field(default=None, description="周交付实际")
+    weeklyDeliveryTarget: Optional[float] = Field(default=None, description="周交付基础目标")
 
 
 class LiveFeedItem(BaseModel):

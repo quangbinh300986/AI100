@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -13,6 +13,7 @@ import {
   UserOutlined,
   FileTextOutlined
 } from '@ant-design/icons'
+import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics } from '@shared/api/dashboard'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -34,6 +35,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [broadcastModalVisible, setBroadcastModalVisible] = useState(false)
   const [broadcastForm] = Form.useForm()
+  const watchHappinessScore = Form.useWatch('happinessScore', broadcastForm)
   const [currentActionType, setCurrentActionType] = useState<string>('')
   const [usersList, setUsersList] = useState<{ id: number; name: string }[]>([])
   const [crmProjects, setCrmProjects] = useState<any[]>([])
@@ -523,8 +525,30 @@ const Dashboard: React.FC = () => {
       }
     }
 
+    // 处理客户幸福动作标准项联动
+    if (changedValues.actionType === 'happiness' || currentActionType === 'happiness') {
+      if (changedValues.happinessScore !== undefined) {
+        // 分值改变，清空已选标准和描述
+        broadcastForm.setFieldsValue({
+          selectedStandards: [],
+          actionDescription: ''
+        })
+        allValues.selectedStandards = []
+        allValues.actionDescription = ''
+      } else if (changedValues.selectedStandards !== undefined) {
+        // 勾选标准改变，拼接动作描述
+        const selectedList: string[] = changedValues.selectedStandards || []
+        const cleanedList = selectedList.map(item => item.replace(/[;；]$/, ''))
+        const joined = cleanedList.join('；')
+        broadcastForm.setFieldsValue({
+          actionDescription: joined
+        })
+        allValues.actionDescription = joined
+      }
+    }
+
     // C. 重新计算生成捷报文字
-    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney } = allValues
+    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners } = allValues
     if (!actionType) return
     
     const prefix = '奋战一百天，亮剑破六千！今日'
@@ -540,9 +564,21 @@ const Dashboard: React.FC = () => {
       case 'contract':
         generated = `${prefix}确定${contractName || 'XX'}项目走完合同流程，客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万 nudge，赢战百日！`.replace(" nudge", "")
         break
-      case 'triangle':
-        generated = `${prefix}售前铁三角现场联动，客户分别为${customerName || 'XX'}，为客户幸福而奋斗，赢战百日！`
-        break
+      case 'triangle': {
+        const copartnersStr = copartners && copartners.length > 0 ? copartners.join('、') : '';
+        const marketingStr = marketingCopartners && marketingCopartners.length > 0 ? marketingCopartners.join('、') : '';
+        let partnersInfo = '';
+        if (copartnersStr && marketingStr) {
+          partnersInfo = `联动人(${copartnersStr})、营销人员(${marketingStr})`;
+        } else if (copartnersStr) {
+          partnersInfo = `联动人(${copartnersStr})`;
+        } else if (marketingStr) {
+          partnersInfo = `营销人员(${marketingStr})`;
+        }
+        const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
+        generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动，联动动作：${actionDescription || 'XX'}。为客户幸福而奋斗，赢战百日！`;
+        break;
+      }
       case 'happiness':
         generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，收到客户${customerName || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
         break
@@ -708,7 +744,10 @@ const Dashboard: React.FC = () => {
         // 新增 CRM 关联属性
         budget_money: values.budgetMoney ? parseFloat(values.budgetMoney) : undefined,
         expect_money: values.expectMoney ? parseFloat(values.expectMoney) : undefined,
-        crm_opportunity_id: values.crmProjectId
+        crm_opportunity_id: values.crmProjectId,
+        // 铁三角联动新增多选人员
+        copartners: values.copartners,
+        marketing_copartners: values.marketingCopartners
       }
 
       if (values.actionType === 'contract') {
@@ -1236,7 +1275,13 @@ const Dashboard: React.FC = () => {
           {['lead_25', 'lead_75', 'contract'].includes(currentActionType) && (
             <Form.Item
               name="crmProjectId"
-              label={`选择对应 CRM 中进展阶段为 ${currentActionType === 'lead_25' ? '25%' : currentActionType === 'lead_75' ? '75%' : '90%'} 的项目`}
+              label={
+                currentActionType === 'contract'
+                  ? '从项目管理系统的合同表获取'
+                  : currentActionType === 'lead_75'
+                  ? '从投标室确认标讯系统中标项目中获取'
+                  : '选择对应 CRM 中进展阶段为 25% 的项目'
+              }
               rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
             >
               <Select
@@ -1516,17 +1561,69 @@ const Dashboard: React.FC = () => {
           })()}
 
           {currentActionType === 'triangle' && (
-            <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
-              <Select
-                showSearch
-                placeholder="搜索选择 CRM 客户名称"
-                optionFilterProp="label"
-                filterOption={(input, option) =>
-                  ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={crmCustomers.map(c => ({ value: c, label: c }))}
-              />
-            </Form.Item>
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="employeeName" label="用户自己的姓名" rules={[{ required: true, message: '请选择您的姓名' }]}>
+                    <Select
+                      showSearch
+                      placeholder="搜索选择员工姓名"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={usersList.map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="customerName" label="客户 / 业主名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
+                    <Select
+                      showSearch
+                      placeholder="搜索选择 CRM 客户名称"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={crmCustomers.map(c => ({ value: c, label: c }))}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="copartners" label="联动人 (除营销岗，可多选)">
+                    <Select
+                      mode="multiple"
+                      placeholder="请选择联动人（非营销岗）"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={usersList.filter(u => u.position_type !== 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="marketingCopartners" label="营销联动人 (营销岗，可多选)">
+                    <Select
+                      mode="multiple"
+                      placeholder="请选择营销联动人（营销岗）"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={usersList.filter(u => u.position_type === 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item name="actionDescription" label="联动的动作" rules={[{ required: true, message: '请输入具体的联动动作说明' }]}>
+                <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
+              </Form.Item>
+            </>
           )}
 
           {currentActionType === 'happiness' && (
@@ -1558,8 +1655,41 @@ const Dashboard: React.FC = () => {
                   <Select.Option value={0}>0分</Select.Option>
                   <Select.Option value={20}>20分</Select.Option>
                   <Select.Option value={50}>50分</Select.Option>
+                  <Select.Option value={100}>100分</Select.Option>
                 </Select>
               </Form.Item>
+
+              {watchHappinessScore !== undefined && HAPPINESS_STANDARDS[String(watchHappinessScore)] && (
+                <Form.Item name="selectedStandards" label="客户幸福标准选项勾选">
+                  <Checkbox.Group style={{ width: '100%' }}>
+                    <Collapse 
+                      size="small" 
+                      defaultActiveKey={HAPPINESS_STANDARDS[String(watchHappinessScore)].sections.map((s: any) => s.section_id)}
+                      style={{ marginBottom: 16, maxHeight: '300px', overflowY: 'auto' }}
+                    >
+                      {HAPPINESS_STANDARDS[String(watchHappinessScore)].sections.map((sec: any) => (
+                        <Collapse.Panel 
+                          header={<span style={{ fontWeight: 'bold', color: '#1677ff' }}>{sec.section_title}</span>} 
+                          key={sec.section_id}
+                        >
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            {sec.items.map((item: any) => (
+                              <div key={item.item_id} style={{ padding: '4px 0' }}>
+                                <Checkbox value={item.content}>
+                                  <span style={{ fontSize: 13, lineHeight: '1.5', display: 'inline-block', verticalAlign: 'top', whiteSpace: 'normal' }}>
+                                    {item.content}
+                                  </span>
+                                </Checkbox>
+                              </div>
+                            ))}
+                          </Space>
+                        </Collapse.Panel>
+                      ))}
+                    </Collapse>
+                  </Checkbox.Group>
+                </Form.Item>
+              )}
+
               <Form.Item name="actionDescription" label="动作描述" rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}>
                 <Input placeholder="例如：关怀与拜访 / 递交了第三期方案成效汇报" />
               </Form.Item>

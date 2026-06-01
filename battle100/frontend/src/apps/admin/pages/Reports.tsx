@@ -102,6 +102,7 @@ interface UserItem {
   name: string
   role: string
   teamId?: number
+  position_type?: string
 }
 
 // CRM 商机项目结构
@@ -568,6 +569,10 @@ const Reports: React.FC = () => {
         marketing_allocations: withIndicator ? values.marketing_allocations : null,
         happiness_score: withIndicator && values.action_type === 'happiness' ? values.happiness_score : null,
         action_description: withIndicator ? values.action_description : null,
+        // 铁三角联动新增字段
+        employee_name: withIndicator ? values.employee_name : null,
+        copartners: withIndicator ? values.copartners : null,
+        marketing_copartners: withIndicator ? values.marketing_copartners : null,
       }
 
       const res = await post<any>('/broadcast', payload)
@@ -628,6 +633,12 @@ const Reports: React.FC = () => {
       }
       if (editEventType === 'triangle' || editEventType === 'happiness') {
         payload.customer_name = values.customer_name
+        payload.action_description = values.action_description
+      }
+      if (editEventType === 'triangle') {
+        payload.employee_name = values.employee_name
+        payload.copartners = values.copartners
+        payload.marketing_copartners = values.marketing_copartners
       }
       if (editEventType === 'happiness') {
         payload.happiness_score = values.happiness_score
@@ -784,7 +795,7 @@ const Reports: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 130,
+      width: 180,
       fixed: 'right' as const,
       render: (_: any, record: BroadcastItem) => (
         <Space size="middle">
@@ -805,8 +816,16 @@ const Reports: React.FC = () => {
               const matchCustomer = record.content.match(/业主单位：\s*([^，!。；]+)/)?.[1] || 
                                     record.content.match(/客户为\s*([^，!。；]+)/)?.[1] || 
                                     record.content.match(/客户分别为\s*([^，!。；]+)/)?.[1] || 
+                                    record.content.match(/在【([^】]+)】/)?.[1] ||
                                     '';
               const matchProjectName = record.content.match(/《([^》]+)》/)?.[1] || '已关联项目';
+
+              const matchEmployeeName = record.content.match(/我司【([^】]+)】/)?.[1] || record.user_name || '';
+              const copartnersMatch = record.content.match(/联动人\(([^)]+)\)/)?.[1];
+              const matchCopartners = copartnersMatch ? copartnersMatch.split('、') : [];
+              const marketingMatch = record.content.match(/营销人员\(([^)]+)\)/)?.[1];
+              const matchMarketingCopartners = marketingMatch ? marketingMatch.split('、') : [];
+              const matchActionDesc = record.content.match(/联动动作：\s*([^。]+)/)?.[1] || '';
 
               const initialProj = record.crm_opportunity_id ? {
                 id: record.crm_opportunity_id,
@@ -835,7 +854,12 @@ const Reports: React.FC = () => {
                 expect_money: record.amount || totalAllocAmount || 0,
                 budget_money: record.amount || totalAllocAmount || 0,
                 delivery_allocations: record.delivery_allocations || [],
-                marketing_allocations: record.marketing_allocations || []
+                marketing_allocations: record.marketing_allocations || [],
+                // 铁三角回填
+                employee_name: matchEmployeeName,
+                copartners: matchCopartners,
+                marketing_copartners: matchMarketingCopartners,
+                action_description: matchActionDesc
               })
               setEditVisible(true)
             }}
@@ -1232,6 +1256,56 @@ const Reports: React.FC = () => {
                 </Form.Item>
               )}
 
+              {actionType === 'triangle' && (
+                <>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item name="employee_name" label="用户自己的姓名" rules={[{ required: true, message: '请选择录入员工姓名' }]} initialValue={user?.name}>
+                        <Select
+                          showSearch
+                          placeholder="选择录入员工姓名"
+                          optionFilterProp="label"
+                          filterOption={(input, option) =>
+                            ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          options={users.map(u => ({ value: u.name, label: u.name }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="copartners" label="联动人 (除营销岗，多选)">
+                        <Select
+                          mode="multiple"
+                          placeholder="请选择联动人"
+                          optionFilterProp="label"
+                          filterOption={(input, option) =>
+                            ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          options={users.filter(u => u.position_type !== 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="marketing_copartners" label="营销联动人 (营销岗，多选)">
+                        <Select
+                          mode="multiple"
+                          placeholder="请选择营销人员"
+                          optionFilterProp="label"
+                          filterOption={(input, option) =>
+                            ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          options={users.filter(u => u.position_type === 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  
+                  <Form.Item name="action_description" label="联动的动作" rules={[{ required: true, message: '请输入联动动作说明' }]}>
+                    <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
+                  </Form.Item>
+                </>
+              )}
+
               {/* 业绩比例分摊部分 */}
               {(actionType === 'contract') && (
                 <>
@@ -1433,9 +1507,13 @@ const Reports: React.FC = () => {
           {['lead_25', 'lead_75', 'contract_signed'].includes(editEventType) && (
             <Form.Item
               name="crm_opportunity_id"
-              label={`选择对应 CRM 中进展阶段为 ${
-                editEventType === 'lead_25' ? '25%' : editEventType === 'lead_75' ? '75%' : '90%'
-              } 的项目`}
+              label={
+                editEventType === 'contract_signed'
+                  ? '从项目管理系统的合同表获取'
+                  : editEventType === 'lead_75'
+                  ? '从投标室确认标讯系统中标项目中获取'
+                  : '选择对应 CRM 中进展阶段为 25% 的项目'
+              }
               rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
             >
               <Select
@@ -1499,6 +1577,56 @@ const Reports: React.FC = () => {
                 options={crmCustomers.map(c => ({ label: c, value: c }))}
               />
             </Form.Item>
+          )}
+
+          {editEventType === 'triangle' && (
+            <>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item name="employee_name" label="用户自己的姓名" rules={[{ required: true, message: '请选择录入员工姓名' }]}>
+                    <Select
+                      showSearch
+                      placeholder="选择录入员工姓名"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={users.map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="copartners" label="联动人 (除营销岗，多选)">
+                    <Select
+                      mode="multiple"
+                      placeholder="请选择联动人"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={users.filter(u => u.position_type !== 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="marketing_copartners" label="营销联动人 (营销岗，多选)">
+                    <Select
+                      mode="multiple"
+                      placeholder="请选择营销人员"
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={users.filter(u => u.position_type === 'marketing').map(u => ({ value: u.name, label: u.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item name="action_description" label="联动的动作" rules={[{ required: true, message: '请输入联动动作说明' }]}>
+                <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
+              </Form.Item>
+            </>
           )}
 
           {/* 第五种幸福动作显示数量/得分 */}

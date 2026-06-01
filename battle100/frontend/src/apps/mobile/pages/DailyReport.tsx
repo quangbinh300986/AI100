@@ -4,10 +4,11 @@
  */
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List } from 'antd-mobile'
+import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox } from 'antd-mobile'
 import { CheckCircleFill, CloseCircleFill, AddOutline, DeleteOutline, SearchOutline } from 'antd-mobile-icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
+import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 
 // 战报动作类型选项 (与大屏完全对齐)
 const ACTION_TYPE_OPTIONS = [
@@ -36,6 +37,9 @@ export default function DailyReport() {
   // 搜索关键字
   const [projectSearch, setProjectSearch] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
+  const [copartnerSearch, setCopartnerSearch] = useState('')
+  const [marketingCopartnerSearch, setMarketingCopartnerSearch] = useState('')
+  const [allocUserSearch, setAllocUserSearch] = useState('')
 
   // 选中的 CRM 实体
   const [selectedProject, setSelectedProject] = useState<any | null>(null)
@@ -47,6 +51,10 @@ export default function DailyReport() {
   // 分摊选择成员弹窗状态
   const [allocUserModalVisible, setAllocUserModalVisible] = useState(false)
   const [allocTargetType, setAllocTargetType] = useState<'delivery' | 'marketing'>('delivery')
+  
+  // 铁三角人员选择多选弹窗状态
+  const [copartnersModalVisible, setCopartnersModalVisible] = useState(false)
+  const [marketingCopartnersModalVisible, setMarketingCopartnersModalVisible] = useState(false)
 
   // 表单数据
   const [formData, setFormData] = useState({
@@ -56,9 +64,16 @@ export default function DailyReport() {
     budgetMoney: 0.0,
     expectMoney: 0.0,
     happinessScore: 20,
+    selectedStandards: [] as string[],
     actionDescription: '',
-    content: ''
+    content: '',
+    employeeName: '',
+    copartners: [] as string[],
+    marketingCopartners: [] as string[]
   })
+
+  // 移动端客户幸福动作折叠面板的状态
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   // 合同/幸福动作照片附件
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>([])
@@ -85,6 +100,13 @@ export default function DailyReport() {
     initData()
   }, [])
 
+  useEffect(() => {
+    const resolvedName = user?.realName || user?.name || user?.username || ''
+    if (resolvedName && !formData.employeeName) {
+      setFormData(prev => ({ ...prev, employeeName: resolvedName }))
+    }
+  }, [user])
+
   // 监听动作类型改变加载 CRM 潜力库项目
   const handleActionTypeChange = async (val: string) => {
     setActionType(val)
@@ -95,6 +117,8 @@ export default function DailyReport() {
     setMarketingAllocations([])
     setAttachmentUrls([])
 
+    const resolvedName = user?.realName || user?.name || user?.username || ''
+
     setFormData({
       crmOpportunityId: '',
       customerName: '',
@@ -102,8 +126,12 @@ export default function DailyReport() {
       budgetMoney: 0.0,
       expectMoney: 0.0,
       happinessScore: 20,
+      selectedStandards: [],
       actionDescription: '',
-      content: ''
+      content: '',
+      employeeName: resolvedName,
+      copartners: [],
+      marketingCopartners: []
     })
 
     if (val === 'contract') {
@@ -233,14 +261,26 @@ export default function DailyReport() {
   // 幸福动作文本生成
   const updateHappinessContent = (score: number, desc: string, customer: string) => {
     const prefix = '奋战一百天，亮剑破六千！今日'
-    const generated = `${prefix}${user?.name || 'XX'}做到客户幸福标准${score}分${desc || 'XX'}动作，收到客户${customer || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
+    const resolvedName = user?.realName || user?.name || user?.username || 'XX'
+    const generated = `${prefix}${resolvedName}做到客户幸福标准${score}分${desc || 'XX'}动作，收到客户${customer || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
   // 铁三角联动文本生成
-  const updateTriangleContent = (customer: string) => {
+  const updateTriangleContent = (employee: string, customer: string, coparts: string[], mCoparts: string[], desc: string) => {
     const prefix = '奋战一百天，亮剑破六千！今日'
-    const generated = `${prefix}售前铁三角现场联动，客户分别为${customer || 'XX'}，为客户幸福而奋斗，赢战百日！`
+    const copartnersStr = coparts && coparts.length > 0 ? coparts.join('、') : '';
+    const marketingStr = mCoparts && mCoparts.length > 0 ? mCoparts.join('、') : '';
+    let partnersInfo = '';
+    if (copartnersStr && marketingStr) {
+      partnersInfo = `联动人(${copartnersStr})、营销人员(${marketingStr})`;
+    } else if (copartnersStr) {
+      partnersInfo = `联动人(${copartnersStr})`;
+    } else if (marketingStr) {
+      partnersInfo = `营销人员(${marketingStr})`;
+    }
+    const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
+    const generated = `${prefix}我司【${employee || 'XX'}】${partnerPart}在【${customer || 'XX'}】开展售前铁三角联动，联动动作：${desc || 'XX'}。为客户幸福而奋斗，赢战百日！`;
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
@@ -261,29 +301,55 @@ export default function DailyReport() {
       return
     }
 
+    if (actionType === 'triangle' && !formData.employeeName) {
+      Toast.show({ icon: 'fail', content: '请选择录入人姓名' })
+      return
+    }
+
+    if (['triangle', 'happiness'].includes(actionType) && !formData.actionDescription?.trim()) {
+      Toast.show({
+        icon: 'fail',
+        content: actionType === 'triangle' ? '请输入具体的联动动作说明' : '请输入关怀客户幸福动作的具体叙述'
+      })
+      return
+    }
+
     // 校验分摊和
     if (actionType === 'contract') {
-      if (deliveryAllocations.length > 0) {
-        const dSum = deliveryAllocations.reduce((s, i) => s + (Number(i.ratio) || 0), 0)
-        if (Math.abs(dSum - 100) > 0.1) {
-          Toast.show({ icon: 'fail', content: `交付分摊比例之和必须为 100% (当前为 ${dSum}%)` })
-          return
-        }
-        if (deliveryAllocations.some(i => !i.user_id)) {
-          Toast.show({ icon: 'fail', content: '交付分摊存在未选择员工的记录' })
-          return
-        }
+      if (deliveryAllocations.length === 0) {
+        Toast.show({ icon: 'fail', content: '请添加交付新签业绩分配人员' })
+        return
       }
-      if (marketingAllocations.length > 0) {
-        const mSum = marketingAllocations.reduce((s, i) => s + (Number(i.ratio) || 0), 0)
-        if (Math.abs(mSum - 100) > 0.1) {
-          Toast.show({ icon: 'fail', content: `营销分摊比例之和必须为 100% (当前为 ${mSum}%)` })
-          return
-        }
-        if (marketingAllocations.some(i => !i.user_id)) {
-          Toast.show({ icon: 'fail', content: '营销分摊存在未选择员工的记录' })
-          return
-        }
+      const dSum = deliveryAllocations.reduce((s, i) => s + (Number(i.ratio) || 0), 0)
+      if (Math.abs(dSum - 100) > 0.1) {
+        Toast.show({ icon: 'fail', content: `交付分摊比例之和必须为 100% (当前为 ${dSum}%)` })
+        return
+      }
+      if (deliveryAllocations.some(i => !i.user_id)) {
+        Toast.show({ icon: 'fail', content: '交付分摊存在未选择员工的记录' })
+        return
+      }
+      if (deliveryAllocations.some(i => Number(i.ratio) <= 0)) {
+        Toast.show({ icon: 'fail', content: '每个交付分摊人员的比例必须大于 0%' })
+        return
+      }
+
+      if (marketingAllocations.length === 0) {
+        Toast.show({ icon: 'fail', content: '请添加营销新签业绩分配人员' })
+        return
+      }
+      const mSum = marketingAllocations.reduce((s, i) => s + (Number(i.ratio) || 0), 0)
+      if (Math.abs(mSum - 100) > 0.1) {
+        Toast.show({ icon: 'fail', content: `营销分摊比例之和必须为 100% (当前为 ${mSum}%)` })
+        return
+      }
+      if (marketingAllocations.some(i => !i.user_id)) {
+        Toast.show({ icon: 'fail', content: '营销分摊存在未选择员工的记录' })
+        return
+      }
+      if (marketingAllocations.some(i => Number(i.ratio) <= 0)) {
+        Toast.show({ icon: 'fail', content: '每个营销分摊人员的比例必须大于 0%' })
+        return
       }
     }
 
@@ -299,10 +365,13 @@ export default function DailyReport() {
         amount: formData.amount,
         crm_opportunity_id: formData.crmOpportunityId || null,
         happiness_score: actionType === 'happiness' ? formData.happinessScore : null,
-        action_description: actionType === 'happiness' ? formData.actionDescription : null,
+        action_description: (actionType === 'happiness' || actionType === 'triangle') ? formData.actionDescription : null,
         delivery_allocations: actionType === 'contract' ? deliveryAllocations : null,
         marketing_allocations: actionType === 'contract' ? marketingAllocations : null,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null
+        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null,
+        employee_name: formData.employeeName || null,
+        copartners: actionType === 'triangle' ? formData.copartners : null,
+        marketing_copartners: actionType === 'triangle' ? formData.marketingCopartners : null
       }
 
       const res = await post<any>('/broadcast', payload)
@@ -407,8 +476,12 @@ export default function DailyReport() {
         {['lead_25', 'lead_75', 'contract'].includes(actionType) && (
           <div>
             <div style={{ borderBottom: '1px solid #eee', paddingBottom: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 'bold', color: '#1677ff' }}>
-                🔗 关联 CRM 潜力库项目 (当前进度: {actionType === 'lead_25' ? '25%' : actionType === 'lead_75' ? '75%' : '90%'})
+              <span style={{ fontSize: 13, fontWeight: 'bold', color: '#1677ff' }}>
+                🔗 {actionType === 'contract' 
+                  ? '从项目管理系统的合同表获取' 
+                  : actionType === 'lead_75' 
+                  ? '从投标室确认标讯系统中标项目中获取' 
+                  : '选择对应 CRM 中进展阶段为 25% 的项目'}
               </span>
             </div>
 
@@ -492,6 +565,7 @@ export default function DailyReport() {
                       onClick={() => {
                         setAllocTargetType('delivery')
                         setAllocUserModalVisible(true)
+                        setAllocUserSearch('')
                       }}
                     >
                       <AddOutline /> 协同人
@@ -552,6 +626,7 @@ export default function DailyReport() {
                       onClick={() => {
                         setAllocTargetType('marketing')
                         setAllocUserModalVisible(true)
+                        setAllocUserSearch('')
                       }}
                     >
                       <AddOutline /> 协同人
@@ -641,52 +716,132 @@ export default function DailyReport() {
               </span>
             </div>
 
-            <div style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>
-              请搜索并选择本次铁三角现场共同拜访的客户单位名称：
-            </div>
-
-            {/* 客户搜索 */}
-            <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 12 }}>
-              <SearchOutline style={{ color: '#999', marginRight: 6 }} />
-              <Input
-                placeholder="搜索选择 CRM 客户名称..."
-                value={customerSearch}
-                onChange={(val) => {
-                  setCustomerSearch(val)
-                  setFormData(prev => ({ ...prev, customerName: val }))
-                  updateTriangleContent(val)
-                }}
-                style={{ fontSize: 13 }}
-              />
-            </div>
-
-            {filteredCustomers.length > 0 && customerSearch && (
-              <div style={{ maxHeight: 150, overflowY: 'auto', marginBottom: 16, border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                {filteredCustomers.slice(0, 15).map((cust) => (
-                  <div
-                    key={cust}
-                    onClick={() => {
-                      setFormData(prev => ({ ...prev, customerName: cust }))
-                      updateTriangleContent(cust)
-                      setCustomerSearch('')
-                    }}
-                    style={{
-                      padding: '10px 12px',
-                      borderBottom: '1px solid #f5f5f5',
-                      background: '#fff',
-                      fontSize: 13,
-                      color: '#333'
-                    }}
-                  >
-                    {cust}
-                  </div>
-                ))}
-              </div>
-            )}
-
             <Form layout="vertical">
-              <Form.Item label="选定的客户名称" required>
-                <Input value={formData.customerName} readOnly placeholder="请输入或在上方搜索选中" style={{ fontSize: 13 }} />
+              {/* 1. 用户自己的姓名 */}
+              <Form.Item label="用户自己的姓名">
+                <Input 
+                  value={formData.employeeName} 
+                  readOnly 
+                  style={{ 
+                    fontSize: 13, 
+                    background: '#fafafa', 
+                    border: '1px solid #eee', 
+                    padding: '6px 10px', 
+                    borderRadius: 6 
+                  }} 
+                />
+              </Form.Item>
+
+              {/* 2. 客户选择与选定 */}
+              <Form.Item label="客户/业主名称 (搜索选择)" required>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 8 }}>
+                  <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+                  <Input
+                    placeholder="输入搜索 CRM 客户名称..."
+                    value={customerSearch}
+                    onChange={(val) => {
+                      setCustomerSearch(val)
+                      setFormData(prev => ({ ...prev, customerName: val }))
+                      updateTriangleContent(formData.employeeName, val, formData.copartners, formData.marketingCopartners, formData.actionDescription)
+                    }}
+                    style={{ fontSize: 13 }}
+                  />
+                </div>
+
+                {filteredCustomers.length > 0 && customerSearch && (
+                  <div style={{ maxHeight: 150, overflowY: 'auto', marginBottom: 8, border: '1px solid #f0f0f0', borderRadius: 8, background: '#fff' }}>
+                    {filteredCustomers.slice(0, 10).map((cust) => (
+                      <div
+                        key={cust}
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, customerName: cust }))
+                          updateTriangleContent(formData.employeeName, cust, formData.copartners, formData.marketingCopartners, formData.actionDescription)
+                          setCustomerSearch('')
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #f5f5f5',
+                          background: '#fff',
+                          fontSize: 13,
+                          color: '#333'
+                        }}
+                      >
+                        {cust}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Input value={formData.customerName} readOnly placeholder="在上方搜索或键入确认客户名称" style={{ fontSize: 13, background: '#fafafa', border: '1px solid #eee', padding: '6px 10px', borderRadius: 6 }} />
+              </Form.Item>
+
+              {/* 3. 联动人 (非营销岗) */}
+              <Form.Item label="联动人 (除营销岗，多选)">
+                <div 
+                  onClick={() => {
+                    setCopartnersModalVisible(true)
+                    setCopartnerSearch('')
+                  }}
+                  style={{
+                    padding: '10px 12px',
+                    border: '1px solid #dddddd',
+                    borderRadius: 6,
+                    background: '#ffffff',
+                    fontSize: 13,
+                    color: formData.copartners.length > 0 ? '#333' : '#999',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span>
+                    {formData.copartners.length > 0 
+                      ? formData.copartners.join('、') 
+                      : '点击选择联动人（非营销人员）'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#1677ff' }}>选择 ({formData.copartners.length}人)</span>
+                </div>
+              </Form.Item>
+
+              {/* 4. 营销联动人 (营销岗) */}
+              <Form.Item label="营销联动人 (营销岗，多选)">
+                <div 
+                  onClick={() => {
+                    setMarketingCopartnersModalVisible(true)
+                    setMarketingCopartnerSearch('')
+                  }}
+                  style={{
+                    padding: '10px 12px',
+                    border: '1px solid #dddddd',
+                    borderRadius: 6,
+                    background: '#ffffff',
+                    fontSize: 13,
+                    color: formData.marketingCopartners.length > 0 ? '#333' : '#999',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span>
+                    {formData.marketingCopartners.length > 0 
+                      ? formData.marketingCopartners.join('、') 
+                      : '点击选择营销联动人'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#1677ff' }}>选择 ({formData.marketingCopartners.length}人)</span>
+                </div>
+              </Form.Item>
+
+              {/* 5. 具体的联动动作 */}
+              <Form.Item label="联动的动作" required>
+                <TextArea
+                  placeholder="请输入具体的铁三角联动动作描述..."
+                  rows={3}
+                  value={formData.actionDescription}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, actionDescription: val }))
+                    updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, val)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
               </Form.Item>
             </Form>
           </div>
@@ -750,21 +905,99 @@ export default function DailyReport() {
               </Form.Item>
 
               <Form.Item label="客户幸福动作标准分值" required>
-                <Stepper
-                  min={0}
-                  max={100}
-                  value={formData.happinessScore}
-                  onChange={(val) => {
-                    setFormData(prev => ({ ...prev, happinessScore: val ?? 20 }))
-                    updateHappinessContent(val ?? 20, formData.actionDescription, formData.customerName)
+                <Selector
+                  options={[
+                    { label: '0分', value: 0 },
+                    { label: '20分', value: 20 },
+                    { label: '50分', value: 50 },
+                    { label: '100分', value: 100 }
+                  ]}
+                  value={[formData.happinessScore]}
+                  onChange={(arr) => {
+                    const val = arr[0] ?? 20
+                    setFormData(prev => ({
+                      ...prev,
+                      happinessScore: val,
+                      selectedStandards: [],
+                      actionDescription: ''
+                    }))
+                    updateHappinessContent(val, '', formData.customerName)
                   }}
-                  style={{ width: '100%' }}
                 />
               </Form.Item>
 
+              {formData.happinessScore !== undefined && HAPPINESS_STANDARDS[String(formData.happinessScore)] && (
+                <Form.Item label="客户幸福标准选项勾选">
+                  <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, padding: 8, background: '#fcfcfc' }}>
+                    {HAPPINESS_STANDARDS[String(formData.happinessScore)].sections.map((sec: any) => {
+                      const expanded = expandedSections[sec.section_id] !== false
+                      return (
+                        <div key={sec.section_id} style={{ marginBottom: 12 }}>
+                          <div 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, [sec.section_id]: !expanded }))}
+                            style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              background: '#f5f5f5', 
+                              padding: '8px 10px', 
+                              borderRadius: 4,
+                              marginBottom: expanded ? 8 : 0
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 'bold', color: '#1677ff' }}>
+                              {sec.section_title}
+                            </span>
+                            <span style={{ fontSize: 12, color: '#999' }}>
+                              {expanded ? '▲' : '▼'}
+                            </span>
+                          </div>
+
+                          {expanded && (
+                            <div style={{ paddingLeft: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {sec.items.map((item: any) => {
+                                const isChecked = formData.selectedStandards.includes(item.content)
+                                return (
+                                  <Checkbox 
+                                    key={item.item_id} 
+                                    checked={isChecked}
+                                    onChange={(checked) => {
+                                      let nextSelected = [...formData.selectedStandards]
+                                      if (checked) {
+                                        if (!nextSelected.includes(item.content)) {
+                                          nextSelected.push(item.content)
+                                        }
+                                      } else {
+                                        nextSelected = nextSelected.filter(x => x !== item.content)
+                                      }
+                                      const cleanedList = nextSelected.map(t => t.replace(/[;；]$/, ''))
+                                      const joined = cleanedList.join('；')
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        selectedStandards: nextSelected,
+                                        actionDescription: joined
+                                      }))
+                                      updateHappinessContent(formData.happinessScore, joined, formData.customerName)
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 12, color: '#333', lineHeight: '1.4' }}>
+                                      {item.content}
+                                    </span>
+                                  </Checkbox>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Form.Item>
+              )}
+
               <Form.Item label="具体动作描述" required>
                 <TextArea
-                  placeholder="请输入关怀客户幸福动作的具体叙述（必填，如给客户修投影仪等）..."
+                  placeholder="请输入或由上方勾选生成客户幸福动作的具体叙述（必填）..."
                   rows={2}
                   value={formData.actionDescription}
                   onChange={(val) => {
@@ -845,22 +1078,176 @@ export default function DailyReport() {
             <h3 style={{ fontSize: 15, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
               添加 {allocTargetType === 'delivery' ? '交付' : '营销'} 分摊人员
             </h3>
-            <List>
-              {users.map(u => (
-                <List.Item
-                  key={u.id}
-                  clickable
-                  onClick={() => handleAddAllocMember(u.id)}
-                >
-                  <span style={{ fontSize: 13 }}>{u.name} ({u.role === 'admin' ? '管理员' : u.role === 'team_leader' ? '战队长' : '开发员工'})</span>
-                </List.Item>
-              ))}
-            </List>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 12 }}>
+              <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+              <Input
+                placeholder="搜索姓名..."
+                value={allocUserSearch}
+                onChange={setAllocUserSearch}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            {(() => {
+              const filtered = users.filter(u => {
+                const nameMatch = u.name.toLowerCase().includes(allocUserSearch.toLowerCase());
+                const roleMap: Record<string, string> = {
+                  admin: '管理员',
+                  team_leader: '战队长',
+                  employee: '开发员工'
+                };
+                const roleCn = roleMap[u.role] || '';
+                const roleMatch = roleCn.toLowerCase().includes(allocUserSearch.toLowerCase());
+                return nameMatch || roleMatch;
+              });
+              if (filtered.length === 0) {
+                return <div style={{ textAlign: 'center', padding: '20px 0', color: '#999', fontSize: 13 }}>未找到匹配人员</div>;
+              }
+              return (
+                <List>
+                  {filtered.map(u => (
+                    <List.Item
+                      key={u.id}
+                      clickable
+                      onClick={() => handleAddAllocMember(u.id)}
+                    >
+                      <span style={{ fontSize: 13 }}>{u.name} ({u.role === 'admin' ? '管理员' : u.role === 'team_leader' ? '战队长' : '开发员工'})</span>
+                    </List.Item>
+                  ))}
+                </List>
+              );
+            })()}
           </div>
         }
         onClose={() => setAllocUserModalVisible(false)}
+        onAction={() => setAllocUserModalVisible(false)}
         closeOnMaskClick
         actions={[{ key: 'close', text: '取消' }]}
+      />
+
+      {/* 联动人选择多选弹窗 */}
+      <Modal
+        visible={copartnersModalVisible}
+        content={
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+              请选择联动人（非营销岗，多选）
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 12 }}>
+              <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+              <Input
+                placeholder="搜索姓名..."
+                value={copartnerSearch}
+                onChange={setCopartnerSearch}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            {(() => {
+              const filtered = users.filter(u => {
+                if (u.position_type === 'marketing') return false;
+                const nameMatch = u.name.toLowerCase().includes(copartnerSearch.toLowerCase());
+                const positionMatch = (u.position || '').toLowerCase().includes(copartnerSearch.toLowerCase());
+                return nameMatch || positionMatch;
+              });
+              if (filtered.length === 0) {
+                return <div style={{ textAlign: 'center', padding: '20px 0', color: '#999', fontSize: 13 }}>未找到匹配人员</div>;
+              }
+              return (
+                <List>
+                  {filtered.map(u => {
+                    const isSelected = formData.copartners.includes(u.name)
+                    return (
+                      <List.Item
+                        key={u.id}
+                        clickable
+                        onClick={() => {
+                          let nextSelected = []
+                          if (isSelected) {
+                            nextSelected = formData.copartners.filter(name => name !== u.name)
+                          } else {
+                            nextSelected = [...formData.copartners, u.name]
+                          }
+                          setFormData(prev => ({ ...prev, copartners: nextSelected }))
+                          // 联动自动更新文案
+                          updateTriangleContent(formData.employeeName, formData.customerName, nextSelected, formData.marketingCopartners, formData.actionDescription)
+                        }}
+                        extra={isSelected ? <CheckCircleFill style={{ color: '#1677ff' }} /> : null}
+                      >
+                        <span style={{ fontSize: 13, color: isSelected ? '#1677ff' : '#333' }}>{u.name} ({u.position || '其它'})</span>
+                      </List.Item>
+                    )
+                  })}
+                </List>
+              );
+            })()}
+          </div>
+        }
+        onClose={() => setCopartnersModalVisible(false)}
+        onAction={() => setCopartnersModalVisible(false)}
+        closeOnMaskClick
+        actions={[{ key: 'close', text: '确定' }]}
+      />
+
+      {/* 营销人员选择多选弹窗 */}
+      <Modal
+        visible={marketingCopartnersModalVisible}
+        content={
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+              请选择营销人员（营销岗，多选）
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 12 }}>
+              <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+              <Input
+                placeholder="搜索姓名..."
+                value={marketingCopartnerSearch}
+                onChange={setMarketingCopartnerSearch}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            {(() => {
+              const filtered = users.filter(u => {
+                if (u.position_type !== 'marketing') return false;
+                const nameMatch = u.name.toLowerCase().includes(marketingCopartnerSearch.toLowerCase());
+                const positionMatch = (u.position || '').toLowerCase().includes(marketingCopartnerSearch.toLowerCase());
+                return nameMatch || positionMatch;
+              });
+              if (filtered.length === 0) {
+                return <div style={{ textAlign: 'center', padding: '20px 0', color: '#999', fontSize: 13 }}>未找到匹配人员</div>;
+              }
+              return (
+                <List>
+                  {filtered.map(u => {
+                    const isSelected = formData.marketingCopartners.includes(u.name)
+                    return (
+                      <List.Item
+                        key={u.id}
+                        clickable
+                        onClick={() => {
+                          let nextSelected = []
+                          if (isSelected) {
+                            nextSelected = formData.marketingCopartners.filter(name => name !== u.name)
+                          } else {
+                            nextSelected = [...formData.marketingCopartners, u.name]
+                          }
+                          setFormData(prev => ({ ...prev, marketingCopartners: nextSelected }))
+                          // 联动自动更新文案
+                          updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, nextSelected, formData.actionDescription)
+                        }}
+                        extra={isSelected ? <CheckCircleFill style={{ color: '#1677ff' }} /> : null}
+                      >
+                        <span style={{ fontSize: 13, color: isSelected ? '#1677ff' : '#333' }}>{u.name} ({u.position || '营销岗'})</span>
+                      </List.Item>
+                    )
+                  })}
+                </List>
+              );
+            })()}
+          </div>
+        }
+        onClose={() => setMarketingCopartnersModalVisible(false)}
+        onAction={() => setMarketingCopartnersModalVisible(false)}
+        closeOnMaskClick
+        actions={[{ key: 'close', text: '确定' }]}
       />
     </div>
   )

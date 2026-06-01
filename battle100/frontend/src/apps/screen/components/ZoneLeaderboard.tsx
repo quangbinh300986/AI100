@@ -1,12 +1,13 @@
 import React from 'react'
-import type { RankingItem } from '@shared/types'
+import type { RankingItem, DualTrackTeam } from '@shared/types'
 
 interface ZoneLeaderboardProps {
   theme?: string
   zoneTeamsPK?: Record<string, RankingItem[]>
+  dualTrackTeams?: DualTrackTeam[]
 }
 
-const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-red', zoneTeamsPK }) => {
+const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-gold', zoneTeamsPK, dualTrackTeams }) => {
   // 默认周冲刺兜底，所有实际值置零，保证只跑真实数据
   const defaultZoneTeamsPK: Record<string, RankingItem[]> = {
     '第一战区': [
@@ -36,6 +37,10 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
     score: number
     trend: string
     rowSpan: number // 第一行设为3，其余设为0
+    weeklyMarketingActual?: number
+    weeklyMarketingTarget?: number
+    weeklyDeliveryActual?: number
+    weeklyDeliveryTarget?: number
   }> = []
 
   // 按固定的第一、第二、第三战区顺序扁平化
@@ -49,7 +54,11 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
         teamName: t.name,
         score: t.score,
         trend: t.trend,
-        rowSpan: idx === 0 ? teams.length : 0
+        rowSpan: idx === 0 ? teams.length : 0,
+        weeklyMarketingActual: t.weeklyMarketingActual,
+        weeklyMarketingTarget: t.weeklyMarketingTarget,
+        weeklyDeliveryActual: t.weeklyDeliveryActual,
+        weeklyDeliveryTarget: t.weeklyDeliveryTarget
       })
     })
   })
@@ -62,18 +71,18 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
         justifyContent: 'space-between',
         alignItems: 'flex-end',
         marginBottom: '0.4rem',
-        borderLeft: '4px solid var(--accent-color, #b71c1c)',
+        borderLeft: '4px solid #ffd700',
         paddingLeft: '0.8rem',
         flexShrink: 0
       }}>
         <div style={{
           fontSize: '1.1rem',
           fontWeight: 'bold',
-          color: 'var(--accent-color, #b71c1c)',
+          color: '#ffd700',
         }}>
           各战区战队周冲刺排名 (周一开始清零)
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold' }}>
           周度奖励核算看板 <span>🏆</span>
         </div>
       </div>
@@ -110,8 +119,9 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
               <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战区名称</th>
               <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>区内排名</th>
               <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战队名称</th>
+              <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>营销 (万)</th>
+              <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>交付 (万)</th>
               <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>完成百分比 (%)</th>
-              <th style={{ padding: '0.35rem 0.4rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>趋势</th>
             </tr>
           </thead>
           <tbody>
@@ -131,16 +141,14 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                 rankBorder = '1px solid #91d5ff'
               }
 
-              // 计算趋势 Tag 样式
-              let trendColor = '#8c8c8c'
-              let trendText = '→ 持平'
-              if (row.trend === 'up') {
-                trendColor = '#389e0d'
-                trendText = '↑ 上升'
-              } else if (row.trend === 'down') {
-                trendColor = '#cf1322'
-                trendText = '↓ 下降'
-              }
+              // 直接使用后端周排名行数据携带的当周营销与交付实际/基础目标
+              const mActual = row.weeklyMarketingActual ?? 0
+              const mTarget = row.weeklyMarketingTarget ?? 0
+              const dActual = row.weeklyDeliveryActual ?? 0
+              const dTarget = row.weeklyDeliveryTarget ?? 0
+
+              const mStr = `${mActual.toFixed(1).replace('.0', '')}/${mTarget.toFixed(1).replace('.0', '')}`
+              const dStr = `${dActual.toFixed(1).replace('.0', '')}/${dTarget.toFixed(1).replace('.0', '')}`
 
               return (
                 <tr
@@ -188,14 +196,19 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                     {row.teamName}
                   </td>
 
-                  {/* 完成百分比 */}
-                  <td style={{ padding: '0.35rem 0.4rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.1rem' }}>
-                    {row.score.toFixed(2).replace('.00', '')}%
+                  {/* 营销实际/目标 */}
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.05rem', fontWeight: '500' }}>
+                    {mStr}
                   </td>
 
-                  {/* 趋势 */}
-                  <td style={{ padding: '0.35rem 0.4rem', fontWeight: 'bold', color: trendColor, fontSize: '1.1rem' }}>
-                    {trendText}
+                  {/* 交付实际/目标 */}
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.05rem', fontWeight: '500' }}>
+                    {dStr}
+                  </td>
+
+                  {/* 完成百分比 */}
+                  <td style={{ padding: '0.35rem 0.4rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', fontSize: '1.1rem' }}>
+                    {row.score.toFixed(2).replace('.00', '')}%
                   </td>
                 </tr>
               )
@@ -207,12 +220,12 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
       <div style={{
         marginTop: '0.4rem',
         fontSize: '0.85rem',
-        color: '#8c8c8c',
+        color: 'rgba(255, 255, 255, 0.75)',
         textAlign: 'left',
         paddingLeft: '0.4rem',
         lineHeight: '1.3'
       }}>
-        * 注：<strong>完成百分比 (%)</strong> = (营销新签实际/基础目标 × 50%) + (交付新签实际/基础目标 × 50%)。无营销目标的战队(如广州三战队)完成百分比 = 交付实际/基础目标 × 100%。
+        * 注：<strong style={{ color: '#ffd700' }}>完成百分比 (%)</strong> = (营销新签实际/基础目标 × 50%) + (交付新签实际/基础目标 × 50%)。无营销目标的战队(如广州三战队)完成百分比 = 交付实际/基础目标 × 100%。
       </div>
     </div>
   )

@@ -195,8 +195,8 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
         display: 'flex',
         alignItems: 'center',
         gap: '0.5rem',
-        color: 'var(--accent-color, #b71c1c)',
-        borderLeft: '4px solid var(--accent-color, #b71c1c)',
+        color: '#ffd700',
+        borderLeft: '4px solid #ffd700',
         paddingLeft: '0.6rem',
         flexShrink: 0
       }}>
