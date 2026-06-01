@@ -272,7 +272,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
 
               {/* 左侧：战区竖排字签栏 */}
               <div style={{
-                width: '1.8rem',
+                width: '2.1rem',
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
@@ -280,7 +280,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                 background: `linear-gradient(180deg, ${zone.dotColor} 0%, #111111 100%)`,
                 color: '#ffffff',
                 fontWeight: 'bold',
-                fontSize: '0.9rem',
+                fontSize: '1.2rem',
                 borderRadius: '6px',
                 padding: '0.5rem 0',
                 marginRight: '0.4rem',
