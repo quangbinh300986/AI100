@@ -1097,7 +1097,7 @@ async def get_dashboard_overview(
             except:
                 pass
 
-    # 动态计算倒计时天数（以数据库中最晚的周目标结束日期为基准，默认2026-09-13）
+    # 动态计算倒计时天数（以数据库中最晚的周目标结束日期为基准，默认2026-09-08）
     max_end_date_res = await db.execute(select(func.max(WeeklyTarget.week_end)))
     campaign_end_date = max_end_date_res.scalar()
     if not campaign_end_date:
