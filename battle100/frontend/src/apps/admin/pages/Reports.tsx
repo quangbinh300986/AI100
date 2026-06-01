@@ -18,8 +18,12 @@ import {
   Divider,
   Popconfirm,
   Statistic,
-  Tooltip
+  Tooltip,
+  Collapse,
+  Checkbox,
+  Upload
 } from 'antd'
+import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -94,7 +98,9 @@ interface BroadcastItem {
   team_name?: string
   delivery_allocations?: any[]
   marketing_allocations?: any[]
+  attachment_urls?: string[]
 }
+
 
 // 本地系统用户结构
 interface UserItem {
@@ -165,6 +171,31 @@ const Reports: React.FC = () => {
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
 
+  const createActionType = Form.useWatch('action_type', createForm)
+  const createHappinessScore = Form.useWatch('happiness_score', createForm)
+  const editHappinessScore = Form.useWatch('happiness_score', editForm)
+
+  const [createFileList, setCreateFileList] = useState<any[]>([])
+  const [editFileList, setEditFileList] = useState<any[]>([])
+
+  const customUpload = async (options: any) => {
+    const { file, onSuccess, onError } = options
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res: any = await post('/reports/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      if (res && res.url) {
+        onSuccess(res)
+      } else {
+        onError(new Error('上传图片失败'))
+      }
+    } catch (err) {
+      onError(err)
+    }
+  }
+
   // 伴随指标与 CRM 数据状态
   const [withIndicator, setWithIndicator] = useState(false)
   const [actionType, setActionType] = useState<string>('contract')
@@ -181,7 +212,80 @@ const Reports: React.FC = () => {
     totalCount: 0,
   })
 
+  // 新建战报表单联动处理器
+  const handleCreateValuesChange = (changedValues: any, allValues: any) => {
+    // 监听伴随指标 action_type 的改变
+    if (changedValues.action_type !== undefined) {
+      handleActionTypeChange(changedValues.action_type)
+      return
+    }
+
+    if (withIndicator && actionType === 'happiness') {
+      if (changedValues.happiness_score !== undefined) {
+        // 分值改变，清空已选标准和描述
+        createForm.setFieldsValue({
+          selected_standards: [],
+          action_description: ''
+        })
+        allValues.selected_standards = []
+        allValues.action_description = ''
+      } else if (changedValues.selected_standards !== undefined) {
+        // 勾选标准改变，拼接动作描述
+        const selectedList: string[] = changedValues.selected_standards || []
+        const cleanedList = selectedList.map(item => item.replace(/[;；]$/, ''))
+        const joined = cleanedList.join('；')
+        createForm.setFieldsValue({
+          action_description: joined
+        })
+        allValues.action_description = joined
+      }
+
+      // 重新生成 content
+      const prefix = '奋战一百天，亮剑破六千！今日'
+      const employeeName = user?.name || '团队成员'
+      const score = allValues.happiness_score ?? 20
+      const desc = allValues.action_description || ''
+      const customer = allValues.customer_name || '客户'
+      const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
+      createForm.setFieldsValue({ content: generated })
+    }
+  }
+
+  // 编辑战报表单联动处理器
+  const handleEditValuesChange = (changedValues: any, allValues: any) => {
+    if (editEventType === 'happiness') {
+      if (changedValues.happiness_score !== undefined) {
+        // 分值改变，清空已选标准和描述
+        editForm.setFieldsValue({
+          selected_standards: [],
+          action_description: ''
+        })
+        allValues.selected_standards = []
+        allValues.action_description = ''
+      } else if (changedValues.selected_standards !== undefined) {
+        // 勾选标准改变，拼接动作描述
+        const selectedList: string[] = changedValues.selected_standards || []
+        const cleanedList = selectedList.map(item => item.replace(/[;；]$/, ''))
+        const joined = cleanedList.join('；')
+        editForm.setFieldsValue({
+          action_description: joined
+        })
+        allValues.action_description = joined
+      }
+
+      // 重新生成 content
+      const prefix = '奋战一百天，亮剑破六千！今日'
+      const employeeName = selectedBroadcast?.user_name || user?.name || '团队成员'
+      const score = allValues.happiness_score ?? 20
+      const desc = allValues.action_description || ''
+      const customer = allValues.customer_name || '客户'
+      const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
+      editForm.setFieldsValue({ content: generated })
+    }
+  }
+
   // 确保战队长只查看本战队
+
   useEffect(() => {
     if (isTeamLeader && user?.teamId) {
       setFilterTeamId(String(user.teamId))
@@ -554,12 +658,17 @@ const Reports: React.FC = () => {
     }
 
     try {
+      const attachment_urls = createFileList
+        .filter(file => file.status === 'done' || file.url)
+        .map(file => file.url || file.response?.url)
+        .filter(Boolean)
+
       const payload: any = {
         event_type: values.event_type,
         team_id: values.team_id === 'all' || !values.team_id ? null : Number(values.team_id),
         content: values.content,
         push_channel: values.push_channel,
-        // 伴随指标填报
+        // 伴随录入日报指标
         action_type: withIndicator ? values.action_type : null,
         customer_name: withIndicator ? values.customer_name : null,
         amount: withIndicator ? Number(values.amount) : null,
@@ -573,6 +682,7 @@ const Reports: React.FC = () => {
         employee_name: withIndicator ? values.employee_name : null,
         copartners: withIndicator ? values.copartners : null,
         marketing_copartners: withIndicator ? values.marketing_copartners : null,
+        attachment_urls: withIndicator && ['contract', 'happiness', 'triangle'].includes(values.action_type) && attachment_urls.length > 0 ? attachment_urls : undefined
       }
 
       const res = await post<any>('/broadcast', payload)
@@ -580,6 +690,7 @@ const Reports: React.FC = () => {
         message.success('战报创建成功！已自动广播推送并重算大屏数据')
         setCreateVisible(false)
         createForm.resetFields()
+        setCreateFileList([])
         setWithIndicator(false)
         loadBroadcasts()
         loadSummaryStats()
@@ -615,6 +726,11 @@ const Reports: React.FC = () => {
     }
 
     try {
+      const attachment_urls = editFileList
+        .filter(file => file.status === 'done' || file.url)
+        .map(file => file.url || file.response?.url)
+        .filter(Boolean)
+
       const payload: any = {
         content: values.content,
         push_status: values.push_status,
@@ -644,10 +760,15 @@ const Reports: React.FC = () => {
         payload.happiness_score = values.happiness_score
       }
 
+      if (['contract_signed', 'happiness', 'triangle'].includes(editEventType)) {
+        payload.attachment_urls = attachment_urls.length > 0 ? attachment_urls : null
+      }
+
       const res = await put<any>(`/broadcast/${selectedBroadcast.id}`, payload)
       if (res) {
         message.success('战报修改成功，已联动级联同步重算业绩数据')
         setEditVisible(false)
+        setEditFileList([])
         loadBroadcasts()
         loadSummaryStats()
       }
@@ -655,6 +776,7 @@ const Reports: React.FC = () => {
       message.error(err?.response?.data?.detail || '编辑保存失败')
     }
   }
+
 
   // 表格列定义
   const columns = [
@@ -825,7 +947,9 @@ const Reports: React.FC = () => {
               const matchCopartners = copartnersMatch ? copartnersMatch.split('、') : [];
               const marketingMatch = record.content.match(/营销人员\(([^)]+)\)/)?.[1];
               const matchMarketingCopartners = marketingMatch ? marketingMatch.split('、') : [];
-              const matchActionDesc = record.content.match(/联动动作：\s*([^。]+)/)?.[1] || '';
+              const matchActionDesc = (record as any).action_description ||
+                                      record.content.match(/联动动作：\s*([^。]+)/)?.[1] ||
+                                      record.content.match(/客户幸福标准\d+分\s*(.*?)\s*动作/)?.[1] || '';
 
               const initialProj = record.crm_opportunity_id ? {
                 id: record.crm_opportunity_id,
@@ -844,6 +968,20 @@ const Reports: React.FC = () => {
                 fetchCRMProjects(progress, initialProj, record.crm_opportunity_id)
               }
 
+              const matchHappinessScore = (record as any).happiness_score !== undefined
+                ? (record as any).happiness_score
+                : (parseInt(record.content.match(/客户幸福标准(\d+)分/)?.[1] || '20'));
+
+              const initialSelectedStandards = matchActionDesc ? matchActionDesc.split(/[；;]/).filter(Boolean) : [];
+
+              const initialFileList = (record.attachment_urls || []).map((url: string, index: number) => ({
+                uid: `-${index}`,
+                name: `image-${index}.png`,
+                status: 'done',
+                url: url
+              }))
+              setEditFileList(initialFileList)
+
               editForm.setFieldsValue({
                 content: record.content,
                 push_status: record.push_status,
@@ -859,10 +997,14 @@ const Reports: React.FC = () => {
                 employee_name: matchEmployeeName,
                 copartners: matchCopartners,
                 marketing_copartners: matchMarketingCopartners,
-                action_description: matchActionDesc
+                action_description: matchActionDesc,
+                // 幸福动作回填
+                happiness_score: matchHappinessScore,
+                selected_standards: initialSelectedStandards
               })
               setEditVisible(true)
             }}
+
           >
             编辑
           </Button>
@@ -1097,8 +1239,10 @@ const Reports: React.FC = () => {
             team_id: isTeamLeader ? String(user?.teamId) : undefined
           }}
           onFinish={handleCreateSubmit}
+          onValuesChange={handleCreateValuesChange}
           style={{ marginTop: 12 }}
         >
+
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -1240,21 +1384,64 @@ const Reports: React.FC = () => {
                       name="happiness_score"
                       label="幸福得分 (分值)"
                       initialValue={20}
+                      rules={[{ required: true, message: '请选择幸福分值' }]}
                     >
-                      <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                      <Select placeholder="选择客户幸福标准分值">
+                        <Select.Option value={0}>0分</Select.Option>
+                        <Select.Option value={20}>20分</Select.Option>
+                        <Select.Option value={50}>50分</Select.Option>
+                        <Select.Option value={100}>100分</Select.Option>
+                      </Select>
                     </Form.Item>
                   </Col>
                 )}
               </Row>
 
+              {actionType === 'happiness' && createHappinessScore !== undefined && HAPPINESS_STANDARDS[String(createHappinessScore)] && (
+                <Form.Item name="selected_standards" label="客户幸福标准选项勾选">
+                  <Checkbox.Group style={{ width: '100%' }}>
+                    <Collapse 
+                      size="small" 
+                      defaultActiveKey={HAPPINESS_STANDARDS[String(createHappinessScore)].sections.map((s: any) => s.section_id)}
+                      style={{ marginBottom: 16, maxHeight: '300px', overflowY: 'auto' }}
+                    >
+                      {HAPPINESS_STANDARDS[String(createHappinessScore)].sections.map((sec: any) => (
+                        <Collapse.Panel 
+                          header={<span style={{ fontWeight: 'bold', color: '#1677ff' }}>{sec.section_title}</span>} 
+                          key={sec.section_id}
+                        >
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            {sec.items.map((item: any) => (
+                              <div key={item.item_id} style={{ padding: '4px 0' }}>
+                                <Checkbox value={item.content}>
+                                  <span style={{ fontSize: 13, lineHeight: '1.5', display: 'inline-block', verticalAlign: 'top', whiteSpace: 'normal' }}>
+                                    {item.content}
+                                  </span>
+                                </Checkbox>
+                              </div>
+                            ))}
+                          </Space>
+                        </Collapse.Panel>
+                      ))}
+                    </Collapse>
+                  </Checkbox.Group>
+                </Form.Item>
+              )}
+
               {actionType === 'happiness' && (
                 <Form.Item
                   name="action_description"
                   label="具体幸福关怀动作说明"
+                  rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}
                 >
-                  <Input.TextArea placeholder="请输入具体执行的关怀动作说明..." rows={2} />
+                  <Input.TextArea 
+                    placeholder="请输入具体执行的关怀动作说明..." 
+                    rows={3} 
+                    autoSize={{ minRows: 2, maxRows: 6 }} 
+                  />
                 </Form.Item>
               )}
+
 
               {actionType === 'triangle' && (
                 <>
@@ -1466,8 +1653,29 @@ const Reports: React.FC = () => {
                   </div>
                 </>
               )}
+              {['contract', 'happiness', 'triangle'].includes(actionType) && (
+
+                <Form.Item label="📎 上传证明照片（可选，最多3张）">
+                  <Upload
+                    customRequest={customUpload}
+                    listType="picture-card"
+                    fileList={createFileList}
+                    onChange={({ fileList }) => setCreateFileList(fileList)}
+                    maxCount={3}
+                    accept="image/*"
+                  >
+                    {createFileList.length < 3 && (
+                      <div>
+                        <PlusOutlined />
+                        <div style={{ marginTop: 8 }}>上传</div>
+                      </div>
+                    )}
+                  </Upload>
+                </Form.Item>
+              )}
             </div>
           )}
+
 
           <Form.Item
             name="content"
@@ -1492,8 +1700,10 @@ const Reports: React.FC = () => {
           form={editForm}
           layout="vertical"
           onFinish={handleEditSubmit}
+          onValuesChange={handleEditValuesChange}
           style={{ marginTop: 12 }}
         >
+
           {/* 基本文本和通道 */}
           <Form.Item
             name="content"
@@ -1631,14 +1841,66 @@ const Reports: React.FC = () => {
 
           {/* 第五种幸福动作显示数量/得分 */}
           {editEventType === 'happiness' && (
-            <Form.Item
-              name="happiness_score"
-              label="客户幸福得分分值"
-              initialValue={20}
-            >
-              <InputNumber style={{ width: '100%' }} min={0} max={100} />
-            </Form.Item>
+            <>
+              <Form.Item
+                name="happiness_score"
+                label="客户幸福得分分值"
+                initialValue={20}
+                rules={[{ required: true, message: '请选择幸福分值' }]}
+              >
+                <Select placeholder="选择客户幸福标准分值">
+                  <Select.Option value={0}>0分</Select.Option>
+                  <Select.Option value={20}>20分</Select.Option>
+                  <Select.Option value={50}>50分</Select.Option>
+                  <Select.Option value={100}>100分</Select.Option>
+                </Select>
+              </Form.Item>
+
+              {editHappinessScore !== undefined && HAPPINESS_STANDARDS[String(editHappinessScore)] && (
+                <Form.Item name="selected_standards" label="客户幸福标准选项勾选">
+                  <Checkbox.Group style={{ width: '100%' }}>
+                    <Collapse 
+                      size="small" 
+                      defaultActiveKey={HAPPINESS_STANDARDS[String(editHappinessScore)].sections.map((s: any) => s.section_id)}
+                      style={{ marginBottom: 16, maxHeight: '300px', overflowY: 'auto' }}
+                    >
+                      {HAPPINESS_STANDARDS[String(editHappinessScore)].sections.map((sec: any) => (
+                        <Collapse.Panel 
+                          header={<span style={{ fontWeight: 'bold', color: '#1677ff' }}>{sec.section_title}</span>} 
+                          key={sec.section_id}
+                        >
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            {sec.items.map((item: any) => (
+                              <div key={item.item_id} style={{ padding: '4px 0' }}>
+                                <Checkbox value={item.content}>
+                                  <span style={{ fontSize: 13, lineHeight: '1.5', display: 'inline-block', verticalAlign: 'top', whiteSpace: 'normal' }}>
+                                    {item.content}
+                                  </span>
+                                </Checkbox>
+                              </div>
+                            ))}
+                          </Space>
+                        </Collapse.Panel>
+                      ))}
+                    </Collapse>
+                  </Checkbox.Group>
+                </Form.Item>
+              )}
+
+              <Form.Item
+                name="action_description"
+                label="具体幸福关怀动作说明"
+                rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}
+              >
+                <Input.TextArea 
+                  placeholder="请输入具体执行的关怀动作说明..." 
+                  rows={3} 
+                  autoSize={{ minRows: 2, maxRows: 6 }} 
+                />
+              </Form.Item>
+            </>
           )}
+
 
           {/* 第三种已完成合同签订显示金额和分摊列表 */}
           {editEventType === 'contract_signed' && (
@@ -1813,7 +2075,28 @@ const Reports: React.FC = () => {
             </>
           )}
 
+          {['contract_signed', 'happiness', 'triangle'].includes(editEventType) && (
+            <Form.Item label="📎 证明照片（可选，最多3张）">
+              <Upload
+                customRequest={customUpload}
+                listType="picture-card"
+                fileList={editFileList}
+                onChange={({ fileList }) => setEditFileList(fileList)}
+                maxCount={3}
+                accept="image/*"
+              >
+                {editFileList.length < 3 && (
+                  <div>
+                    <PlusOutlined />
+                    <div style={{ marginTop: 8 }}>上传</div>
+                  </div>
+                )}
+              </Upload>
+            </Form.Item>
+          )}
+
           <Divider style={{ margin: '12px 0' }} />
+
 
           <Row gutter={16}>
             <Col span={12}>
