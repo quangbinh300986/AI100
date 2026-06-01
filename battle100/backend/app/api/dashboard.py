@@ -566,10 +566,27 @@ async def get_dashboard_overview(
     running_base_target = 0.0
     running_challenge_target = 0.0
 
+    # 官方标准的百日战役15周日期起止映射（代码兜底纠偏防线）
+    STANDARD_WEEK_RANGES_OVERVIEW = {
+        1: (date(2026, 6, 1), date(2026, 6, 7)),
+        2: (date(2026, 6, 8), date(2026, 6, 14)),
+        3: (date(2026, 6, 15), date(2026, 6, 21)),
+        4: (date(2026, 6, 22), date(2026, 6, 28)),
+        5: (date(2026, 6, 29), date(2026, 7, 5)),
+        6: (date(2026, 7, 6), date(2026, 7, 12)),
+        7: (date(2026, 7, 13), date(2026, 7, 19)),
+        8: (date(2026, 7, 20), date(2026, 7, 26)),
+        9: (date(2026, 7, 27), date(2026, 8, 2)),
+        10: (date(2026, 8, 3), date(2026, 8, 9)),
+        11: (date(2026, 8, 10), date(2026, 8, 16)),
+        12: (date(2026, 8, 17), date(2026, 8, 23)),
+        13: (date(2026, 8, 24), date(2026, 8, 30)),
+        14: (date(2026, 8, 31), date(2026, 9, 6)),
+        15: (date(2026, 9, 7), date(2026, 9, 13))
+    }
     for w in weekly_periods:
         week_num = w.week_number
-        s_date = w.start_date
-        e_date = w.end_date
+        s_date, e_date = STANDARD_WEEK_RANGES_OVERVIEW.get(week_num, (w.start_date, w.end_date))
         
         # 统计去重后该周的合同总额（只统计交付维度，过滤掉营销维度以防重复计算）
         w_amount_stmt = select(
@@ -1127,10 +1144,27 @@ async def get_weekly_trend(
     target_rows = target_res.all()
     
     trends = []
+    # 官方标准的百日战役15周日期起止映射（代码兜底纠偏防线）
+    STANDARD_WEEK_RANGES = {
+        1: (date(2026, 6, 1), date(2026, 6, 7)),
+        2: (date(2026, 6, 8), date(2026, 6, 14)),
+        3: (date(2026, 6, 15), date(2026, 6, 21)),
+        4: (date(2026, 6, 22), date(2026, 6, 28)),
+        5: (date(2026, 6, 29), date(2026, 7, 5)),
+        6: (date(2026, 7, 6), date(2026, 7, 12)),
+        7: (date(2026, 7, 13), date(2026, 7, 19)),
+        8: (date(2026, 7, 20), date(2026, 7, 26)),
+        9: (date(2026, 7, 27), date(2026, 8, 2)),
+        10: (date(2026, 8, 3), date(2026, 8, 9)),
+        11: (date(2026, 8, 10), date(2026, 8, 16)),
+        12: (date(2026, 8, 17), date(2026, 8, 23)),
+        13: (date(2026, 8, 24), date(2026, 8, 30)),
+        14: (date(2026, 8, 31), date(2026, 9, 6)),
+        15: (date(2026, 9, 7), date(2026, 9, 13))
+    }
     for row in target_rows:
         week_num = row.week_number
-        s_date = row.week_start
-        e_date = row.week_end
+        s_date, e_date = STANDARD_WEEK_RANGES.get(week_num, (row.week_start, row.week_end))
         
         # 计算营销实际
         m_actual = await get_team_weekly_marketing_actual(db, s_date, e_date, team_id)

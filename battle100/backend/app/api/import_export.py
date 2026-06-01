@@ -218,6 +218,24 @@ async def import_goals_weekly(
     team_by_name = {t.name: t.id for t in all_teams}
 
     # 1. 扫描表头，建立每一列对应的周次与起止日期
+    STANDARD_WEEK_RANGES = {
+        1: (date(2026, 6, 1), date(2026, 6, 7)),
+        2: (date(2026, 6, 8), date(2026, 6, 14)),
+        3: (date(2026, 6, 15), date(2026, 6, 21)),
+        4: (date(2026, 6, 22), date(2026, 6, 28)),
+        5: (date(2026, 6, 29), date(2026, 7, 5)),
+        6: (date(2026, 7, 6), date(2026, 7, 12)),
+        7: (date(2026, 7, 13), date(2026, 7, 19)),
+        8: (date(2026, 7, 20), date(2026, 7, 26)),
+        9: (date(2026, 7, 27), date(2026, 8, 2)),
+        10: (date(2026, 8, 3), date(2026, 8, 9)),
+        11: (date(2026, 8, 10), date(2026, 8, 16)),
+        12: (date(2026, 8, 17), date(2026, 8, 23)),
+        13: (date(2026, 8, 24), date(2026, 8, 30)),
+        14: (date(2026, 8, 31), date(2026, 9, 6)),
+        15: (date(2026, 9, 7), date(2026, 9, 13))
+    }
+
     week_columns = {}
     week_counter = 1
     
@@ -230,10 +248,12 @@ async def import_goals_weekly(
                 if range_res:
                     start_date, end_date = range_res
                     if c not in week_columns:
+                        # 强制纠错防御：匹配战役15周的标准起止日期
+                        std_start, std_end = STANDARD_WEEK_RANGES.get(week_counter, (start_date, end_date))
                         week_columns[c] = {
                             "week_number": week_counter,
-                            "week_start": start_date,
-                            "week_end": end_date
+                            "week_start": std_start,
+                            "week_end": std_end
                         }
                         week_counter += 1
                         header_found = True
@@ -323,6 +343,9 @@ async def import_goals_weekly(
                 )
                 db.add(wt)
                 await db.flush()
+            else:
+                wt.week_start = info["week_start"]
+                wt.week_end = info["week_end"]
 
             if current_mode == "base":
                 if is_marketing:
