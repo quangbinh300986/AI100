@@ -129,7 +129,7 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
             {campaignName || '中地顾问「百日奋战」经营冲刺大屏'}
           </h1>
           <p style={{ margin: '2px 0 0 0', fontSize: '0.95rem', color: sloganColor, letterSpacing: '1px', fontWeight: 'bold' }}>
-            {slogan || '攻坚一百天，亮剑破六千！'}
+            {slogan || '奋战一百天，亮剑破六千！'}
           </p>
         </div>
       </div>

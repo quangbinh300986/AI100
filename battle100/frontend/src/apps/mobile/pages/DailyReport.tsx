@@ -143,7 +143,7 @@ export default function DailyReport() {
     if (actionType === 'lead_75') progressText = '75%'
     if (actionType === 'lead_25') progressText = '25%'
 
-    const prefix = '攻坚一百天，亮剑破六千！今日确定'
+    const prefix = '奋战一百天，亮剑破六千！今日确定'
     let generatedContent = ''
     if (actionType === 'contract') {
       generatedContent = `${prefix}${proj.name}项目走完合同流程，客户为${proj.customer_name}，项目金额${defaultAmount}万，赢战百日！`
@@ -232,14 +232,14 @@ export default function DailyReport() {
 
   // 幸福动作文本生成
   const updateHappinessContent = (score: number, desc: string, customer: string) => {
-    const prefix = '攻坚一百天，亮剑破六千！今日'
+    const prefix = '奋战一百天，亮剑破六千！今日'
     const generated = `${prefix}${user?.name || 'XX'}做到客户幸福标准${score}分${desc || 'XX'}动作，收到客户${customer || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
   // 铁三角联动文本生成
   const updateTriangleContent = (customer: string) => {
-    const prefix = '攻坚一百天，亮剑破六千！今日'
+    const prefix = '奋战一百天，亮剑破六千！今日'
     const generated = `${prefix}售前铁三角现场联动，客户分别为${customer || 'XX'}，为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }

@@ -177,7 +177,7 @@ const Login: React.FC = () => {
             <span style={{ fontSize: 28, color: '#fff', fontWeight: 800 }}>战</span>
           </div>
           <h2 style={{ margin: 0, fontSize: 24, color: '#1a1a1a' }}>百日奋战 · 管理后台</h2>
-          <p style={{ color: '#8c8c8c', marginTop: 8 }}>攻坚一百天，亮剑破六千</p>
+          <p style={{ color: '#8c8c8c', marginTop: 8 }}>奋战一百天，亮剑破六千</p>
         </div>
 
         <AntForm

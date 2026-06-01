@@ -460,7 +460,7 @@ const Dashboard: React.FC = () => {
         employeeName: allValues.employeeName || user?.name || '',
         happinessScore: 20,
         actionDescription: '',
-        content: type ? '攻坚一百天，亮剑破六千！今日' : ''
+        content: type ? '奋战一百天，亮剑破六千！今日' : ''
       })
       setFormVersion(v => v + 1)
       return
@@ -527,7 +527,7 @@ const Dashboard: React.FC = () => {
     const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney } = allValues
     if (!actionType) return
     
-    const prefix = '攻坚一百天，亮剑破六千！今日'
+    const prefix = '奋战一百天，亮剑破六千！今日'
     let generated = ''
     
     switch (actionType) {
@@ -853,7 +853,7 @@ const Dashboard: React.FC = () => {
         <Col>
           <Title level={3} style={{ margin: 0 }}>⚔️ 百日奋战经营作战大盘 (管理端)</Title>
           <Text type="secondary">
-            口号：{data?.slogan || '攻坚一百天，亮剑破六千！'} | 战役倒计时还剩 <strong>{data?.countdown || 71}</strong> 天 | 
+            口号：{data?.slogan || '奋战一百天，亮剑破六千！'} | 战役倒计时还剩 <strong>{data?.countdown || 71}</strong> 天 | 
             当前登录人：<strong>{user?.name || '管理员'}</strong> ({user?.position || '系统管理员'})
           </Text>
         </Col>

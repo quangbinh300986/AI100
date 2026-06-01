@@ -650,47 +650,47 @@ async def get_dashboard_overview(
         
         # 1. 有效线索确定 (10% -> 25%)
         if d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
-            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
-                content = f"攻坚一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                content = f"奋战一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "achievement"
             
         # 2. 中标确定 (50% -> 75%)
         elif d.detail_type == DetailType.LEAD and (d.lead_progress == "75%" or "75" in str(d.lead_progress or "")):
-            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
-                content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "milestone"
             
         # 3. 已完成合同签订（双方盖章）(75% -> 90%)
         elif d.detail_type == DetailType.CONTRACT:
-            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
-                content = f"攻坚一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
             feed_type = "contract"
             
         # 4. 铁三角联动
         elif d.detail_type == DetailType.TRIANGLE:
-            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
-                content = f"攻坚一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
+                content = f"奋战一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
             feed_type = "info"
             
         # 5. 客户幸福动作
         elif d.detail_type == DetailType.HAPPINESS:
             score = d.happiness_level or 20
-            if d.description and ("攻坚一百天" in d.description or "亮剑破六千" in d.description):
+            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
-                content = f"攻坚一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
+                content = f"奋战一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
             feed_type = "milestone"
             
         else:
-            content = f"攻坚一百天，亮剑破六千！【{team_name}】{user_name} 完成了 {d.detail_type.value} 项攻坚突破，赢战百日！"
+            content = f"奋战一百天，亮剑破六千！【{team_name}】{user_name} 完成了 {d.detail_type.value} 项攻坚突破，赢战百日！"
             feed_type = "info"
             
         # 剔除内容中的关联战报标识 \n[broadcast_id:xx]
@@ -1102,7 +1102,7 @@ async def get_dashboard_overview(
         importantProjects=important_projects,
         countdown=countdown,
         campaignName="中地顾问「百日奋战」经营冲刺大屏",
-        slogan="攻坚一百天，亮剑破六千！"
+        slogan="奋战一百天，亮剑破六千！"
     )
 
 @router.get("/weekly-trend", response_model=list[WeeklyTrend], summary="获取周度趋势")
@@ -2164,7 +2164,7 @@ async def generate_daily_report(
         z_name = team_info_res[1] if team_info_res else ""
         
         text = (
-            f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
+            f"奋战一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
             f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
             f"今日确定有效线索：{valid_leads_cnt} 条\n"
             f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
@@ -2183,7 +2183,7 @@ async def generate_daily_report(
         )
     else:
         text = (
-            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
+            f"奋战一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
             f"新签合同目标{tgt_val}万，已完成{act_val}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"

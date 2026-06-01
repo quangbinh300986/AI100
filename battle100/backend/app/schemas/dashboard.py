@@ -102,7 +102,7 @@ class DashboardResponse(BaseModel):
     importantProjects: list[ImportantProjectItem] = Field(default_factory=list, description="50万以上重特大攻坚项目")
     countdown: int = Field(default=71, description="百日倒计时天数")
     campaignName: str = Field(default="中地顾问「百日奋战」经营冲刺大屏", description="战役名称")
-    slogan: str = Field(default="攻坚一百天，亮剑破六千！", description="战役口号")
+    slogan: str = Field(default="奋战一百天，亮剑破六千！", description="战役口号")
 
 
 class WeeklyTrend(BaseModel):
