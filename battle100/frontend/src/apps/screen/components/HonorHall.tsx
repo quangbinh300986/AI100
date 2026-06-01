@@ -25,15 +25,15 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
     : `战队 [${warningTeams.map(t => `${t.teamName}(${t.leader})`).join(', ')}] 进度面临卡点。已指派技术专家、风控委介入方案诊断，开展陪访以破除僵局。`
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {/* 战区/政委协同状态通知条 */}
       <div style={{
         background: alertBg,
         border: alertBorder,
         borderRadius: '6px',
-        padding: '0.8rem 1.2rem',
+        padding: '0.35rem 1rem',
         color: alertColor,
-        fontSize: '0.95rem',
+        fontSize: '0.8rem',
         display: 'flex',
         alignItems: 'center',
         gap: '0.8rem',
@@ -45,7 +45,7 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
       </div>
 
       <div style={{
-        fontSize: '1.1rem',
+        fontSize: '0.95rem',
         fontWeight: 'bold',
         color: 'var(--accent-color)',
       }}>
@@ -54,13 +54,13 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
 
       <div style={{
         display: 'flex',
-        gap: '1.5rem',
+        gap: '1rem',
         flex: 1
       }}>
         {/* 流动红旗 */}
         <div className="screen-card scroll-paper" style={{
           flex: 1,
-          padding: '1.2rem',
+          padding: '0.6rem 1rem',
           display: 'flex',
           alignItems: 'center',
           gap: '1rem',
@@ -70,18 +70,18 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
           <div className="scroll-corner-decor-top-right" style={{ transform: 'scale(0.5)' }} />
           <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.5)' }} />
           
-          <div style={{ fontSize: '2.5rem' }}>🚩</div>
+          <div style={{ fontSize: '1.8rem' }}>🚩</div>
           <div>
-            <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>【超凡先锋】流动红旗 (实时)</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0' }}>暂无战队达成挑战目标，大家继续冲刺！</div>
-            <div style={{ color: '#d48806', fontWeight: 'bold', fontSize: '0.95rem' }}>授予流动红旗</div>
+            <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text-primary)' }}>【超凡先锋】流动红旗 (实时)</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0' }}>暂无战队达成挑战目标，大家继续冲刺！</div>
+            <div style={{ color: '#d48806', fontWeight: 'bold', fontSize: '0.9rem' }}>授予流动红旗</div>
           </div>
         </div>
 
         {/* 猎头大奖 */}
         <div className="screen-card scroll-paper" style={{
           flex: 1,
-          padding: '1.2rem',
+          padding: '0.6rem 1rem',
           display: 'flex',
           alignItems: 'center',
           gap: '1rem',
@@ -91,11 +91,11 @@ const HonorHall: React.FC<HonorHallProps> = ({ theme = 'theme-light-red', teams 
           <div className="scroll-corner-decor-top-right" style={{ transform: 'scale(0.5)' }} />
           <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.5)' }} />
           
-          <div style={{ fontSize: '2.5rem' }}>🎯</div>
+          <div style={{ fontSize: '1.8rem' }}>🎯</div>
           <div>
-            <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>百万订单“猎头”大奖 (累计)</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0' }}>已斩获百万/五十万级攻坚项目 0 个，每个即时奖励 1888 元</div>
-            <div style={{ color: '#f5222d', fontWeight: 'bold', fontSize: '1.2rem' }}>+ ¥0</div>
+            <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text-primary)' }}>百万订单“猎头”大奖 (累计)</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0' }}>已斩获百万/五十万级攻坚项目 0 个，每个即时奖励 1888 元</div>
+            <div style={{ color: '#f5222d', fontWeight: 'bold', fontSize: '0.95rem' }}>+ ¥0</div>
           </div>
         </div>
       </div>

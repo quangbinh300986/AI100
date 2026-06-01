@@ -161,16 +161,16 @@ const BigScreen: React.FC = () => {
       />
 
       {/* 2. 总进度大卡片与舱段控制面板 */}
-      <div style={{ padding: '0 2rem', marginTop: '1rem', flexShrink: 0, display: 'flex', gap: '1.5rem' }}>
+      <div style={{ padding: '0 1.5rem', marginTop: '0.5rem', flexShrink: 0, display: 'flex', gap: '1rem' }}>
         {/* 左侧：累计总进度卡片 */}
         <div
           className="screen-card scroll-paper"
           style={{
             flex: 3,
-            padding: '1.1rem 2.2rem',
+            padding: '0.6rem 1.2rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.7rem',
+            gap: '0.4rem',
             border: '3px solid var(--border-color)',
             position: 'relative'
           }}
@@ -247,7 +247,7 @@ const BigScreen: React.FC = () => {
           className="screen-card scroll-paper"
           style={{
             flex: 1,
-            padding: '0.8rem 1.8rem',
+            padding: '0.5rem 1.2rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -356,8 +356,8 @@ const BigScreen: React.FC = () => {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            padding: '1.25rem 2.2rem 0 2.2rem',
-            gap: '1.5rem',
+            padding: '0.6rem 1.5rem 0 1.5rem',
+            gap: '0.7rem',
             overflow: 'hidden',
             boxSizing: 'border-box'
           }}
@@ -387,8 +387,8 @@ const BigScreen: React.FC = () => {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            padding: '1.25rem 2.2rem 0 2.2rem',
-            gap: '1.5rem',
+            padding: '0.6rem 1.5rem 0 1.5rem',
+            gap: '0.7rem',
             overflow: 'hidden',
             boxSizing: 'border-box'
           }}

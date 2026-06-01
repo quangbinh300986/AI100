@@ -61,19 +61,19 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-end',
-        marginBottom: '1rem',
+        marginBottom: '0.5rem',
         borderLeft: '4px solid var(--accent-color, #b71c1c)',
         paddingLeft: '0.8rem',
         flexShrink: 0
       }}>
         <div style={{
-          fontSize: '1.25rem',
+          fontSize: '1.1rem',
           fontWeight: 'bold',
           color: 'var(--accent-color, #b71c1c)',
         }}>
           各战区战队周冲刺排名 (周一开始清零)
         </div>
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold' }}>
           周度奖励核算看板 <span>🏆</span>
         </div>
       </div>
@@ -82,7 +82,7 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
       <div
         className="screen-card scroll-paper"
         style={{
-          padding: '0.8rem',
+          padding: '0.4rem',
           border: '1px solid rgba(183, 28, 28, 0.15)',
           borderRadius: '8px',
           background: '#ffffff',
@@ -100,18 +100,18 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
           height: '100%',
           borderCollapse: 'collapse',
           textAlign: 'center',
-          fontSize: '1.2rem'
+          fontSize: '0.95rem'
         }}>
           <thead>
             <tr style={{
               background: 'rgba(183, 28, 28, 0.05)',
               borderBottom: '2px solid rgba(183, 28, 28, 0.25)',
             }}>
-              <th style={{ padding: '0.65rem 1rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战区名称</th>
-              <th style={{ padding: '0.65rem 1rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>区内排名</th>
-              <th style={{ padding: '0.65rem 1rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战队名称</th>
-              <th style={{ padding: '0.65rem 1rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>完成百分比 (%)</th>
-              <th style={{ padding: '0.65rem 1rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>趋势</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战区名称</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>区内排名</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>战队名称</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>完成百分比 (%)</th>
+              <th style={{ padding: '0.35rem 0.5rem', color: 'var(--accent-color, #b71c1c)', fontWeight: 'bold' }}>趋势</th>
             </tr>
           </thead>
           <tbody>
@@ -155,12 +155,12 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                     <td
                       rowSpan={row.rowSpan}
                       style={{
-                        padding: '0.8rem 1rem',
+                        padding: '0.4rem 0.5rem',
                         fontWeight: '900',
                         color: '#111111',
                         borderRight: '1px solid rgba(0,0,0,0.06)',
                         verticalAlign: 'middle',
-                        fontSize: '1.15rem'
+                        fontSize: '0.95rem'
                       }}
                     >
                       {row.zoneName}
@@ -168,33 +168,33 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-light-
                   )}
                   
                   {/* 区内排名 */}
-                  <td style={{ padding: '0.65rem 1rem', borderRight: '1px solid rgba(0,0,0,0.06)' }}>
+                  <td style={{ padding: '0.35rem 0.5rem', borderRight: '1px solid rgba(0,0,0,0.06)' }}>
                     <span style={{
                       display: 'inline-block',
-                      padding: '0.15rem 0.5rem',
+                      padding: '0.15rem 0.4rem',
                       borderRadius: '4px',
                       background: rankBg,
                       color: rankColor,
                       border: rankBorder,
                       fontWeight: 'bold',
-                      fontSize: '1.05rem'
+                      fontSize: '0.85rem'
                     }}>
                       Top {row.rank}
                     </span>
                   </td>
 
                   {/* 战队名称 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.25rem' }}>
+                  <td style={{ padding: '0.35rem 0.5rem', fontWeight: 'bold', color: '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1rem' }}>
                     {row.teamName}
                   </td>
 
                   {/* 完成百分比 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1.25rem' }}>
+                  <td style={{ padding: '0.35rem 0.5rem', fontWeight: 'bold', color: row.score > 0 ? '#1890ff' : '#333333', borderRight: '1px solid rgba(0,0,0,0.06)', fontSize: '1rem' }}>
                     {row.score.toFixed(2).replace('.00', '')}%
                   </td>
 
                   {/* 趋势 */}
-                  <td style={{ padding: '0.65rem 1rem', fontWeight: 'bold', color: trendColor, fontSize: '1.25rem' }}>
+                  <td style={{ padding: '0.35rem 0.5rem', fontWeight: 'bold', color: trendColor, fontSize: '1rem' }}>
                     {trendText}
                   </td>
                 </tr>

@@ -51,7 +51,7 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        height: '5.5rem',
+        height: '4.5rem',
         padding: '0 2.5rem',
         background: 'var(--header-bg)',
         borderBottom: `2px solid var(--header-border)`,
