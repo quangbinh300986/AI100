@@ -998,7 +998,8 @@ export default function DailyReport() {
               <Form.Item label="具体动作描述" required>
                 <TextArea
                   placeholder="请输入或由上方勾选生成客户幸福动作的具体叙述（必填）..."
-                  rows={2}
+                  rows={3}
+                  autoSize={{ minRows: 3, maxRows: 8 }}
                   value={formData.actionDescription}
                   onChange={(val) => {
                     setFormData(prev => ({ ...prev, actionDescription: val }))

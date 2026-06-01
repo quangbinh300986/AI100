@@ -1691,7 +1691,11 @@ const Dashboard: React.FC = () => {
               )}
 
               <Form.Item name="actionDescription" label="动作描述" rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}>
-                <Input placeholder="例如：关怀与拜访 / 递交了第三期方案成效汇报" />
+                <Input.TextArea 
+                  rows={3} 
+                  autoSize={{ minRows: 2, maxRows: 6 }} 
+                  placeholder="例如：关怀与拜访 / 递交了第三期方案成效汇报" 
+                />
               </Form.Item>
             </>
           )}
