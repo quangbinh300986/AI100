@@ -343,26 +343,26 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                       <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.4)' }} />
 
                       {/* 卡片头部：战队名与状态灯 */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.01rem' }}>
-                        <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#111111' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.05rem' }}>
+                        <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#111111' }}>
                           {team.teamName}
                         </span>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: lightColor, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: lightColor }} />
+                        <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: lightColor, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: lightColor }} />
                           <span>{lightText}</span>
                         </span>
                       </div>
 
                       {/* 队长/巴长名字 */}
-                      <div style={{ fontSize: '0.85rem', color: '#666666', marginBottom: '0.01rem' }}>
+                      <div style={{ fontSize: '1.0rem', color: '#666666', marginBottom: '0.05rem' }}>
                         战队巴长: <strong style={{ color: '#333333' }}>{team.leader}</strong>
                       </div>
 
                       {/* 双轨指标与进度条 - 紧凑间距 */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', width: '100%' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
                         {/* 营销指标 */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.02rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.1rem' }}>
                             <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>营销实际/目标</span>
                             <span style={{ color: '#333333', fontWeight: 'bold' }}>
                               {team.marketingActual.toFixed(1).replace('.0', '')}/{team.marketingTarget.toFixed(1).replace('.0', '')}万
@@ -371,13 +371,13 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                               </span>
                             </span>
                           </div>
-                          <div className="progress-track" style={{ height: '5px', borderRadius: '3px', backgroundColor: '#f5f5f5' }}>
+                          <div className="progress-track" style={{ height: '8px', borderRadius: '4px', backgroundColor: '#f5f5f5' }}>
                             <div
                               style={{
                                 width: `${Math.min(team.marketingRate, 100)}%`,
                                 background: 'linear-gradient(90deg, #1890ff 0%, #00d4ff 100%)',
                                 height: '100%',
-                                borderRadius: '3px'
+                                borderRadius: '4px'
                               }}
                             />
                           </div>
@@ -385,7 +385,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
 
                         {/* 交付指标 */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.02rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.1rem' }}>
                             <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>交付实际/目标</span>
                             <span style={{ color: '#333333', fontWeight: 'bold' }}>
                               {team.deliveryActual.toFixed(1).replace('.0', '')}/{team.deliveryTarget.toFixed(1).replace('.0', '')}万
@@ -394,13 +394,13 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                               </span>
                             </span>
                           </div>
-                          <div className="progress-track" style={{ height: '5px', borderRadius: '3px', backgroundColor: '#f5f5f5' }}>
+                          <div className="progress-track" style={{ height: '8px', borderRadius: '4px', backgroundColor: '#f5f5f5' }}>
                             <div
                               style={{
                                 width: `${Math.min(team.deliveryRate, 100)}%`,
                                 background: 'linear-gradient(90deg, #52c41a 0%, #95de64 100%)',
                                 height: '100%',
-                                borderRadius: '3px'
+                                borderRadius: '4px'
                               }}
                             />
                           </div>
@@ -408,7 +408,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
 
                         {/* 有效线索指标 */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.02rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.1rem' }}>
                             <span style={{ color: '#8c8c8c', fontWeight: 'bold' }}>有效线索实际/目标</span>
                             <span style={{ color: '#333333', fontWeight: 'bold' }}>
                               {team.validLeadsActual ?? 0}/{team.validLeadsTarget ?? 0}条
@@ -417,13 +417,13 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                               </span>
                             </span>
                           </div>
-                          <div className="progress-track" style={{ height: '5px', borderRadius: '3px', backgroundColor: '#f5f5f5' }}>
+                          <div className="progress-track" style={{ height: '8px', borderRadius: '4px', backgroundColor: '#f5f5f5' }}>
                             <div
                               style={{
                                 width: `${Math.min(team.validLeadsRate ?? 0, 100)}%`,
                                 background: 'linear-gradient(90deg, #faad14 0%, #ffe58f 100%)',
                                 height: '100%',
-                                borderRadius: '3px'
+                                borderRadius: '4px'
                               }}
                             />
                           </div>

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -11,7 +11,8 @@ import {
   RiseOutlined,
   FlagOutlined,
   UserOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  PlusOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics } from '@shared/api/dashboard'
@@ -37,6 +38,7 @@ const Dashboard: React.FC = () => {
   const [broadcastForm] = Form.useForm()
   const watchHappinessScore = Form.useWatch('happinessScore', broadcastForm)
   const [currentActionType, setCurrentActionType] = useState<string>('')
+  const [fileList, setFileList] = useState<any[]>([])
   const [usersList, setUsersList] = useState<{ id: number; name: string }[]>([])
   const [crmProjects, setCrmProjects] = useState<any[]>([])
   const [crmLoading, setCrmLoading] = useState(false)
@@ -50,6 +52,24 @@ const Dashboard: React.FC = () => {
   const [dailyReportModalVisible, setDailyReportModalVisible] = useState(false)
   const [dailyReportText, setDailyReportText] = useState('')
   const [dailyReportLoading, setDailyReportLoading] = useState(false)
+
+  const customUpload = async (options: any) => {
+    const { file, onSuccess, onError } = options
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res: any = await post('/reports/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      if (res && res.url) {
+        onSuccess(res)
+      } else {
+        onError(new Error('上传图片失败'))
+      }
+    } catch (err) {
+      onError(err)
+    }
+  }
 
   const handleGenerateDailyReport = async () => {
     try {
@@ -731,6 +751,11 @@ const Dashboard: React.FC = () => {
         }
       }
 
+      const attachment_urls = fileList
+        .filter(file => file.status === 'done' || file.url)
+        .map(file => file.url || file.response?.url)
+        .filter(Boolean)
+
       const payload: any = {
         event_type: values.actionType === 'contract' ? 'contract_signed' : values.actionType,
         content: values.content,
@@ -747,7 +772,8 @@ const Dashboard: React.FC = () => {
         crm_opportunity_id: values.crmProjectId,
         // 铁三角联动新增多选人员
         copartners: values.copartners,
-        marketing_copartners: values.marketingCopartners
+        marketing_copartners: values.marketingCopartners,
+        attachment_urls: attachment_urls.length > 0 ? attachment_urls : undefined
       }
 
       if (values.actionType === 'contract') {
@@ -763,6 +789,7 @@ const Dashboard: React.FC = () => {
         setBroadcastModalVisible(false)
         setCurrentActionType('')
         setSelectedProjectMarketingUsers([])
+        setFileList([])
         broadcastForm.resetFields()
         loadData()
       }
@@ -913,6 +940,7 @@ const Dashboard: React.FC = () => {
             <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
               setCurrentActionType('')
               setBroadcastModalVisible(true)
+              setFileList([])
               broadcastForm.setFieldsValue({
                 actionType: undefined,
                 employeeName: user?.name || ''
@@ -1698,6 +1726,26 @@ const Dashboard: React.FC = () => {
                 />
               </Form.Item>
             </>
+          )}
+
+          {['contract', 'happiness', 'triangle'].includes(currentActionType) && (
+            <Form.Item label="📎 上传证明照片（可选，最多3张）">
+              <Upload
+                customRequest={customUpload}
+                listType="picture-card"
+                fileList={fileList}
+                onChange={({ fileList }) => setFileList(fileList)}
+                maxCount={3}
+                accept="image/*"
+              >
+                {fileList.length < 3 && (
+                  <div>
+                    <PlusOutlined />
+                    <div style={{ marginTop: 8 }}>上传照片</div>
+                  </div>
+                )}
+              </Upload>
+            </Form.Item>
           )}
 
           <Form.Item

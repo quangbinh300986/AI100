@@ -695,11 +695,14 @@ export default function DailyReport() {
                     </div>
                   ))}
                   {attachmentUrls.length < 3 && (
-                    <label style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fafafa', border: '1px dashed #ccc', borderRadius: 6, cursor: 'pointer' }}>
+                    <div 
+                      onClick={() => document.getElementById('contract-file-input')?.click()}
+                      style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fafafa', border: '1px dashed #ccc', borderRadius: 6, cursor: 'pointer' }}
+                    >
                       <AddOutline style={{ fontSize: 24, color: '#999' }} />
                       <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传照片</span>
-                      <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-                    </label>
+                      <input id="contract-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                    </div>
                   )}
                 </div>
               </div>
@@ -844,6 +847,36 @@ export default function DailyReport() {
                 />
               </Form.Item>
             </Form>
+
+            {/* 铁三角联动照片证明上传 */}
+            <div style={{ marginTop: 16, padding: '0 4px' }}>
+              <span style={{ fontSize: 13, fontWeight: 'bold', display: 'block', marginBottom: 8 }}>
+                📎 上传联动现场合影照片（可选，最多3张）
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                {attachmentUrls.map((url, i) => (
+                  <div key={i} style={{ width: 80, height: 80, position: 'relative', border: '1px solid #ddd', borderRadius: 6, overflow: 'hidden' }}>
+                    <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div
+                      onClick={() => setAttachmentUrls(prev => prev.filter((_, idx) => idx !== i))}
+                      style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.5)', borderRadius: '50%', padding: 2, display: 'flex' }}
+                    >
+                      <CloseCircleFill style={{ fontSize: 14, color: '#fff' }} />
+                    </div>
+                  </div>
+                ))}
+                {attachmentUrls.length < 3 && (
+                  <div 
+                    onClick={() => document.getElementById('triangle-file-input')?.click()}
+                    style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fafafa', border: '1px dashed #ccc', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    <AddOutline style={{ fontSize: 24, color: '#999' }} />
+                    <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传照片</span>
+                    <input id="triangle-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1028,11 +1061,14 @@ export default function DailyReport() {
                   </div>
                 ))}
                 {attachmentUrls.length < 3 && (
-                  <label style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fafafa', border: '1px dashed #ccc', borderRadius: 6, cursor: 'pointer' }}>
+                  <div 
+                    onClick={() => document.getElementById('happiness-file-input')?.click()}
+                    style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fafafa', border: '1px dashed #ccc', borderRadius: 6, cursor: 'pointer' }}
+                  >
                     <AddOutline style={{ fontSize: 24, color: '#999' }} />
                     <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传证明</span>
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-                  </label>
+                    <input id="happiness-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                  </div>
                 )}
               </div>
             </div>
