@@ -50,7 +50,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
       dotColor: '#722ed1',
       bgColor: 'rgba(114, 46, 209, 0.05)',
       borderColor: 'rgba(114, 46, 209, 0.12)',
-      teamNames: ['广州三战队（大数据）', '广州三战队', '佛山战队', '湛江战队']
+      teamNames: ['广州三战队（大数据）', '佛山战队', '湛江战队']
     },
     {
       id: 3,
@@ -74,7 +74,6 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
     '广州一战队': '陈浩龙',
     '广州二战队': '刘罗军',
     '广州三战队（大数据）': '伍耀强',
-    '广州三战队': '伍耀强',
     '佛山战队': '卢俊松',
     '湛江战队': '周真波',
     '云浮战队': '尹晓明',
@@ -88,7 +87,6 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
     '广州一战队': { m: 1390, d: 1465.16 },
     '广州二战队': { m: 400, d: 1234.92 },
     '广州三战队（大数据）': { m: 0, d: 280 },
-    '广州三战队': { m: 0, d: 280 },
     '佛山战队': { m: 920, d: 1000 },
     '湛江战队': { m: 700, d: 550 },
     '云浮战队': { m: 550, d: 450 },
@@ -215,12 +213,11 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
             '广州一战队': 2,
             '广州二战队': 3,
             '广州三战队（大数据）': 4,
-            '广州三战队': 5,
-            '佛山战队': 6,
-            '湛江战队': 7,
-            '云浮战队': 8,
-            '东莞战队': 9,
-            '茂名战队': 10
+            '佛山战队': 5,
+            '湛江战队': 6,
+            '云浮战队': 7,
+            '东莞战队': 8,
+            '茂名战队': 9
           }
           zone.teamNames.forEach(name => {
             const teamData = teamMap.get(name)
