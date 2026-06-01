@@ -88,6 +88,23 @@ async def init_db():
         except Exception as ex:
             logger.error(f"预置默认角色权限数据失败: {ex}")
 
+import asyncio
+from app.services.backup import run_auto_backup
+
+async def backup_scheduler():
+    """后台数据库定期自动备份调度协程，每隔 12 小时备份一次"""
+    logger.info("数据库自动备份调度器已启动")
+    # 系统刚启动时，等待 30 秒再执行首次备份，防止并发数据库读写过高
+    await asyncio.sleep(30)
+    while True:
+        try:
+            logger.info("开始执行数据库周期性自动备份任务...")
+            await run_auto_backup()
+        except Exception as e:
+            logger.error(f"数据库周期性自动备份任务出现异常: {e}")
+        # 设定备份间隔为 12 小时 (12 * 3600 秒)
+        await asyncio.sleep(12 * 3600)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,8 +113,10 @@ async def lifespan(app: FastAPI):
     logger.info("系统正在启动...")
     try:
         await init_db()
+        # 挂载后台定期备份守护任务，使用 create_task 保证非阻塞主线程启动
+        asyncio.create_task(backup_scheduler())
     except Exception as e:
-        logger.error(f"数据库初始化失败: {e}")
+        logger.error(f"数据库初始化或自动备份启动失败: {e}")
     yield
     # 关闭时
     logger.info("系统正在关闭...")
