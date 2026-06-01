@@ -328,9 +328,9 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                         position: 'relative',
                         display: 'flex',
                         flexDirection: 'column',
-                        justifyContent: 'flex-start', // 让内容紧凑靠上排列，消除空隙
-                        gap: '0.2rem',
-                        padding: '0.3rem 0.45rem', // 压缩战队卡片 padding
+                        justifyContent: 'flex-start', // 让内容紧凑靠上排列，贴合字，消除多余空白
+                        gap: '0.1rem', // 使用极小间距使卡片极度紧凑
+                        padding: '0.25rem 0.4rem', // 压缩战队卡片 padding，贴合边缘
                         border: '1px solid rgba(0,0,0,0.06)',
                         borderRadius: '6px',
                         background: '#ffffff',
@@ -343,7 +343,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                       <div className="scroll-corner-decor-bottom-left" style={{ transform: 'scale(0.4)' }} />
 
                       {/* 卡片头部：战队名与状态灯 */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.05rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0' }}>
                         <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#111111' }}>
                           {team.teamName}
                         </span>
@@ -354,12 +354,12 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                       </div>
 
                       {/* 队长/巴长名字 */}
-                      <div style={{ fontSize: '0.78rem', color: '#666666', marginBottom: '0.05rem' }}>
+                      <div style={{ fontSize: '0.78rem', color: '#666666', marginBottom: '0' }}>
                         战队巴长: <strong style={{ color: '#333333' }}>{team.leader}</strong>
                       </div>
 
                       {/* 双轨指标与进度条 - 紧凑间距 */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', width: '100%' }}>
                         {/* 营销指标 */}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0' }}>
