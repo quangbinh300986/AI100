@@ -81,7 +81,7 @@ const LiveFeed: React.FC<LiveFeedProps> = ({ theme = 'theme-light-red', liveFeed
             display: inline-block;
             white-space: nowrap;
             padding-left: 100%;
-            animation: screen-marquee 45s linear infinite;
+            animation: screen-marquee 80s linear infinite;
             font-size: 0.95rem;
             font-weight: bold;
             color: #ffffff;
