@@ -363,7 +363,7 @@ const BigScreen: React.FC = () => {
           }}
         >
           {/* 第一层与第二层并排：左侧双轨九宫格（65% 宽），右侧各战区战队周冲刺龙虎榜表格（35% 宽） */}
-          <div style={{ flex: 1, display: 'flex', gap: '1.5rem', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', gap: '1.5rem', overflow: 'hidden', maxHeight: '42rem' }}>
             {/* 左侧：双轨动力 3x3 九宫格 */}
             <div style={{ flex: 6.5, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <DualTrackGrid theme={theme} teams={data?.dualTrackTeams} />
@@ -375,7 +375,7 @@ const BigScreen: React.FC = () => {
           </div>
 
           {/* 第三层：预警与自动结算荣誉大厅 */}
-          <div style={{ flexShrink: 0, paddingBottom: '0.5rem' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingBottom: '0.5rem', minHeight: 0 }}>
             <HonorHall theme={theme} teams={data?.dualTrackTeams} />
           </div>
         </div>
