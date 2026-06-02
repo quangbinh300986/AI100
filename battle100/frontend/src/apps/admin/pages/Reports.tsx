@@ -246,7 +246,12 @@ const Reports: React.FC = () => {
       const score = allValues.happiness_score ?? 20
       const desc = allValues.action_description || ''
       const customer = allValues.customer_name || '客户'
-      const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
+      const result = allValues.happiness_result || ''
+      const feedback = allValues.happiness_feedback || ''
+      const recommend = allValues.recommend_action || ''
+
+      const feedbackLine = feedback ? `\n客户反馈：${feedback}。` : '';
+      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
       createForm.setFieldsValue({ content: generated })
     } else if (withIndicator && actionType === 'triangle') {
       const prefix = '奋战一百天，亮剑破六千！今日'
@@ -301,7 +306,12 @@ const Reports: React.FC = () => {
       const score = allValues.happiness_score ?? 20
       const desc = allValues.action_description || ''
       const customer = allValues.customer_name || '客户'
-      const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
+      const result = allValues.happiness_result || ''
+      const feedback = allValues.happiness_feedback || ''
+      const recommend = allValues.recommend_action || ''
+
+      const feedbackLine = feedback ? `\n客户反馈：${feedback}。` : '';
+      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
       editForm.setFieldsValue({ content: generated })
     } else if (editEventType === 'triangle') {
       const prefix = '奋战一百天，亮剑破六千！今日'
@@ -1032,6 +1042,9 @@ const Reports: React.FC = () => {
                 : (parseInt(record.content.match(/客户幸福标准(\d+)分/)?.[1] || '20'));
 
               const initialSelectedStandards = matchActionDesc ? matchActionDesc.split(/[；;]/).filter(Boolean) : [];
+              const matchTriangleResult = (record as any).triangle_result || record.content.match(/成果：\s*([^。\n]+)/)?.[1] || '';
+              const matchCustomerFeedback = (record as any).customer_feedback || record.content.match(/客户反馈：\s*([^。\n]+)/)?.[1] || '';
+              const matchRecommendAction = (record as any).recommend_action || record.content.match(/内部可推广复制的做法：\s*([^。\n]+)/)?.[1] || '';
 
               const initialFileList = (record.attachment_urls || []).map((url: string, index: number) => ({
                 uid: `-${index}`,
@@ -1057,9 +1070,14 @@ const Reports: React.FC = () => {
                 copartners: matchCopartners,
                 marketing_copartners: matchMarketingCopartners,
                 action_description: matchActionDesc,
+                triangle_result: matchTriangleResult,
+                customer_feedback: matchCustomerFeedback,
                 // 幸福动作回填
                 happiness_score: matchHappinessScore,
-                selected_standards: initialSelectedStandards
+                selected_standards: initialSelectedStandards,
+                happiness_result: matchTriangleResult,
+                happiness_feedback: matchCustomerFeedback,
+                recommend_action: matchRecommendAction
               })
               setEditVisible(true)
             }}
@@ -1488,17 +1506,28 @@ const Reports: React.FC = () => {
               )}
 
               {actionType === 'happiness' && (
-                <Form.Item
-                  name="action_description"
-                  label="具体幸福关怀动作说明"
-                  rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}
-                >
-                  <Input.TextArea 
-                    placeholder="请输入具体执行的关怀动作说明..." 
-                    rows={3} 
-                    autoSize={{ minRows: 2, maxRows: 6 }} 
-                  />
-                </Form.Item>
+                <>
+                  <Form.Item
+                    name="action_description"
+                    label="具体幸福关怀动作说明"
+                    rules={[{ required: true, message: '请输入具体关怀与拜访动作' }]}
+                  >
+                    <Input.TextArea 
+                      placeholder="请输入具体执行的关怀动作说明..." 
+                      rows={3} 
+                      autoSize={{ minRows: 2, maxRows: 6 }} 
+                    />
+                  </Form.Item>
+                  <Form.Item name="happiness_result" label="成果" rules={[{ required: true, message: '请输入取得的成果' }]}>
+                    <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+                  </Form.Item>
+                  <Form.Item name="happiness_feedback" label="客户反馈（可选）">
+                    <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
+                  </Form.Item>
+                  <Form.Item name="recommend_action" label="内部可推广复制的做法" rules={[{ required: true, message: '请输入内部可推广复制的做法说明' }]}>
+                    <Input.TextArea placeholder="具体做法说明" rows={3} />
+                  </Form.Item>
+                </>
               )}
 
 
@@ -1968,6 +1997,15 @@ const Reports: React.FC = () => {
                   rows={3} 
                   autoSize={{ minRows: 2, maxRows: 6 }} 
                 />
+              </Form.Item>
+              <Form.Item name="happiness_result" label="成果" rules={[{ required: true, message: '请输入取得的成果' }]}>
+                <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+              </Form.Item>
+              <Form.Item name="happiness_feedback" label="客户反馈（可选）">
+                <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
+              </Form.Item>
+              <Form.Item name="recommend_action" label="内部可推广复制的做法" rules={[{ required: true, message: '请输入内部可推广复制的做法说明' }]}>
+                <Input.TextArea placeholder="具体做法说明" rows={3} />
               </Form.Item>
             </>
           )}

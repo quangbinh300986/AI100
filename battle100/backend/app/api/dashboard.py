@@ -1454,10 +1454,41 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
             "unit": g_unit
         })
 
+    # 计算参战天数（从2026-06-01开始，截止到2026-09-08，最多100天）
+    from datetime import date, datetime, timezone, timedelta
+    campaign_start = date(2026, 6, 1)
+    campaign_end = date(2026, 9, 8)
+    
+    # 使用北京时间 (UTC+8) 获取当前日期
+    beijing_tz = timezone(timedelta(hours=8))
+    today_bj = datetime.now(beijing_tz).date()
+    
+    if today_bj < campaign_start:
+        join_days = 0
+    elif today_bj > campaign_end:
+        join_days = 100
+    else:
+        join_days = (today_bj - campaign_start).days + 1
+
+    # 查询当前用户审核通过的日报总数
+    total_reports_stmt = select(func.count(DailyReport.id)).where(
+        DailyReport.user_id == current_user.id,
+        DailyReport.status == ReportStatus.REVIEWED
+    )
+    total_reports = int(await db.scalar(total_reports_stmt) or 0)
+    
+    # 计算填报率，保留一位小数
+    report_rate = round((total_reports / join_days * 100), 1) if join_days > 0 else 0.0
+
     return {
         "company_stats": company_stats,
         "team_stats": team_stats,
-        "personal_stats": personal_stats
+        "personal_stats": personal_stats,
+        "user_meta": {
+            "join_days": join_days,
+            "total_reports": total_reports,
+            "report_rate": f"{report_rate}%"
+        }
     }
 
 

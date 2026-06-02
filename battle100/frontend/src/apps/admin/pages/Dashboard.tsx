@@ -610,7 +610,7 @@ const Dashboard: React.FC = () => {
     }
 
     // C. 重新计算生成捷报文字
-    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback } = allValues
+    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback, happinessResult, happinessFeedback, recommendAction } = allValues
     if (!actionType) return
     
     const prefix = '奋战一百天，亮剑破六千！今日'
@@ -641,9 +641,11 @@ const Dashboard: React.FC = () => {
         generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动。\n联动动作：${actionDescription || 'XX'}。\n成果：${triangleResult || 'XX'}。\n客户反馈：${customerFeedback || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
         break;
       }
-      case 'happiness':
-        generated = `${prefix}${employeeName || 'XX'}做到客户幸福标准${happinessScore ?? 0}分${actionDescription || 'XX'}动作，收到客户${customerName || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
-        break
+      case 'happiness': {
+        const feedbackLine = happinessFeedback ? `\n客户反馈：${happinessFeedback}。` : '';
+        generated = `${prefix}我司【${employeeName || 'XX'}】做到客户幸福标准【${happinessScore ?? 0}分】动作，对象为【${customerName || 'XX'}】，动作描述：${actionDescription || 'XX'}。\n成果：${happinessResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${recommendAction || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
+        break;
+      }
       default:
         break
     }
@@ -1785,6 +1787,15 @@ const Dashboard: React.FC = () => {
                   autoSize={{ minRows: 2, maxRows: 6 }} 
                   placeholder="例如：关怀与拜访 / 递交了第三期方案成效汇报" 
                 />
+              </Form.Item>
+              <Form.Item name="happinessResult" label="成果" rules={[{ required: true, message: '请输入取得的成果' }]}>
+                <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+              </Form.Item>
+              <Form.Item name="happinessFeedback" label="客户反馈（可选）">
+                <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
+              </Form.Item>
+              <Form.Item name="recommendAction" label="内部可推广复制的做法" rules={[{ required: true, message: '请输入内部可推广复制的做法说明' }]}>
+                <Input.TextArea placeholder="具体做法说明" rows={3} />
               </Form.Item>
             </>
           )}

@@ -327,4 +327,9 @@ export interface MyStatsResponse {
     challenge_percentage: number
     unit: string
   }>
+  user_meta?: {
+    join_days: number
+    total_reports: number
+    report_rate: string
+  }
 }
