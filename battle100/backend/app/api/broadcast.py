@@ -1272,3 +1272,165 @@ async def create_broadcast(
         background_tasks.add_task(trigger_broadcast_push, event.id)
 
     return event
+
+
+class WebhookBroadcastPayload(BaseModel):
+    type: str = Field(..., description="业务类型: 'lead' (有效线索) 或 'tender' (中标确定)")
+    id: str = Field(..., description="外部系统唯一标识(CRM商机ID或标讯招标ID)")
+    name: str = Field(..., description="项目/标讯名称")
+    customer_name: str = Field(..., description="客户/业主名称")
+    budget_money: Optional[float] = Field(0.0, description="预算金额/标讯金额（万元）")
+    expect_money: Optional[float] = Field(0.0, description="预计金额/中标金额（万元）")
+    province: Optional[str] = Field(None, description="省")
+    city: Optional[str] = Field(None, description="市")
+    district: Optional[str] = Field(None, description="区")
+    employee_name: Optional[str] = Field(None, description="项目归属人中文姓名，如 '张三'")
+
+
+@router.post("/webhook", summary="外部系统(CRM/投标室)推送自动战报播报")
+async def crm_webhook_broadcast(
+    payload: WebhookBroadcastPayload,
+    background_tasks: BackgroundTasks,
+    token: Optional[str] = Query(None, description="安全验证Token"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    接收 CRM 和投标室系统推送的中标或线索数据。
+    自动在百日奋战系统中发布战报广播、推送到钉钉群，并自动为员工录入/生效日报及指标明细。
+    """
+    from app.config import settings
+    
+    # 验证安全Token
+    secret = getattr(settings, "WEBHOOK_SECRET", "battle100_crm_push_token_2026")
+    if token != secret:
+        raise HTTPException(status_code=403, detail="安全验证Token不正确")
+
+    # 1. 查找匹配归属人的系统活跃用户
+    if not payload.employee_name:
+        raise HTTPException(status_code=400, detail="推送请求必须包含归属人姓名 (employee_name)")
+        
+    user_stmt = select(User).where(User.name == payload.employee_name.strip(), User.is_active == True)
+    res = await db.execute(user_stmt)
+    user = res.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"员工姓名 '{payload.employee_name}' 未在系统中注册或未激活，自动推送失败"
+        )
+
+    # 2. 根据业务类型组装事件类型和战报文本
+    event_type = ""
+    content = ""
+    prefix = "奋战一百天，亮剑破六千！今日"
+    
+    if payload.type == "lead":
+        event_type = "lead_25"
+        # 兼容取值金额
+        money = payload.expect_money if payload.expect_money and payload.expect_money > 0 else payload.budget_money
+        content = f"{prefix}确定有效线索：客户为{payload.customer_name}，项目【{payload.name}】金额{money or 0.0}万，赢战百日！"
+    elif payload.type == "tender":
+        event_type = "lead_75"
+        money = payload.expect_money if payload.expect_money and payload.expect_money > 0 else payload.budget_money
+        content = f"{prefix}确定【{payload.name}】项目中地承接，客户为{payload.customer_name}，项目金额{money or 0.0}万，赢战百日！"
+    else:
+        raise HTTPException(status_code=400, detail="不支持的业务类型，目前仅支持 'lead' 或 'tender'")
+
+    # 3. 写入战报广播事件
+    event = BroadcastEvent(
+        event_type=event_type,
+        user_id=user.id,
+        team_id=user.team_id,
+        content=content,
+        push_status=PushStatus.PENDING,
+        push_channel="all",  # 推送至钉钉和大屏
+        event_time=datetime.now(timezone.utc),
+        crm_opportunity_id=payload.id,
+    )
+    db.add(event)
+    await db.flush()  # 得到 event.id
+
+    # 4. 如果是有效线索（lead_25），自动为该员工创建或更新当天的日报
+    if event_type == "lead_25":
+        report_date = get_business_report_date(event.event_time)
+        
+        # 查找或创建当天日报
+        rep_stmt = select(DailyReport).where(
+            DailyReport.user_id == user.id,
+            DailyReport.report_date == report_date
+        )
+        rep_res = await db.execute(rep_stmt)
+        report = rep_res.scalar_one_or_none()
+        
+        if not report:
+            report = DailyReport(
+                user_id=user.id,
+                report_date=report_date,
+                contract_amount=0.0,
+                contract_count=0,
+                happiness_actions=0,
+                triangle_count=0,
+                leads_count=0,
+                status=ReportStatus.REVIEWED,  # 默认自动审核通过
+                reviewer_id=None,
+                submitted_at=datetime.now(timezone.utc),
+                reviewed_at=datetime.now(timezone.utc)
+            )
+            db.add(report)
+            await db.flush()
+        else:
+            # 若已有日报状态非已审核，则强行转为已审核通过以生效
+            if report.status in [ReportStatus.DRAFT, ReportStatus.REJECTED, ReportStatus.SUBMITTED]:
+                report.status = ReportStatus.REVIEWED
+                report.reviewer_id = None
+                report.submitted_at = report.submitted_at or datetime.now(timezone.utc)
+                report.reviewed_at = datetime.now(timezone.utc)
+        
+        # 增加线索总数计数
+        report.leads_count += 1
+        
+        # 新增日报明细记录，绑定 broadcast_id 以支持级联清退/删除
+        detail = ReportDetail(
+            report_id=report.id,
+            detail_type=DetailType.LEAD,
+            customer_name=payload.customer_name,
+            amount=money or 0.0,
+            lead_progress="25%",
+            crm_opportunity_id=payload.id,
+            description=f"{content}\n[broadcast_id:{event.id}]"
+        )
+        db.add(detail)
+        await db.flush()
+
+    await db.commit()
+    await db.refresh(event)
+
+    # 5. 记录操作审计日志
+    await log_action(
+        db, None, "CREATE", "broadcast", str(event.id),
+        f"接收 CRM/投标室 Webhook 推送自动发布战报，类型：{event.event_type}，内容：{event.content[:50]}...",
+        before_state=None,
+        after_state=to_dict(event)
+    )
+
+    # 6. 异步触发钉钉推送
+    background_tasks.add_task(trigger_broadcast_push, event.id)
+
+    # 7. 大屏和 WebSocket 刷新广播通知
+    try:
+        from app.services.websocket import ws_manager
+        # 广播战报提交
+        await ws_manager.broadcast({"type": "update", "event_type": "report_submitted"})
+        # 广播填报审核通过，促使大屏数据刷新
+        if event_type == "lead_25":
+            await ws_manager.broadcast({"type": "update", "event": "report_approved"})
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"战报自动推送录入成功，事件ID: {event.id}",
+        "broadcast_id": event.id,
+        "content": content
+    }
+
