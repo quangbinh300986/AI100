@@ -350,7 +350,9 @@ class DingTalkClient:
         if not cleaned_content_stripped.endswith("💪"):
             cleaned_content_stripped += " 💪"
             
-        markdown_text += f"> {cleaned_content_stripped}\n"
+        # 处理内容中的换行符，将单个换行 \n 替换为 2个空格+\n+> 符号，以保证在钉钉 Markdown 的 Blockquote 块中多行正常换行展示而不换出引用框
+        formatted_content = cleaned_content_stripped.replace("\n", "  \n> ")
+        markdown_text += f"> {formatted_content}\n"
         
         title = f"战报播报: {type_name}"
         msg_id = None
