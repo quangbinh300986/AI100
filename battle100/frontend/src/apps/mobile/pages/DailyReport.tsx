@@ -68,6 +68,9 @@ export default function DailyReport() {
     actionDescription: '',
     triangleResult: '',
     customerFeedback: '',
+    happinessResult: '',
+    happinessFeedback: '',
+    recommendAction: '',
     content: '',
     employeeName: '',
     copartners: [] as string[],
@@ -155,6 +158,9 @@ export default function DailyReport() {
       actionDescription: '',
       triangleResult: '',
       customerFeedback: '',
+      happinessResult: '',
+      happinessFeedback: '',
+      recommendAction: '',
       content: '',
       employeeName: resolvedName,
       copartners: [],
@@ -286,10 +292,24 @@ export default function DailyReport() {
   }
 
   // 幸福动作文本生成
-  const updateHappinessContent = (score: number, desc: string, customer: string) => {
+  const updateHappinessContent = (
+    score: number,
+    desc: string,
+    customer: string,
+    result?: string,
+    feedback?: string,
+    recommend?: string
+  ) => {
     const prefix = '奋战一百天，亮剑破六千！今日'
     const resolvedName = user?.realName || user?.name || user?.username || 'XX'
-    const generated = `${prefix}${resolvedName}做到客户幸福标准${score}分${desc || 'XX'}动作，收到客户${customer || 'XXX'}正反馈，为客户幸福而奋斗，赢战百日！`
+    
+    // 如果未传入则回退至当前 formData 状态值
+    const activeResult = result !== undefined ? result : formData.happinessResult;
+    const activeFeedback = feedback !== undefined ? feedback : formData.happinessFeedback;
+    const activeRecommend = recommend !== undefined ? recommend : formData.recommendAction;
+
+    const feedbackLine = activeFeedback ? `\n客户反馈：${activeFeedback}。` : '';
+    const generated = `${prefix}我司【${resolvedName}】做到客户幸福标准【${score}分】动作，对象为【${customer || 'XX'}】，动作描述：${desc || 'XX'}。\n成果：${activeResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${activeRecommend || 'XX'}。\n为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
@@ -361,6 +381,17 @@ export default function DailyReport() {
       }
       if (!formData.customerFeedback?.trim()) {
         Toast.show({ icon: 'fail', content: '请输入客户反馈' })
+        return
+      }
+    }
+
+    if (actionType === 'happiness') {
+      if (!formData.happinessResult?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入取得的成果' })
+        return
+      }
+      if (!formData.recommendAction?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入内部可推广复制的做法' })
         return
       }
     }
@@ -1116,6 +1147,48 @@ export default function DailyReport() {
                   onChange={(val) => {
                     setFormData(prev => ({ ...prev, actionDescription: val }))
                     updateHappinessContent(formData.happinessScore, val, formData.customerName)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
+              </Form.Item>
+
+              {/* 成果 */}
+              <Form.Item label="成果" required>
+                <TextArea
+                  placeholder="（推进到什么阶段/达成什么结果）"
+                  rows={3}
+                  value={formData.happinessResult}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, happinessResult: val }))
+                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, val, formData.happinessFeedback, formData.recommendAction)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
+              </Form.Item>
+
+              {/* 客户反馈（可选） */}
+              <Form.Item label="客户反馈（可选）">
+                <TextArea
+                  placeholder="“（客户原话或总结）”"
+                  rows={3}
+                  value={formData.happinessFeedback}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, happinessFeedback: val }))
+                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, val, formData.recommendAction)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
+              </Form.Item>
+
+              {/* 内部可推广复制的做法 */}
+              <Form.Item label="内部可推广复制的做法" required>
+                <TextArea
+                  placeholder="具体做法说明"
+                  rows={3}
+                  value={formData.recommendAction}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, recommendAction: val }))
+                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, formData.happinessFeedback, val)
                   }}
                   style={{ fontSize: 13 }}
                 />
