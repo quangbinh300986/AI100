@@ -18,8 +18,22 @@ from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailTyp
 from app.api.deps import get_current_user
 from app.services.audit_service import log_action, to_dict
 
-logger = logging.getLogger("battle100")
-
+def get_business_report_date(dt_utc: datetime) -> date:
+    """
+    根据北京时间 20:00 分水岭，计算业务日报归属日期
+    北京时间 20:00 对应 UTC 12:00
+    """
+    from datetime import timedelta, timezone
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    bj_tz = timezone(timedelta(hours=8))
+    dt_bj = dt_utc.astimezone(bj_tz)
+    if dt_bj.hour >= 20:
+        # 20:00 之后属于第二天日报
+        return (dt_bj + timedelta(days=1)).date()
+    else:
+        # 20:00 之前属于当天日报
+        return dt_bj.date()
 
 
 async def trigger_broadcast_push(broadcast_id: int):
@@ -697,7 +711,7 @@ async def update_broadcast(
     
     # 只有当前三种关联 CRM 时，且类型是合同新签或线索，才重新计入系统数据 (中标确定不更新系统实绩)
     if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type == "triangle"):
-        report_date = event.created_at.date() if event.created_at else datetime.now(timezone.utc).date()
+        report_date = get_business_report_date(event.created_at if event.created_at else datetime.now(timezone.utc))
         
         async def get_or_create_report(uid: int) -> DailyReport:
             r_stmt = select(DailyReport).where(
@@ -1044,11 +1058,12 @@ async def create_broadcast(
 
     # 2. 如果包含填报的 action_type，则说明是伴随大屏快捷录入，自动生成对应的日报与明细数据
     if broadcast_in.action_type:
+        report_date = get_business_report_date(event.event_time if event.event_time else datetime.now(timezone.utc))
+
         async def get_or_create_report(uid: int) -> DailyReport:
-            today = date.today()
             report_stmt = select(DailyReport).where(
                 DailyReport.user_id == uid,
-                DailyReport.report_date == today
+                DailyReport.report_date == report_date
             )
             report_res = await db.execute(report_stmt)
             rep = report_res.scalar_one_or_none()
@@ -1056,7 +1071,7 @@ async def create_broadcast(
             if not rep:
                 rep = DailyReport(
                     user_id=uid,
-                    report_date=today,
+                    report_date=report_date,
                     contract_amount=0.0,
                     contract_count=0,
                     happiness_actions=0,
