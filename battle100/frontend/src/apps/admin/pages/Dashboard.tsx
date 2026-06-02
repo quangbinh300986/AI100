@@ -610,7 +610,7 @@ const Dashboard: React.FC = () => {
     }
 
     // C. 重新计算生成捷报文字
-    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners } = allValues
+    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback } = allValues
     if (!actionType) return
     
     const prefix = '奋战一百天，亮剑破六千！今日'
@@ -638,7 +638,7 @@ const Dashboard: React.FC = () => {
           partnersInfo = `营销人员(${marketingStr})`;
         }
         const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
-        generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动，联动动作：${actionDescription || 'XX'}。为客户幸福而奋斗，赢战百日！`;
+        generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动，联动动作：${actionDescription || 'XX'}，成果：${triangleResult || 'XX'}，客户反馈：${customerFeedback || 'XX'}。为客户幸福而奋斗，赢战百日！`;
         break;
       }
       case 'happiness':
@@ -1706,6 +1706,12 @@ const Dashboard: React.FC = () => {
 
               <Form.Item name="actionDescription" label="联动的动作" rules={[{ required: true, message: '请输入具体的联动动作说明' }]}>
                 <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
+              </Form.Item>
+              <Form.Item name="triangleResult" label="成果" rules={[{ required: true, message: '请输入联动取得的成果' }]}>
+                <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+              </Form.Item>
+              <Form.Item name="customerFeedback" label="客户反馈" rules={[{ required: true, message: '请输入客户反馈' }]}>
+                <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
               </Form.Item>
             </>
           )}

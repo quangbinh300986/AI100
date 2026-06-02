@@ -248,6 +248,28 @@ const Reports: React.FC = () => {
       const customer = allValues.customer_name || '客户'
       const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
       createForm.setFieldsValue({ content: generated })
+    } else if (withIndicator && actionType === 'triangle') {
+      const prefix = '奋战一百天，亮剑破六千！今日'
+      const employeeName = allValues.employee_name || user?.name || '我司团队成员'
+      const copartners = allValues.copartners || []
+      const marketingCopartners = allValues.marketing_copartners || []
+      const copartnersStr = copartners.length > 0 ? copartners.join('、') : '';
+      const marketingStr = marketingCopartners.length > 0 ? marketingCopartners.join('、') : '';
+      let partnersInfo = '';
+      if (copartnersStr && marketingStr) {
+        partnersInfo = `联动人(${copartnersStr})、营销人员(${marketingStr})`;
+      } else if (copartnersStr) {
+        partnersInfo = `联动人(${copartnersStr})`;
+      } else if (marketingStr) {
+        partnersInfo = `营销人员(${marketingStr})`;
+      }
+      const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
+      const customer = allValues.customer_name || '客户'
+      const desc = allValues.action_description || ''
+      const result = allValues.triangle_result || ''
+      const feedback = allValues.customer_feedback || ''
+      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动，联动动作：${desc}，成果：${result}，客户反馈：${feedback}。为客户幸福而奋斗，赢战百日！`
+      createForm.setFieldsValue({ content: generated })
     }
   }
 
@@ -280,6 +302,28 @@ const Reports: React.FC = () => {
       const desc = allValues.action_description || ''
       const customer = allValues.customer_name || '客户'
       const generated = `${prefix}${employeeName}做到客户幸福标准${score}分${desc}动作，收到客户${customer}正反馈，为客户幸福而奋斗，赢战百日！`
+      editForm.setFieldsValue({ content: generated })
+    } else if (editEventType === 'triangle') {
+      const prefix = '奋战一百天，亮剑破六千！今日'
+      const employeeName = allValues.employee_name || selectedBroadcast?.user_name || user?.name || '我司团队成员'
+      const copartners = allValues.copartners || []
+      const marketingCopartners = allValues.marketing_copartners || []
+      const copartnersStr = copartners.length > 0 ? copartners.join('、') : '';
+      const marketingStr = marketingCopartners.length > 0 ? marketingCopartners.join('、') : '';
+      let partnersInfo = '';
+      if (copartnersStr && marketingStr) {
+        partnersInfo = `联动人(${copartnersStr})、营销人员(${marketingStr})`;
+      } else if (copartnersStr) {
+        partnersInfo = `联动人(${copartnersStr})`;
+      } else if (marketingStr) {
+        partnersInfo = `营销人员(${marketingStr})`;
+      }
+      const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
+      const customer = allValues.customer_name || '客户'
+      const desc = allValues.action_description || ''
+      const result = allValues.triangle_result || ''
+      const feedback = allValues.customer_feedback || ''
+      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动，联动动作：${desc}，成果：${result}，客户反馈：${feedback}。为客户幸福而奋斗，赢战百日！`
       editForm.setFieldsValue({ content: generated })
     }
   }
@@ -1505,6 +1549,12 @@ const Reports: React.FC = () => {
                   <Form.Item name="action_description" label="联动的动作" rules={[{ required: true, message: '请输入联动动作说明' }]}>
                     <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
                   </Form.Item>
+                  <Form.Item name="triangle_result" label="成果" rules={[{ required: true, message: '请输入联动取得的成果' }]}>
+                    <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+                  </Form.Item>
+                  <Form.Item name="customer_feedback" label="客户反馈" rules={[{ required: true, message: '请输入客户反馈' }]}>
+                    <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
+                  </Form.Item>
                 </>
               )}
 
@@ -1850,6 +1900,12 @@ const Reports: React.FC = () => {
 
               <Form.Item name="action_description" label="联动的动作" rules={[{ required: true, message: '请输入联动动作说明' }]}>
                 <Input.TextArea placeholder="请输入具体的铁三角联动动作描述..." rows={3} />
+              </Form.Item>
+              <Form.Item name="triangle_result" label="成果" rules={[{ required: true, message: '请输入联动取得的成果' }]}>
+                <Input.TextArea placeholder="（推进到什么阶段/达成什么结果）" rows={3} />
+              </Form.Item>
+              <Form.Item name="customer_feedback" label="客户反馈" rules={[{ required: true, message: '请输入客户反馈' }]}>
+                <Input.TextArea placeholder="“（客户原话或总结）”" rows={3} />
               </Form.Item>
             </>
           )}

@@ -66,6 +66,8 @@ export default function DailyReport() {
     happinessScore: 20,
     selectedStandards: [] as string[],
     actionDescription: '',
+    triangleResult: '',
+    customerFeedback: '',
     content: '',
     employeeName: '',
     copartners: [] as string[],
@@ -151,6 +153,8 @@ export default function DailyReport() {
       happinessScore: 20,
       selectedStandards: [],
       actionDescription: '',
+      triangleResult: '',
+      customerFeedback: '',
       content: '',
       employeeName: resolvedName,
       copartners: [],
@@ -290,7 +294,15 @@ export default function DailyReport() {
   }
 
   // 铁三角联动文本生成
-  const updateTriangleContent = (employee: string, customer: string, coparts: string[], mCoparts: string[], desc: string) => {
+  const updateTriangleContent = (
+    employee: string,
+    customer: string,
+    coparts: string[],
+    mCoparts: string[],
+    desc: string,
+    result?: string,
+    feedback?: string
+  ) => {
     const prefix = '奋战一百天，亮剑破六千！今日'
     const copartnersStr = coparts && coparts.length > 0 ? coparts.join('、') : '';
     const marketingStr = mCoparts && mCoparts.length > 0 ? mCoparts.join('、') : '';
@@ -303,7 +315,12 @@ export default function DailyReport() {
       partnersInfo = `营销人员(${marketingStr})`;
     }
     const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
-    const generated = `${prefix}我司【${employee || 'XX'}】${partnerPart}在【${customer || 'XX'}】开展售前铁三角联动，联动动作：${desc || 'XX'}。为客户幸福而奋斗，赢战百日！`;
+    
+    // 如果未传入则回退至当前 formData 状态值
+    const activeResult = result !== undefined ? result : formData.triangleResult;
+    const activeFeedback = feedback !== undefined ? feedback : formData.customerFeedback;
+
+    const generated = `${prefix}我司【${employee || 'XX'}】${partnerPart}在【${customer || 'XX'}】开展售前铁三角联动，联动动作：${desc || 'XX'}，成果：${activeResult || 'XX'}，客户反馈：${activeFeedback || 'XX'}。为客户幸福而奋斗，赢战百日！`;
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
@@ -335,6 +352,17 @@ export default function DailyReport() {
         content: actionType === 'triangle' ? '请输入具体的联动动作说明' : '请输入关怀客户幸福动作的具体叙述'
       })
       return
+    }
+
+    if (actionType === 'triangle') {
+      if (!formData.triangleResult?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入联动取得的成果' })
+        return
+      }
+      if (!formData.customerFeedback?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入客户反馈' })
+        return
+      }
     }
 
     // 校验分摊和
@@ -864,6 +892,34 @@ export default function DailyReport() {
                   onChange={(val) => {
                     setFormData(prev => ({ ...prev, actionDescription: val }))
                     updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, val)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
+              </Form.Item>
+
+              {/* 成果 */}
+              <Form.Item label="成果" required>
+                <TextArea
+                  placeholder="（推进到什么阶段/达成什么结果）"
+                  rows={3}
+                  value={formData.triangleResult}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, triangleResult: val }))
+                    updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, formData.actionDescription, val, formData.customerFeedback)
+                  }}
+                  style={{ fontSize: 13 }}
+                />
+              </Form.Item>
+
+              {/* 客户反馈 */}
+              <Form.Item label="客户反馈" required>
+                <TextArea
+                  placeholder="“（客户原话或总结）”"
+                  rows={3}
+                  value={formData.customerFeedback}
+                  onChange={(val) => {
+                    setFormData(prev => ({ ...prev, customerFeedback: val }))
+                    updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, formData.actionDescription, formData.triangleResult, val)
                   }}
                   style={{ fontSize: 13 }}
                 />
