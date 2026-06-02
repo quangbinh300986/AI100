@@ -48,9 +48,11 @@ async def get_personal_ranking(
             User.id,
             User.name,
             User.team_id,
+            Team.name.label("team_name"),
             rank_field.label("total_value"),
         )
         .join(DailyReport, DailyReport.user_id == User.id)
+        .outerjoin(Team, User.team_id == Team.id)
     )
 
     # 日期筛选
@@ -61,7 +63,7 @@ async def get_personal_ranking(
 
     query = (
         query
-        .group_by(User.id, User.name, User.team_id)
+        .group_by(User.id, User.name, User.team_id, Team.name)
         .order_by(rank_field.desc())
         .limit(limit)
     )
@@ -76,6 +78,7 @@ async def get_personal_ranking(
             "user_id": row.id,
             "user_name": row.name,
             "team_id": row.team_id,
+            "team_name": row.team_name or "未分配战队",
             "total_value": float(row.total_value),
         })
 

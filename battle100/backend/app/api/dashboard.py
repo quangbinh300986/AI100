@@ -1271,10 +1271,12 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
         "validLeads": {"value": val_leads, "target": 600, "percentage": pct_leads}
     }
 
-    # ====== 2. 战队盘数据 ======
     team_stats = None
     if current_user.team_id:
-        team_res = await db.execute(select(Team).where(Team.id == current_user.team_id))
+        from sqlalchemy.orm import joinedload
+        team_res = await db.execute(
+            select(Team).options(joinedload(Team.zone)).where(Team.id == current_user.team_id)
+        )
         team = team_res.scalar_one_or_none()
         
         if team:
@@ -1321,6 +1323,7 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
             team_stats = {
                 "team_id": team.id,
                 "team_name": team.name,
+                "zone_name": team.zone.name if team.zone else "未知战区",
                 "status_light": light,
                 "marketing_actual": round(m_actual, 2),
                 "marketing_target": round(m_target, 2),

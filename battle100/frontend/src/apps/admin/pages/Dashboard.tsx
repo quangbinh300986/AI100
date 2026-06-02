@@ -638,7 +638,7 @@ const Dashboard: React.FC = () => {
           partnersInfo = `营销人员(${marketingStr})`;
         }
         const partnerPart = partnersInfo ? `，与${partnersInfo}` : '';
-        generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动，联动动作：${actionDescription || 'XX'}，成果：${triangleResult || 'XX'}，客户反馈：${customerFeedback || 'XX'}。为客户幸福而奋斗，赢战百日！`;
+        generated = `${prefix}我司【${employeeName || 'XX'}】${partnerPart}在【${customerName || 'XX'}】开展售前铁三角联动。\n联动动作：${actionDescription || 'XX'}。\n成果：${triangleResult || 'XX'}。\n客户反馈：${customerFeedback || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
         break;
       }
       case 'happiness':

@@ -268,7 +268,7 @@ const Reports: React.FC = () => {
       const desc = allValues.action_description || ''
       const result = allValues.triangle_result || ''
       const feedback = allValues.customer_feedback || ''
-      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动，联动动作：${desc}，成果：${result}，客户反馈：${feedback}。为客户幸福而奋斗，赢战百日！`
+      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动。\n联动动作：${desc}。\n成果：${result}。\n客户反馈：${feedback}。\n为客户幸福而奋斗，赢战百日！`
       createForm.setFieldsValue({ content: generated })
     }
   }
@@ -323,7 +323,7 @@ const Reports: React.FC = () => {
       const desc = allValues.action_description || ''
       const result = allValues.triangle_result || ''
       const feedback = allValues.customer_feedback || ''
-      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动，联动动作：${desc}，成果：${result}，客户反馈：${feedback}。为客户幸福而奋斗，赢战百日！`
+      const generated = `${prefix}我司【${employeeName}】${partnerPart}在【${customer}】开展售前铁三角联动。\n联动动作：${desc}。\n成果：${result}。\n客户反馈：${feedback}。\n为客户幸福而奋斗，赢战百日！`
       editForm.setFieldsValue({ content: generated })
     }
   }

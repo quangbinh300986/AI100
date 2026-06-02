@@ -1,39 +1,7 @@
-/**
- * 排名页面 - 个人/战队/战区排名
- */
-import { Tabs } from 'antd-mobile'
-
-/** 模拟个人排名数据 */
-const personalRanking = [
-  { rank: 1, name: '王强', team: '雄鹰战队', score: 956, trend: 'up' as const },
-  { rank: 2, name: '李娜', team: '猛虎战队', score: 920, trend: 'same' as const },
-  { rank: 3, name: '张伟', team: '雄鹰战队', score: 895, trend: 'up' as const },
-  { rank: 4, name: '刘洋', team: '飞龙战队', score: 870, trend: 'down' as const },
-  { rank: 5, name: '陈明', team: '猛虎战队', score: 845, trend: 'up' as const },
-  { rank: 6, name: '赵丽', team: '雄鹰战队', score: 820, trend: 'down' as const },
-  { rank: 7, name: '周杰', team: '飞龙战队', score: 790, trend: 'same' as const },
-  { rank: 8, name: '吴芳', team: '猛虎战队', score: 760, trend: 'up' as const },
-  { rank: 9, name: '孙磊', team: '飞龙战队', score: 735, trend: 'down' as const },
-  { rank: 10, name: '朱颖', team: '雄鹰战队', score: 710, trend: 'same' as const },
-]
-
-/** 模拟战队排名 */
-const teamRanking = [
-  { rank: 1, name: '雄鹰战队', score: 4850, trend: 'up' as const },
-  { rank: 2, name: '猛虎战队', score: 4620, trend: 'same' as const },
-  { rank: 3, name: '飞龙战队', score: 4380, trend: 'down' as const },
-  { rank: 4, name: '烈火战队', score: 4100, trend: 'up' as const },
-  { rank: 5, name: '闪电战队', score: 3890, trend: 'down' as const },
-]
-
-/** 模拟战区排名 */
-const zoneRanking = [
-  { rank: 1, name: '华东战区', score: 15600, trend: 'up' as const },
-  { rank: 2, name: '华南战区', score: 14800, trend: 'same' as const },
-  { rank: 3, name: '华北战区', score: 13500, trend: 'up' as const },
-  { rank: 4, name: '华中战区', score: 12800, trend: 'down' as const },
-  { rank: 5, name: '西南战区', score: 11200, trend: 'down' as const },
-]
+import { useState, useEffect } from 'react'
+import { Tabs, DotLoading } from 'antd-mobile'
+import { useAuth } from '@shared/hooks/useAuth'
+import { getPersonalRanking, getTeamRanking, getDashboardData } from '@shared/api/dashboard'
 
 /** 获取排名样式 */
 function getRankStyle(rank: number) {
@@ -46,71 +14,174 @@ function getRankStyle(rank: number) {
   return { bg: '#f0f0f0', color: '#666' }
 }
 
-/** 获取趋势显示 */
-function getTrendDisplay(trend: 'up' | 'down' | 'same') {
-  if (trend === 'up') return { icon: '↑', color: '#52c41a' }
-  if (trend === 'down') return { icon: '↓', color: '#ff4d4f' }
-  return { icon: '-', color: '#999' }
-}
-
 /** 排名列表组件 */
 function RankList({
   data,
   showTeam = false,
+  unit = '万',
+  isPercent = false
 }: {
   data: Array<{ rank: number; name: string; team?: string; score: number; trend: 'up' | 'down' | 'same' }>
   showTeam?: boolean
+  unit?: string
+  isPercent?: boolean
 }) {
   return (
     <div style={{ marginTop: 12 }}>
-      {data.map((item) => {
-        const rankStyle = getRankStyle(item.rank)
-        const trend = getTrendDisplay(item.trend)
-        return (
-          <div
-            key={item.rank}
-            className="list-item"
-            style={{
-              marginBottom: 8,
-              borderRadius: 12,
-              border: item.rank <= 3 ? '1px solid rgba(22,119,255,0.1)' : '1px solid #f0f0f0',
-              borderBottom: item.rank <= 3 ? '1px solid rgba(22,119,255,0.1)' : '1px solid #f0f0f0',
-            }}
-          >
-            {/* 排名 */}
+      {data.length > 0 ? (
+        data.map((item) => {
+          const rankStyle = getRankStyle(item.rank)
+          const trendIcon = item.trend === 'up' ? '↑' : item.trend === 'down' ? '↓' : '-'
+          const trendColor = item.trend === 'up' ? '#52c41a' : item.trend === 'down' ? '#ff4d4f' : '#999'
+          
+          return (
             <div
-              className="rank-badge"
+              key={item.rank}
+              className="list-item"
               style={{
-                background: rankStyle.bg,
-                color: rankStyle.color,
+                marginBottom: 8,
+                borderRadius: 12,
+                border: item.rank <= 3 ? '1px solid rgba(22,119,255,0.1)' : '1px solid #f0f0f0',
+                borderBottom: item.rank <= 3 ? '1px solid rgba(22,119,255,0.1)' : '1px solid #f0f0f0',
               }}
             >
-              {item.rank}
-            </div>
+              {/* 排名 */}
+              <div
+                className="rank-badge"
+                style={{
+                  background: rankStyle.bg,
+                  color: rankStyle.color,
+                }}
+              >
+                {item.rank}
+              </div>
 
-            {/* 信息 */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</div>
-              {showTeam && item.team && (
-                <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{item.team}</div>
-              )}
-            </div>
+              {/* 信息 */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</div>
+                {showTeam && item.team && (
+                  <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{item.team}</div>
+                )}
+              </div>
 
-            {/* 分数 */}
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#1677ff' }}>{item.score}</div>
-              <div style={{ fontSize: 12, color: trend.color }}>
-                {trend.icon}
+              {/* 分数 */}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#1677ff' }}>
+                  {item.score.toFixed(1).replace('.0', '')}
+                  <span style={{ fontSize: 12, color: '#999', marginLeft: 2, fontWeight: 'normal' }}>{unit}</span>
+                </div>
+                <div style={{ fontSize: 12, color: trendColor, fontWeight: 'bold' }}>
+                  {trendIcon}
+                </div>
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })
+      ) : (
+        <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
+          暂无相关排行数据
+        </div>
+      )}
     </div>
   )
 }
 
 export default function TeamRanking() {
+  const { user } = useAuth()
+  const [personalRankings, setPersonalRankings] = useState<any[]>([])
+  const [teamRankings, setTeamRankings] = useState<any[]>([])
+  const [zoneRankings, setZoneRankings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // 我的个人排名卡片信息
+  const [myRankInfo, setMyRankInfo] = useState<{ rank: string; score: number; team: string }>({
+    rank: '-',
+    score: 0,
+    team: user?.team_name || '暂无战队'
+  })
+
+  useEffect(() => {
+    let active = true
+    
+    async function loadRankings() {
+      try {
+        const [pRes, tRes, dRes] = await Promise.all([
+          getPersonalRanking({ limit: 20 }),
+          getTeamRanking(),
+          getDashboardData()
+        ])
+        
+        if (!active) return
+        
+        // 1. 个人排行
+        const pList = (pRes?.items || []).map((x: any) => ({
+          rank: x.rank,
+          name: x.user_name,
+          team: x.team_name,
+          score: x.total_value,
+          trend: x.rank === 1 ? 'up' : 'same',
+          userId: x.user_id
+        }))
+        setPersonalRankings(pList)
+        
+        // 2. 战队排行
+        const tList = (tRes?.items || []).map((x: any) => ({
+          rank: x.rank,
+          name: x.team_name,
+          score: x.total_value,
+          trend: x.rank === 1 ? 'up' : 'same'
+        }))
+        setTeamRankings(tList)
+        
+        // 3. 战区排行
+        const zList = (dRes?.zoneRanking || []).map((x: any) => ({
+          rank: x.rank,
+          name: x.name,
+          score: x.score,
+          trend: x.rank === 1 ? 'up' : 'same'
+        }))
+        setZoneRankings(zList)
+
+        // 4. 定位当前登录用户的具体排行
+        if (user?.id) {
+          const myItem = pList.find((x: any) => x.userId === user.id)
+          if (myItem) {
+            setMyRankInfo({
+              rank: `第 ${myItem.rank} 名`,
+              score: myItem.score,
+              team: myItem.team
+            })
+          } else {
+            setMyRankInfo({
+              rank: '未上榜',
+              score: 0,
+              team: user.team_name || '暂无战队'
+            })
+          }
+        }
+      } catch (err) {
+        console.error('获取排行榜数据失败:', err)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadRankings()
+    
+    return () => {
+      active = false
+    }
+  }, [user])
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+        <DotLoading color="primary" />
+        <span style={{ marginTop: 12, color: '#999', fontSize: 14 }}>加载排行榜数据中...</span>
+      </div>
+    )
+  }
+
   return (
     <div className="page-content">
       {/* 页面标题 */}
@@ -131,10 +202,10 @@ export default function TeamRanking() {
         }}
       >
         <div>
-          <div style={{ fontSize: 13, opacity: 0.8 }}>我的当前排名</div>
-          <div style={{ fontSize: 36, fontWeight: 800, marginTop: 4 }}>第 5 名</div>
+          <div style={{ fontSize: 13, opacity: 0.8 }}>我的当前排名 (营销新签额)</div>
+          <div style={{ fontSize: 36, fontWeight: 800, marginTop: 4 }}>{myRankInfo.rank}</div>
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-            雄鹰战队 · 总分 845
+            {myRankInfo.team} · 新签实际 {myRankInfo.score.toFixed(1).replace('.0', '')} 万
           </div>
         </div>
         <div
@@ -163,14 +234,14 @@ export default function TeamRanking() {
           marginTop: 16,
         } as React.CSSProperties}
       >
-        <Tabs.Tab title="个人排名" key="personal">
-          <RankList data={personalRanking} showTeam />
+        <Tabs.Tab title="个人排名 (新签)" key="personal">
+          <RankList data={personalRankings} showTeam unit="万" />
         </Tabs.Tab>
-        <Tabs.Tab title="战队排名" key="team">
-          <RankList data={teamRanking} />
+        <Tabs.Tab title="战队排名 (新签)" key="team">
+          <RankList data={teamRankings} unit="万" />
         </Tabs.Tab>
-        <Tabs.Tab title="战区排名" key="zone">
-          <RankList data={zoneRanking} />
+        <Tabs.Tab title="战区排名 (达成率)" key="zone">
+          <RankList data={zoneRankings} unit="%" isPercent />
         </Tabs.Tab>
       </Tabs>
     </div>

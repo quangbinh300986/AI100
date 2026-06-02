@@ -320,7 +320,7 @@ export default function DailyReport() {
     const activeResult = result !== undefined ? result : formData.triangleResult;
     const activeFeedback = feedback !== undefined ? feedback : formData.customerFeedback;
 
-    const generated = `${prefix}我司【${employee || 'XX'}】${partnerPart}在【${customer || 'XX'}】开展售前铁三角联动，联动动作：${desc || 'XX'}，成果：${activeResult || 'XX'}，客户反馈：${activeFeedback || 'XX'}。为客户幸福而奋斗，赢战百日！`;
+    const generated = `${prefix}我司【${employee || 'XX'}】${partnerPart}在【${customer || 'XX'}】开展售前铁三角联动。\n联动动作：${desc || 'XX'}。\n成果：${activeResult || 'XX'}。\n客户反馈：${activeFeedback || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
     setFormData(prev => ({ ...prev, content: generated }))
   }
 

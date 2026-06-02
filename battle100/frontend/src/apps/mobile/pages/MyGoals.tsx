@@ -1,63 +1,25 @@
-/**
- * 我的目标页面 - 四大指标进度环
- */
-import { ProgressCircle, Tabs } from 'antd-mobile'
-
-/** 模拟目标数据 */
-const goals = {
-  monthly: [
-    {
-      key: 'new_contracts',
-      label: '新签合同',
-      icon: '💰',
-      current: 285.5,
-      target: 500,
-      unit: '万元',
-      color: '#1677ff',
-    },
-    {
-      key: 'happiness_actions',
-      label: '幸福动作',
-      icon: '😊',
-      current: 156,
-      target: 200,
-      unit: '次',
-      color: '#52c41a',
-    },
-    {
-      key: 'iron_triangle',
-      label: '铁三角协作',
-      icon: '🔺',
-      current: 48,
-      target: 80,
-      unit: '次',
-      color: '#faad14',
-    },
-    {
-      key: 'valid_leads',
-      label: '有效线索',
-      icon: '🔍',
-      current: 320,
-      target: 400,
-      unit: '条',
-      color: '#ff4d4f',
-    },
-  ],
-  total: [
-    { key: 'new_contracts', label: '新签合同', icon: '💰', current: 1250, target: 5000, unit: '万元', color: '#1677ff' },
-    { key: 'happiness_actions', label: '幸福动作', icon: '😊', current: 680, target: 2000, unit: '次', color: '#52c41a' },
-    { key: 'iron_triangle', label: '铁三角协作', icon: '🔺', current: 210, target: 800, unit: '次', color: '#faad14' },
-    { key: 'valid_leads', label: '有效线索', icon: '🔍', current: 1560, target: 4000, unit: '条', color: '#ff4d4f' },
-  ],
-}
+import { useState, useEffect } from 'react'
+import { ProgressCircle, Tabs, DotLoading } from 'antd-mobile'
+import { getMyStats } from '@shared/api/dashboard'
+import type { MyStatsResponse } from '@shared/types'
 
 /** 渲染进度环卡片 */
 function GoalCard({
-  goal,
+  label,
+  icon,
+  current,
+  target,
+  unit,
+  color,
 }: {
-  goal: { label: string; icon: string; current: number; target: number; unit: string; color: string }
+  label: string
+  icon: string
+  current: number
+  target: number
+  unit: string
+  color: string
 }) {
-  const percent = Math.min((goal.current / goal.target) * 100, 100)
+  const percent = target > 0 ? Math.min((current / target) * 100, 100) : 0
 
   return (
     <div
@@ -66,28 +28,29 @@ function GoalCard({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: 20,
+        padding: '20px 10px',
+        textAlign: 'center'
       }}
     >
       <ProgressCircle
         percent={percent}
         style={{
-          '--size': '100px',
+          '--size': '90px',
           '--track-width': '6px',
-          '--fill-color': goal.color,
+          '--fill-color': color,
           '--track-color': '#f0f0f0',
         } as React.CSSProperties}
       >
-        <span style={{ fontSize: 20, fontWeight: 700, color: goal.color }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: color }}>
           {percent.toFixed(0)}%
         </span>
       </ProgressCircle>
-      <div style={{ marginTop: 12, textAlign: 'center' }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>
-          {goal.icon} {goal.label}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#333', minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {icon} {label}
         </div>
-        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-          {goal.current} / {goal.target} {goal.unit}
+        <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          {current.toFixed(1).replace('.0', '')} / {target.toFixed(1).replace('.0', '')} {unit}
         </div>
       </div>
     </div>
@@ -95,6 +58,78 @@ function GoalCard({
 }
 
 export default function MyGoals() {
+  const [stats, setStats] = useState<MyStatsResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    getMyStats()
+      .then((res) => {
+        if (active && res) {
+          setStats(res)
+        }
+      })
+      .catch((err) => {
+        console.error('获取个人目标作战数据失败:', err)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+        <DotLoading color="primary" />
+        <span style={{ marginTop: 12, color: '#999', fontSize: 14 }}>加载目标作战数据中...</span>
+      </div>
+    )
+  }
+
+  // 1. 公司盘数据
+  const companyStats = stats?.company_stats || {
+    newContracts: { value: 0, target: 6200, percentage: 0 }
+  }
+
+  // 2. 个人目标列表
+  const personalStats = stats?.personal_stats || []
+
+  // 3. 计算已过天数与剩余天数（从 2026-06-01 到 2026-09-08 共 100 天）
+  const endDate = new Date('2026-09-08')
+  const startDate = new Date('2026-06-01')
+  const now = new Date()
+  
+  endDate.setHours(0, 0, 0, 0)
+  startDate.setHours(0, 0, 0, 0)
+  now.setHours(0, 0, 0, 0)
+
+  const totalDays = 100
+  const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+  const passedDays = Math.max(0, totalDays - remainingDays)
+
+  // 指标图标映射
+  const getGoalIcon = (type: string) => {
+    if (type.includes('contract')) return '💰'
+    if (type.includes('happiness_action')) return '😊'
+    if (type.includes('triangle')) return '🤝'
+    if (type.includes('leads')) return '🔍'
+    if (type.includes('customer')) return '🆕'
+    if (type.includes('story')) return '📖'
+    return '🎯'
+  }
+
+  // 指标颜色映射
+  const getGoalColor = (type: string) => {
+    if (type.includes('contract')) return '#1677ff'
+    if (type.includes('happiness_action')) return '#52c41a'
+    if (type.includes('triangle')) return '#faad14'
+    if (type.includes('leads')) return '#ff4d4f'
+    return '#722ed1'
+  }
+
   return (
     <div className="page-content">
       {/* 页面标题 */}
@@ -112,10 +147,12 @@ export default function MyGoals() {
           textAlign: 'center',
         }}
       >
-        <div style={{ fontSize: 14, opacity: 0.8 }}>百日奋战总体进度</div>
-        <div style={{ fontSize: 36, fontWeight: 800, marginTop: 8 }}>68.5%</div>
+        <div style={{ fontSize: 14, opacity: 0.8 }}>百日奋战公司总体进度</div>
+        <div style={{ fontSize: 36, fontWeight: 800, marginTop: 8 }}>
+          {companyStats.newContracts.percentage}%
+        </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-          第42天 / 共100天 · 剩余58天
+          第 {passedDays} 天 / 共 100 天 · 剩余 {remainingDays} 天
         </div>
         <div
           style={{
@@ -129,7 +166,7 @@ export default function MyGoals() {
           <div
             style={{
               height: '100%',
-              width: '68.5%',
+              width: `${Math.min(companyStats.newContracts.percentage, 100)}%`,
               borderRadius: 3,
               background: 'rgba(255,255,255,0.8)',
               transition: 'width 0.8s ease',
@@ -140,7 +177,7 @@ export default function MyGoals() {
 
       {/* 分Tab查看 */}
       <Tabs
-        defaultActiveKey="monthly"
+        defaultActiveKey="base"
         style={{
           '--title-font-size': '14px',
           '--active-title-color': '#1677ff',
@@ -148,33 +185,61 @@ export default function MyGoals() {
           marginTop: 16,
         } as React.CSSProperties}
       >
-        <Tabs.Tab title="本月目标" key="monthly">
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 12,
-              marginTop: 12,
-            }}
-          >
-            {goals.monthly.map((goal) => (
-              <GoalCard key={goal.key} goal={goal} />
-            ))}
-          </div>
+        <Tabs.Tab title="保底奋斗目标" key="base">
+          {personalStats.length > 0 ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              {personalStats.map((item) => (
+                <GoalCard
+                  key={item.goal_type}
+                  label={item.goal_name}
+                  icon={getGoalIcon(item.goal_type)}
+                  current={item.actual}
+                  target={item.base_target}
+                  unit={item.unit}
+                  color={getGoalColor(item.goal_type)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
+              暂无关联岗位的保底奋斗目标
+            </div>
+          )}
         </Tabs.Tab>
-        <Tabs.Tab title="百日总目标" key="total">
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 12,
-              marginTop: 12,
-            }}
-          >
-            {goals.total.map((goal) => (
-              <GoalCard key={goal.key} goal={goal} />
-            ))}
-          </div>
+        <Tabs.Tab title="挑战破线目标" key="challenge">
+          {personalStats.length > 0 ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              {personalStats.map((item) => (
+                <GoalCard
+                  key={item.goal_type}
+                  label={item.goal_name}
+                  icon={getGoalIcon(item.goal_type)}
+                  current={item.actual}
+                  target={item.challenge_target}
+                  unit={item.unit}
+                  color={getGoalColor(item.goal_type)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
+              暂无关联岗位的挑战破线目标
+            </div>
+          )}
         </Tabs.Tab>
       </Tabs>
 
@@ -182,10 +247,12 @@ export default function MyGoals() {
       <div className="card" style={{ marginTop: 16 }}>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>📌 目标说明</div>
         <ul style={{ fontSize: 13, color: '#666', lineHeight: 2, paddingLeft: 16 }}>
-          <li>新签合同：统计当期新签署合同的总金额</li>
-          <li>幸福动作：客户关怀、团建等增进幸福感的行为</li>
-          <li>铁三角：与前端、中台、后台的协作配合次数</li>
-          <li>有效线索：经确认有跟进价值的销售线索数量</li>
+          <li>新签合同额：统计百日内签署合同或分摊的实际新签金额</li>
+          <li>客户幸福动作完成数：全员所执行的客户幸福服务关怀动作数</li>
+          <li>售前铁三角联动次数：与协同巴长、专员的共同联动与协作次数</li>
+          <li>有效线索数：自主挖掘并分配的有效商机需求数量</li>
+          <li>线索转化率：新签合同单数 / 营销有效线索总数量</li>
+          <li>新客户目标数：本周度及百日战役战队内新增的客户个数</li>
         </ul>
       </div>
     </div>

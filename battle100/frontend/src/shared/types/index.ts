@@ -305,6 +305,7 @@ export interface MyStatsResponse {
   team_stats: {
     team_id: number
     team_name: string
+    zone_name: string
     status_light: 'red' | 'yellow' | 'green'
     marketing_actual: number
     marketing_target: number
