@@ -90,7 +90,7 @@ const BigScreen: React.FC = () => {
       ws.onclose = () => {
         console.warn('WebSocket 连接断开，准备降级为 API 轮询...')
         if (!pollTimerRef.current) {
-          pollTimerRef.current = setInterval(loadScreenData, 10000)
+          pollTimerRef.current = setInterval(loadScreenData, 60000)
         }
         setTimeout(connectWs, 5000)
       }

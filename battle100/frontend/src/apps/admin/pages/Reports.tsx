@@ -1385,8 +1385,6 @@ const Reports: React.FC = () => {
                       onChange={handleActionTypeChange}
                       options={[
                         { label: '已完成合同签订 (90%)', value: 'contract' },
-                        { label: '中标确定 (75%)', value: 'lead_75' },
-                        { label: '有效线索确定 (25%)', value: 'lead_25' },
                         { label: '铁三角联动', value: 'triangle' },
                         { label: '客户幸福动作', value: 'happiness' },
                       ]} 

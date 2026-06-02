@@ -1351,8 +1351,6 @@ const Dashboard: React.FC = () => {
             rules={[{ required: true, message: '请选择战报动作类型' }]}
           >
             <Select placeholder="请选择要发布的战报动作">
-              <Select.Option value="lead_25">有效线索确定</Select.Option>
-              <Select.Option value="lead_75">中标确定</Select.Option>
               <Select.Option value="contract">已完成合同签订（双方盖章）</Select.Option>
               <Select.Option value="triangle">铁三角联动</Select.Option>
               <Select.Option value="happiness">客户幸福动作</Select.Option>
@@ -1823,7 +1821,7 @@ const Dashboard: React.FC = () => {
           <Form.Item
             name="content"
             label="最终生成战报文本"
-            rules={[{ required: true, message: '战报内容不能为空' }, { max: 150, message: '战报文本不能多于150字' }]}
+            rules={[{ required: true, message: '战报内容不能为空' }, { max: 1000, message: '战报文本不能多于1000字' }]}
           >
             <Input.TextArea rows={4} placeholder="选择动作填入要素后自动生成，也可在此手动微调" />
           </Form.Item>

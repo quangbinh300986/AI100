@@ -12,8 +12,6 @@ import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 
 // 战报动作类型选项 (与大屏完全对齐)
 const ACTION_TYPE_OPTIONS = [
-  { label: '有效线索确定 (25%)', value: 'lead_25' },
-  { label: '中标确定 (75%)', value: 'lead_75' },
   { label: '已完成合同签订 (90%)', value: 'contract' },
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
@@ -24,7 +22,7 @@ export default function DailyReport() {
   const { user } = useAuthStore()
 
   // 动作类型状态
-  const [actionType, setActionType] = useState<string>('lead_25')
+  const [actionType, setActionType] = useState<string>('contract')
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
