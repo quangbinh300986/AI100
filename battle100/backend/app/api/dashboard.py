@@ -1989,6 +1989,7 @@ async def get_team_happiness(
 async def generate_daily_report(
     team_id: int | None = Query(None, description="战队ID"),
     report_date: str | None = Query(None, description="填报日期，格式 YYYY-MM-DD"),
+    role: str | None = Query(None, description="角色类型: target_officer, digital_specialist, admin"),
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import date, timedelta, datetime
@@ -2236,6 +2237,7 @@ async def generate_daily_report(
     signed_contracts_cnt = 0
     signed_contracts_amt = 0.0
     triangle_cnt = 0
+    happiness_cnt = 0
 
     if report_ids:
         # 有效线索数量 (线索明细且进展为25%)
@@ -2290,6 +2292,19 @@ async def generate_daily_report(
         )
         triangle_cnt = int(await db.scalar(triangle_stmt) or 0)
 
+        # 客户幸福动作次数
+        happiness_detail_stmt = select(func.count(ReportDetail.id)).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.HAPPINESS
+        )
+        h_detail_val = int(await db.scalar(happiness_detail_stmt) or 0)
+        
+        happiness_sum_stmt = select(func.coalesce(func.sum(DailyReport.happiness_actions), 0)).where(
+            DailyReport.id.in_(report_ids)
+        )
+        h_sum_val = int(await db.scalar(happiness_sum_stmt) or 0)
+        happiness_cnt = max(h_detail_val, h_sum_val)
+
     # 尝试直连 CRM 补充此统计区间内新增有效线索 (与填报取最大)
     crm_user_ids = []
     if team_id:
@@ -2335,41 +2350,59 @@ async def generate_daily_report(
     range_str = f"（统计区间：{start_time.strftime('%Y-%m-%d %H:%M')} 至 {end_time.strftime('%Y-%m-%d %H:%M')}）"
 
     # 组装文本
-    if team_id:
-        # 获取战区和战队名称
-        team_info_stmt = select(Team.name, Zone.name).select_from(Team).join(Zone, Team.zone_id == Zone.id).where(Team.id == team_id)
-        team_info_res = (await db.execute(team_info_stmt)).first()
-        t_name = team_info_res[0] if team_info_res else "本战队"
-        z_name = team_info_res[1] if team_info_res else ""
-        
+    if not team_id:
+        # 系统管理员 (全公司大盘)
         text = (
-            f"奋战一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
-            f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
-            f"今日确定有效线索：{valid_leads_cnt} 条\n"
-            f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
-            f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
-            f"今日售前铁三角联动次数：{triangle_cnt} 次\n"
-            f"今日工作小结\n"
-            f"①\n"
-            f"②\n"
-            f"今日工作反思\n"
-            f"①\n"
-            f"②\n"
-            f"明日工作安排\n"
-            f"①\n"
-            f"②\n"
-            f"持续付出不亚于任何人的努力，全力以赴，挑战高目标，奋斗赢幸福，胜利!胜利!胜利!"
-        )
-    else:
-        text = (
-            f"奋战一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
+            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
             f"新签合同：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
             f"昨日售前铁三角联动次数：{triangle_cnt} 次\n"
+            f"昨日客户幸福动作次数：{happiness_cnt} 次\n"
             f"赢战百日！"
         )
+    else:
+        # 获取战区和战队名称
+        team_info_stmt = select(Team.name, Zone.name).select_from(Team).join(Zone, Team.zone_id == Zone.id).where(Team.id == team_id)
+        team_info_res = (await db.execute(team_info_stmt)).first()
+        t_name = team_info_res[0] if team_info_res else "本战队"
+        z_name = team_info_res[1] if team_info_res else ""
+
+        # 区分目标官与数字专员视角
+        if role == "target_officer":
+            # 目标官视角
+            text = (
+                f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
+                f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
+                f"今日确定有效线索：{valid_leads_cnt} 条\n"
+                f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
+                f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"今日售前铁三角联动次数：{triangle_cnt} 次\n"
+                f"今日客户幸福动作次数：{happiness_cnt} 次\n"
+                f"今日工作小结\n"
+                f"①\n"
+                f"②\n"
+                f"今日工作反思\n"
+                f"①\n"
+                f"②\n"
+                f"明日工作安排\n"
+                f"①\n"
+                f"②\n"
+                f"持续付出不亚于任何人的努力，全力以赴，挑战高目标，奋斗赢幸福，胜利!胜利!胜利!"
+            )
+        else:
+            # 数字专员视角
+            text = (
+                f"攻坚一百天，亮剑破六千！{t_name}，百日奋战【{campaign_day}】日战况播报{range_str}：\n"
+                f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
+                f"昨日确定有效线索：{valid_leads_cnt} 条\n"
+                f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
+                f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"昨日售前铁三角联动次数：{triangle_cnt} 次\n"
+                f"昨日客户幸福动作次数：{happiness_cnt} 次\n"
+                f"赢战百日！"
+            )
 
     return {
         "text": text,

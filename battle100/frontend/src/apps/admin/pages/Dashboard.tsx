@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -54,6 +54,20 @@ const Dashboard: React.FC = () => {
   const [dailyReportLoading, setDailyReportLoading] = useState(false)
   // 日报生成统计范围选择（'company' 代表全公司大盘，其它为战队 ID）
   const [selectedReportScope, setSelectedReportScope] = useState<string | number>('company')
+  // 日报生成角色视角选择（'admin' 代表系统管理员，'digital_specialist' 代表数字专员，'target_officer' 代表目标官）
+  const [selectedReportRole, setSelectedReportRole] = useState<string>('admin')
+
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'target_officer') {
+        setSelectedReportRole('target_officer')
+      } else if (user.role === 'digital_specialist') {
+        setSelectedReportRole('digital_specialist')
+      } else {
+        setSelectedReportRole('admin')
+      }
+    }
+  }, [user])
 
   const customUpload = async (options: any) => {
     const { file, onSuccess, onError } = options
@@ -73,22 +87,40 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleGenerateDailyReport = async (scope?: string | number) => {
+  const handleGenerateDailyReport = async (scope?: string | number, roleParam?: string) => {
     try {
       // 判定传入的 scope 是否是有效的 string 或 number，以防 React MouseEvent 被当作 scope 传参
-      const isParamValid = scope !== undefined && typeof scope !== 'object'
-      let finalScope: string | number = isParamValid ? scope : selectedReportScope
+      const isScopeValid = scope !== undefined && typeof scope !== 'object'
+      let finalScope: string | number = isScopeValid ? scope : selectedReportScope
       
       // 针对目标官，如果未指定且没有被初始化过，默认展示其所在的战队
-      if (!isParamValid && selectedReportScope === 'company' && user?.role === 'target_officer' && user?.team_id) {
+      if (!isScopeValid && selectedReportScope === 'company' && user?.role === 'target_officer' && user?.team_id) {
         finalScope = user.team_id
         setSelectedReportScope(user.team_id)
       }
 
-      let url = '/dashboard/daily-report'
-      if (finalScope !== 'company') {
-        url += `?team_id=${finalScope}`
+      let finalRole = roleParam !== undefined ? roleParam : selectedReportRole
+      // 如果范围是全公司大盘，强制锁定为系统管理员角色视角
+      if (finalScope === 'company') {
+        finalRole = 'admin'
+      } else {
+        // 如果当前视角为 admin（因为刚才看的是大盘），但当前范围为具体战队，自动切换为合适的战队视角
+        if (finalRole === 'admin') {
+          if (user?.role === 'target_officer') {
+            finalRole = 'target_officer'
+          } else {
+            // 超管或数字专员，切换至战队时默认显示数字专员视角（战队昨日）
+            finalRole = 'digital_specialist'
+          }
+        }
       }
+      setSelectedReportRole(finalRole)
+
+      let url = `/dashboard/daily-report?role=${finalRole}`
+      if (finalScope !== 'company') {
+        url += `&team_id=${finalScope}`
+      }
+
       setDailyReportLoading(true)
       const res: any = await get(url)
       if (res && res.text) {
@@ -2174,6 +2206,38 @@ const Dashboard: React.FC = () => {
                 {data?.dualTrackTeams?.find((t: any) => t.teamId === selectedReportScope)?.teamName || '本战队'}
               </Tag>
             )}
+          </div>
+
+          {/* 日报角色视角选择单选组 */}
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 500, color: '#555' }}>角色视角：</span>
+            <Radio.Group
+              value={selectedReportRole}
+              onChange={(e) => {
+                const val = e.target.value
+                setSelectedReportRole(val)
+                handleGenerateDailyReport(undefined, val)
+              }}
+            >
+              <Radio.Button 
+                value="target_officer" 
+                disabled={selectedReportScope === 'company'}
+              >
+                目标官 (当天晚上)
+              </Radio.Button>
+              <Radio.Button 
+                value="digital_specialist" 
+                disabled={selectedReportScope === 'company'}
+              >
+                数字专员 (次日早晨)
+              </Radio.Button>
+              <Radio.Button 
+                value="admin" 
+                disabled={selectedReportScope !== 'company'}
+              >
+                系统管理员 (次日大盘)
+              </Radio.Button>
+            </Radio.Group>
           </div>
 
           <Alert 
