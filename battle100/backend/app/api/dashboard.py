@@ -2061,42 +2061,58 @@ async def generate_daily_report(
     day_of_week_cn = days_cn[target_date.weekday()]
 
     # 统计周目标和周实际完成额 (万元)
+    from app.models.goal import TeamGoalCategory
     if team_id:
-        # 战队
-        # 周目标
-        wt_stmt = select(
-            func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0) +
-            func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
-        ).where(
+        # 战队营销周目标与交付周目标
+        wt_m_stmt = select(func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0)).where(
             WeeklyTarget.team_id == team_id,
             WeeklyTarget.week_start <= target_date,
             WeeklyTarget.week_end >= target_date
         )
-        tgt_val = float(await db.scalar(wt_stmt) or 0.0)
-        if tgt_val == 0.0:
-            # 兜底
-            g_res = await db.execute(select(func.sum(TeamGoal.base_target)).where(TeamGoal.team_id == team_id))
-            tgt_val = round(float(g_res.scalar() or 0.0) / 12, 2)
-
-        # 周实际
-        m_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, team_id)
-        d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, team_id)
-        act_val = round(m_act + d_act, 2)
-    else:
-        # 公司
-        wt_stmt = select(
-            func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0) +
-            func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
-        ).where(
+        m_tgt = round(float(await db.scalar(wt_m_stmt) or 0.0), 2)
+        
+        wt_d_stmt = select(func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)).where(
+            WeeklyTarget.team_id == team_id,
             WeeklyTarget.week_start <= target_date,
             WeeklyTarget.week_end >= target_date
         )
-        tgt_val = float(await db.scalar(wt_stmt) or 0.0)
+        d_tgt = round(float(await db.scalar(wt_d_stmt) or 0.0), 2)
 
-        # 周实际
-        m_act = await get_team_weekly_marketing_actual(db, start_of_week, end_of_week)
-        d_act = await get_team_weekly_delivery_actual(db, start_of_week, end_of_week)
-        act_val = round(m_act + d_act, 2)
+        # 双轨目标兜底
+        if m_tgt == 0.0:
+            g_m_res = await db.execute(
+                select(func.coalesce(func.sum(TeamGoal.base_target), 0))
+                .where(TeamGoal.team_id == team_id, TeamGoal.category == TeamGoalCategory.MARKETING)
+            )
+            m_tgt = round(float(g_m_res.scalar() or 0.0) / 12, 2)
+
+        if d_tgt == 0.0:
+            g_d_res = await db.execute(
+                select(func.coalesce(func.sum(TeamGoal.base_target), 0))
+                .where(TeamGoal.team_id == team_id, TeamGoal.category == TeamGoalCategory.DELIVERY)
+            )
+            d_tgt = round(float(g_d_res.scalar() or 0.0) / 12, 2)
+
+        # 战队双轨周实际
+        m_act = round(await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, team_id), 2)
+        d_act = round(await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, team_id), 2)
+    else:
+        # 公司级营销周目标与交付周目标
+        wt_m_stmt = select(func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0)).where(
+            WeeklyTarget.week_start <= target_date,
+            WeeklyTarget.week_end >= target_date
+        )
+        m_tgt = round(float(await db.scalar(wt_m_stmt) or 0.0), 2)
+        
+        wt_d_stmt = select(func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)).where(
+            WeeklyTarget.week_start <= target_date,
+            WeeklyTarget.week_end >= target_date
+        )
+        d_tgt = round(float(await db.scalar(wt_d_stmt) or 0.0), 2)
+
+        # 公司双轨周实际
+        m_act = round(await get_team_weekly_marketing_actual(db, start_of_week, end_of_week), 2)
+        d_act = round(await get_team_weekly_delivery_actual(db, start_of_week, end_of_week), 2)
 
     # 按照 20:00 统计区间筛选审核时间在此范围内的 DailyReport
     report_stmt = select(DailyReport.id).where(
@@ -2222,7 +2238,7 @@ async def generate_daily_report(
         
         text = (
             f"奋战一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
-            f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：新签合同目标{tgt_val}万，已完成{act_val}万。\n"
+            f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
             f"今日确定有效线索：{valid_leads_cnt} 条\n"
             f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
@@ -2241,7 +2257,7 @@ async def generate_daily_report(
     else:
         text = (
             f"奋战一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
-            f"新签合同目标{tgt_val}万，已完成{act_val}万。\n"
+            f"新签合同：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
