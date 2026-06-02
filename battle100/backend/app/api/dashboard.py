@@ -2117,21 +2117,23 @@ async def generate_daily_report(
 
     if report_ids:
         # 有效线索数量 (线索明细且进展为25%)
+        # 根据数据库实际存储，修正过滤条件为 "25%"
         lead_stmt = select(func.count(ReportDetail.id)).where(
             ReportDetail.report_id.in_(report_ids),
             ReportDetail.detail_type == DetailType.LEAD,
-            ReportDetail.lead_progress == "25"
+            ReportDetail.lead_progress == "25%"
         )
         valid_leads_cnt = int(await db.scalar(lead_stmt) or 0)
 
         # 中标确定 (线索明细且进展为75%)
+        # 根据数据库实际存储，修正过滤条件为 "75%"
         win_stmt = select(
-            func.count(ReportDetail.id).label("cnt"),
+            func.count(func.distinct(ReportDetail.crm_opportunity_id)).label("cnt"),
             func.coalesce(func.sum(ReportDetail.amount), 0).label("amt")
         ).where(
             ReportDetail.report_id.in_(report_ids),
             ReportDetail.detail_type == DetailType.LEAD,
-            ReportDetail.lead_progress == "75"
+            ReportDetail.lead_progress == "75%"
         )
         win_res = (await db.execute(win_stmt)).first()
         if win_res:
@@ -2139,17 +2141,25 @@ async def generate_daily_report(
             win_contracts_amt = round(float(win_res.amt or 0.0), 2)
 
         # 签订合同
-        contract_stmt = select(
-            func.count(ReportDetail.id).label("cnt"),
-            func.coalesce(func.sum(ReportDetail.amount), 0).label("amt")
+        # 合同数量采用去重 crm_opportunity_id 计数以对齐大盘累计合同笔数的统计逻辑
+        contract_cnt_stmt = select(
+            func.count(func.distinct(ReportDetail.crm_opportunity_id))
         ).where(
             ReportDetail.report_id.in_(report_ids),
-            ReportDetail.detail_type == DetailType.CONTRACT
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ReportDetail.crm_opportunity_id.isnot(None),
+            ReportDetail.crm_opportunity_id != ""
         )
-        c_res = (await db.execute(contract_stmt)).first()
-        if c_res:
-            signed_contracts_cnt = int(c_res.cnt or 0)
-            signed_contracts_amt = round(float(c_res.amt or 0.0), 2)
+        # 合同金额过滤营销新签分摊以对齐大盘累计签约额的统计口径，避免营销与交付分摊额重复累加
+        contract_amt_stmt = select(
+            func.coalesce(func.sum(ReportDetail.amount), 0)
+        ).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ~ReportDetail.description.contains("营销新签分摊")
+        )
+        signed_contracts_cnt = int(await db.scalar(contract_cnt_stmt) or 0)
+        signed_contracts_amt = round(float(await db.scalar(contract_amt_stmt) or 0.0), 2)
 
         # 铁三角联动次数
         triangle_stmt = select(func.count(ReportDetail.id)).where(

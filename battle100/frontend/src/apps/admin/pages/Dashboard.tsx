@@ -52,6 +52,8 @@ const Dashboard: React.FC = () => {
   const [dailyReportModalVisible, setDailyReportModalVisible] = useState(false)
   const [dailyReportText, setDailyReportText] = useState('')
   const [dailyReportLoading, setDailyReportLoading] = useState(false)
+  // 日报生成统计范围选择（'company' 代表全公司大盘，其它为战队 ID）
+  const [selectedReportScope, setSelectedReportScope] = useState<string | number>('company')
 
   const customUpload = async (options: any) => {
     const { file, onSuccess, onError } = options
@@ -71,13 +73,18 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleGenerateDailyReport = async () => {
+  const handleGenerateDailyReport = async (scope?: string | number) => {
     try {
+      let finalScope: string | number = scope !== undefined ? scope : selectedReportScope
+      // 针对目标官，如果未指定且没有被初始化过，默认展示其所在的战队
+      if (scope === undefined && selectedReportScope === 'company' && user?.role === 'target_officer' && user?.team_id) {
+        finalScope = user.team_id
+        setSelectedReportScope(user.team_id)
+      }
+
       let url = '/dashboard/daily-report'
-      if (user?.role === 'target_officer') {
-        if (user?.team_id) {
-          url += `?team_id=${user.team_id}`
-        }
+      if (finalScope !== 'company') {
+        url += `?team_id=${finalScope}`
       }
       setDailyReportLoading(true)
       const res: any = await get(url)
@@ -2140,6 +2147,32 @@ const Dashboard: React.FC = () => {
         destroyOnClose
       >
         <div style={{ padding: '8px 0' }}>
+          {/* 日报范围选择下拉框，只在超级管理员和数字专员时提供灵活切换，目标官则显示为只读战队名称 */}
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 500, color: '#555' }}>日报范围：</span>
+            {['admin', 'digital_specialist'].includes(user?.role || '') ? (
+              <Select
+                value={selectedReportScope}
+                style={{ width: 220 }}
+                onChange={(val) => {
+                  setSelectedReportScope(val)
+                  handleGenerateDailyReport(val)
+                }}
+              >
+                <Select.Option value="company">全公司大盘</Select.Option>
+                {data?.dualTrackTeams?.map((t: any) => (
+                  <Select.Option key={t.teamId} value={t.teamId || 0}>
+                    {t.teamName}
+                  </Select.Option>
+                ))}
+              </Select>
+            ) : (
+              <Tag color="blue" style={{ fontSize: '14px', padding: '4px 10px' }}>
+                {data?.dualTrackTeams?.find((t: any) => t.teamId === selectedReportScope)?.teamName || '本战队'}
+              </Tag>
+            )}
+          </div>
+
           <Alert 
             message="点击下方按钮即可一键复制格式化文案，直接发送至微信/钉钉群！" 
             type="info" 
