@@ -1004,9 +1004,11 @@ const Reports: React.FC = () => {
                 : 0;
 
               // 从 content 中提取客户单位名称以兜底
-              const matchCustomer = record.content.match(/业主单位：\s*([^，!。；]+)/)?.[1] || 
+              const matchCustomer = record.customer_name ||
+                                    record.content.match(/业主单位：\s*([^，!。；]+)/)?.[1] || 
                                     record.content.match(/客户为\s*([^，!。；]+)/)?.[1] || 
                                     record.content.match(/客户分别为\s*([^，!。；]+)/)?.[1] || 
+                                    record.content.match(/对象为【([^】]+)】/)?.[1] || 
                                     record.content.match(/在【([^】]+)】/)?.[1] ||
                                     '';
               const matchProjectName = record.content.match(/《([^》]+)》/)?.[1] || '已关联项目';
