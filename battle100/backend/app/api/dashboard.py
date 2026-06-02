@@ -2026,6 +2026,10 @@ async def generate_daily_report(
     # 计算周度时间范围
     start_of_week = target_date - timedelta(days=target_date.weekday())
     end_of_week = start_of_week + timedelta(days=6)
+    
+    # 计算本周的审核时间范围（本周一前一天周日晚上 20:00 至当前 20:00）
+    weekly_start_time = datetime(start_of_week.year, start_of_week.month, start_of_week.day, 20, 0, 0) - timedelta(days=1)
+    weekly_end_time = end_time
 
     # 计算中文月份和周数
     def get_chinese_num(n: int) -> str:
@@ -2093,9 +2097,63 @@ async def generate_daily_report(
             )
             d_tgt = round(float(g_d_res.scalar() or 0.0) / 12, 2)
 
-        # 战队双轨周实际
-        m_act = round(await get_team_weekly_marketing_actual(db, start_of_week, end_of_week, team_id), 2)
-        d_act = round(await get_team_weekly_delivery_actual(db, start_of_week, end_of_week, team_id), 2)
+        # 战队双轨周实际 (按照本周的审核时间段重新统计营销实际与交付实际)
+        from app.models.user import PositionType
+        query_m = (
+            select(func.coalesce(func.sum(ReportDetail.amount), 0))
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.reviewed_at >= weekly_start_time,
+                DailyReport.reviewed_at <= weekly_end_time,
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (
+                        (ReportDetail.description.contains("营销新签分摊")) &
+                        ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                    ) |
+                    (
+                        (~ReportDetail.description.contains("交付新签分摊")) &
+                        (
+                            ((User.team_id == team_id) & (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))) |
+                            ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])))
+                        )
+                    )
+                )
+            )
+        )
+        m_act = round(float(await db.scalar(query_m) or 0.0), 2)
+
+        query_d = (
+            select(func.coalesce(func.sum(ReportDetail.amount), 0))
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.reviewed_at >= weekly_start_time,
+                DailyReport.reviewed_at <= weekly_end_time,
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (
+                        (ReportDetail.description.contains("交付新签分摊")) &
+                        ((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                    ) |
+                    (
+                        (~ReportDetail.description.contains("营销新签分摊")) &
+                        (
+                            ((User.team_id == team_id) & (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
+                            ((PartnerUser.team_id == team_id) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                        )
+                    )
+                )
+            )
+        )
+        d_act = round(float(await db.scalar(query_d) or 0.0), 2)
     else:
         # 公司级营销周目标与交付周目标
         wt_m_stmt = select(func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0)).where(
@@ -2110,9 +2168,57 @@ async def generate_daily_report(
         )
         d_tgt = round(float(await db.scalar(wt_d_stmt) or 0.0), 2)
 
-        # 公司双轨周实际
-        m_act = round(await get_team_weekly_marketing_actual(db, start_of_week, end_of_week), 2)
-        d_act = round(await get_team_weekly_delivery_actual(db, start_of_week, end_of_week), 2)
+        # 公司双轨周实际 (按照本周的审核时间段重新统计营销实际与交付实际)
+        from app.models.user import PositionType
+        query_m = (
+            select(func.coalesce(func.sum(ReportDetail.amount), 0))
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.reviewed_at >= weekly_start_time,
+                DailyReport.reviewed_at <= weekly_end_time,
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) |
+                    (
+                        (~ReportDetail.description.contains("交付新签分摊")) &
+                        (
+                            (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])) |
+                            (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))
+                        )
+                    )
+                )
+            )
+        )
+        m_act = round(float(await db.scalar(query_m) or 0.0), 2)
+
+        query_d = (
+            select(func.coalesce(func.sum(ReportDetail.amount), 0))
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.reviewed_at >= weekly_start_time,
+                DailyReport.reviewed_at <= weekly_end_time,
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (ReportDetail.description.contains("交付新签分摊")) |
+                    (
+                        (~ReportDetail.description.contains("营销新签分摊")) &
+                        (
+                            (User.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])) | 
+                            (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))
+                        )
+                    )
+                )
+            )
+        )
+        d_act = round(float(await db.scalar(query_d) or 0.0), 2)
 
     # 按照 20:00 统计区间筛选审核时间在此范围内的 DailyReport
     report_stmt = select(DailyReport.id).where(
