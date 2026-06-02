@@ -2265,24 +2265,50 @@ async def generate_daily_report(
             win_contracts_amt = round(float(win_res.amt or 0.0), 2)
 
         # 签订合同
-        # 合同数量采用去重 crm_opportunity_id 计数以对齐大盘累计合同笔数的统计逻辑
-        contract_cnt_stmt = select(
-            func.count(func.distinct(ReportDetail.crm_opportunity_id))
-        ).where(
-            ReportDetail.report_id.in_(report_ids),
-            ReportDetail.detail_type == DetailType.CONTRACT,
-            ReportDetail.crm_opportunity_id.isnot(None),
-            ReportDetail.crm_opportunity_id != ""
-        )
-        # 合同金额，直接统计所有明细的分摊金额之和，以反映合同签约的总金额
-        contract_amt_stmt = select(
-            func.coalesce(func.sum(ReportDetail.amount), 0)
-        ).where(
+        # 先查出这些日报下的所有合同明细，在内存中进行聚合，防止营销与交付分摊被重复累加
+        all_contracts_stmt = select(ReportDetail).where(
             ReportDetail.report_id.in_(report_ids),
             ReportDetail.detail_type == DetailType.CONTRACT
         )
-        signed_contracts_cnt = int(await db.scalar(contract_cnt_stmt) or 0)
-        signed_contracts_amt = round(float(await db.scalar(contract_amt_stmt) or 0.0), 2)
+        all_contracts_res = await db.execute(all_contracts_stmt)
+        all_contracts = all_contracts_res.scalars().all()
+
+        # 分组聚合：以项目商机或播报作为 Key
+        contracts_by_project = {}
+        for item in all_contracts:
+            # 优先使用 crm_opportunity_id
+            proj_key = item.crm_opportunity_id
+            if not proj_key or proj_key == "":
+                # 尝试从描述中提取 broadcast_id
+                import re
+                match = re.search(r"\[broadcast_id:(\d+)\]", item.description or "")
+                if match:
+                    proj_key = f"broadcast_{match.group(1)}"
+                else:
+                    proj_key = f"detail_{item.id}"
+            
+            if proj_key not in contracts_by_project:
+                contracts_by_project[proj_key] = {"marketing_amt": 0.0, "delivery_amt": 0.0, "other_amt": 0.0}
+            
+            desc = item.description or ""
+            amt = item.amount or 0.0
+            if "营销新签分摊" in desc:
+                contracts_by_project[proj_key]["marketing_amt"] += amt
+            elif "交付新签分摊" in desc:
+                contracts_by_project[proj_key]["delivery_amt"] += amt
+            else:
+                # 兼容旧数据或无分摊的兜底记录
+                contracts_by_project[proj_key]["other_amt"] += amt
+
+        signed_contracts_cnt = len(contracts_by_project)
+        signed_contracts_amt = 0.0
+        for proj, amnts in contracts_by_project.items():
+            # 取营销和交付分摊的最大值作为该项目在该战队（或大盘）内的最终业绩金额
+            # 如果有兜底记录（other_amt），直接累加
+            proj_amt = max(amnts["marketing_amt"], amnts["delivery_amt"]) + amnts["other_amt"]
+            signed_contracts_amt += proj_amt
+        
+        signed_contracts_amt = round(signed_contracts_amt, 2)
 
         # 铁三角联动次数
         triangle_stmt = select(func.count(ReportDetail.id)).where(
