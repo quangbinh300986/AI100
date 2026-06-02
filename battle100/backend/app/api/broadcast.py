@@ -394,11 +394,12 @@ class BatchDeleteBroadcastRequest(BaseModel):
 
 @router.get("/crm-customers", summary="直连 CRM 获取客户名称列表")
 async def get_crm_customers(
+    keyword: Optional[str] = Query(None, description="搜索关键字"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    直连 CRM 数据库获取所有活跃商机的客户名称列表（用于前端下拉选择）
+    直连 CRM 数据库获取所有活跃商机的客户名称列表（支持模糊搜索，限制返回条数，按创建时间倒序）
     """
     import pymysql
     from app.config import settings
@@ -415,37 +416,40 @@ async def get_crm_customers(
         )
         cur = conn.cursor()
         
-        # 优先从商机表中提取所有去重后的唯一客户名称，这对于战报关联最实用且准确
-        query = """
-            SELECT DISTINCT customer_name 
-            FROM zdcrm_business_opportunity 
-            WHERE customer_name IS NOT NULL 
-              AND customer_name != ''
-              AND is_del = '0'
-            ORDER BY customer_name ASC
-            LIMIT 1000
-        """
-        cur.execute(query)
+        if keyword:
+            # 带有关键字的搜索：通过 LIKE 过滤，按创建时间倒序并只取前 50 条
+            query = """
+                SELECT DISTINCT customer_name 
+                FROM crm_customer 
+                WHERE status = '0'
+                  AND customer_name LIKE %s
+                  AND customer_name != ''
+                  AND customer_name IS NOT NULL
+                ORDER BY create_date DESC
+                LIMIT 50
+            """
+            cur.execute(query, (f"%{keyword}%",))
+        else:
+            # 不带关键字：取最新创建的前 50 条记录
+            query = """
+                SELECT DISTINCT customer_name 
+                FROM crm_customer 
+                WHERE status = '0'
+                  AND customer_name != ''
+                  AND customer_name IS NOT NULL
+                ORDER BY create_date DESC
+                LIMIT 50
+            """
+            cur.execute(query)
+            
         rows = cur.fetchall()
-        
-        customers = [r[0] for r in rows if r[0]]
-        
-        # 如果从商机表拿出的偏少，我们也尝试从 crm_customer 表读取作为补充
-        if len(customers) < 20:
-            try:
-                cur.execute("SELECT DISTINCT name FROM crm_customer WHERE is_del = '0' AND name IS NOT NULL AND name != '' ORDER BY name ASC LIMIT 1000")
-                cust_rows = cur.fetchall()
-                for cr in cust_rows:
-                    if cr[0] not in customers:
-                        customers.append(cr[0])
-            except Exception:
-                pass
-                
+        customers = [r[0].strip() for r in rows if r[0]]
         conn.close()
         return customers
     except Exception as e:
         logger.error(f"直连 CRM 获取客户列表发生异常: {e}")
         return []
+
 
 
 @router.get("", response_model=BroadcastListResponse, summary="获取播报列表")

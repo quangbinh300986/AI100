@@ -636,10 +636,25 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  const customerSearchTimerRef = React.useRef<any>(null)
+
+  const handleCustomerSearch = (val: string) => {
+    if (customerSearchTimerRef.current) {
+      clearTimeout(customerSearchTimerRef.current)
+    }
+    customerSearchTimerRef.current = setTimeout(() => {
+      loadCrmCustomers(val)
+    }, 300)
+  }
+
   // 异步获取 CRM 数据库中的客户名称列表
-  const loadCrmCustomers = async () => {
+  const loadCrmCustomers = async (keyword?: string) => {
     try {
-      const res = await get<any>('/broadcast/crm-customers')
+      let url = '/broadcast/crm-customers'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const res = await get<any>(url)
       const data = res?.data ? res.data : res
       if (data && Array.isArray(data)) {
         setCrmCustomers(data)
@@ -1608,12 +1623,11 @@ const Dashboard: React.FC = () => {
                   <Form.Item name="customerName" label="客户 / 业主名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
                     <Select
                       showSearch
-                      placeholder="搜索选择 CRM 客户名称"
-                      optionFilterProp="label"
-                      filterOption={(input, option) =>
-                        ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
+                      placeholder="输入关键字检索并选择 CRM 客户"
+                      filterOption={false}
+                      onSearch={handleCustomerSearch}
                       options={crmCustomers.map(c => ({ value: c, label: c }))}
+                      defaultActiveFirstOption={false}
                     />
                   </Form.Item>
                 </Col>
@@ -1670,12 +1684,11 @@ const Dashboard: React.FC = () => {
               <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>
                 <Select
                   showSearch
-                  placeholder="搜索选择 CRM 客户名称"
-                  optionFilterProp="label"
-                  filterOption={(input, option) =>
-                    ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
+                  placeholder="输入关键字检索并选择 CRM 客户"
+                  filterOption={false}
+                  onSearch={handleCustomerSearch}
                   options={crmCustomers.map(c => ({ value: c, label: c }))}
+                  defaultActiveFirstOption={false}
                 />
               </Form.Item>
               <Form.Item name="happinessScore" label="客户幸福标准分值" rules={[{ required: true, message: '请选择幸福分值' }]}>

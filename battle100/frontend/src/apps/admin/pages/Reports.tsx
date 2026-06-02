@@ -305,10 +305,25 @@ const Reports: React.FC = () => {
     }
   }
 
+  const customerSearchTimerRef = React.useRef<any>(null)
+
+  const handleCustomerSearch = (val: string) => {
+    if (customerSearchTimerRef.current) {
+      clearTimeout(customerSearchTimerRef.current)
+    }
+    customerSearchTimerRef.current = setTimeout(() => {
+      loadCrmCustomers(val)
+    }, 300)
+  }
+
   // 加载 CRM 客户名称列表
-  const loadCrmCustomers = async () => {
+  const loadCrmCustomers = async (keyword?: string) => {
     try {
-      const res = await get<any>('/broadcast/crm-customers')
+      let url = '/broadcast/crm-customers'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const res = await get<any>(url)
       const data = res?.data ? res.data : res
       if (data && Array.isArray(data)) {
         setCrmCustomers(data)
@@ -1353,11 +1368,11 @@ const Reports: React.FC = () => {
                   >
                     <Select
                       showSearch
-                      placeholder="搜索选择 CRM 客户名称"
-                      filterOption={(input, option) =>
-                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
+                      placeholder="输入关键字检索并选择 CRM 客户"
+                      filterOption={false}
+                      onSearch={handleCustomerSearch}
                       options={crmCustomers.map(c => ({ label: c, value: c }))}
+                      defaultActiveFirstOption={false}
                     />
                   </Form.Item>
                 </Col>
@@ -1780,11 +1795,11 @@ const Reports: React.FC = () => {
             >
               <Select
                 showSearch
-                placeholder="搜索选择 CRM 客户名称"
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
+                placeholder="输入关键字检索并选择 CRM 客户"
+                filterOption={false}
+                onSearch={handleCustomerSearch}
                 options={crmCustomers.map(c => ({ label: c, value: c }))}
+                defaultActiveFirstOption={false}
               />
             </Form.Item>
           )}

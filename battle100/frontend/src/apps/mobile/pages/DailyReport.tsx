@@ -2,7 +2,7 @@
  * 每日冲刺数据填报页面 (移动端升级版)
  * 适配 5 种核心动作填报与实时战报发布 (CRM 提取、分摊业绩、照片上传)
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox } from 'antd-mobile'
 import { CheckCircleFill, CloseCircleFill, AddOutline, DeleteOutline, SearchOutline } from 'antd-mobile-icons'
@@ -78,6 +78,33 @@ export default function DailyReport() {
   // 合同/幸福动作照片附件
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>([])
 
+  const customerSearchTimerRef = useRef<any>(null)
+  
+  const handleCustomerSearch = (val: string) => {
+    if (customerSearchTimerRef.current) {
+      clearTimeout(customerSearchTimerRef.current)
+    }
+    customerSearchTimerRef.current = setTimeout(() => {
+      loadCrmCustomers(val)
+    }, 300)
+  }
+
+  const loadCrmCustomers = async (keyword?: string) => {
+    try {
+      let url = '/broadcast/crm-customers'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const cRes = await get<any>(url)
+      const cData = cRes?.data ? cRes.data : cRes
+      if (Array.isArray(cData)) {
+        setCrmCustomers(cData)
+      }
+    } catch (err) {
+      console.error('加载 CRM 客户列表失败', err)
+    }
+  }
+
   // 挂载加载
   useEffect(() => {
     const initData = async () => {
@@ -87,12 +114,8 @@ export default function DailyReport() {
         if (uData?.items) {
           setUsers(uData.items)
         }
-
-        const cRes = await get<any>('/broadcast/crm-customers')
-        const cData = cRes?.data ? cRes.data : cRes
-        if (Array.isArray(cData)) {
-          setCrmCustomers(cData)
-        }
+        
+        await loadCrmCustomers()
       } catch (err) {
         console.error('初始化移动端基础数据失败', err)
       }
@@ -423,10 +446,8 @@ export default function DailyReport() {
     p.customer_name.toLowerCase().includes(projectSearch.toLowerCase())
   )
 
-  // 客户名称过滤
-  const filteredCustomers = crmCustomers.filter(c =>
-    c.toLowerCase().includes(customerSearch.toLowerCase())
-  )
+  // 客户名称直接使用后端模糊查询返回的数据
+  const filteredCustomers = crmCustomers
 
   if (submitted) {
     return (
@@ -746,6 +767,7 @@ export default function DailyReport() {
                       setCustomerSearch(val)
                       setFormData(prev => ({ ...prev, customerName: val }))
                       updateTriangleContent(formData.employeeName, val, formData.copartners, formData.marketingCopartners, formData.actionDescription)
+                      handleCustomerSearch(val)
                     }}
                     style={{ fontSize: 13 }}
                   />
@@ -902,7 +924,8 @@ export default function DailyReport() {
                 onChange={(val) => {
                   setCustomerSearch(val)
                   setFormData(prev => ({ ...prev, customerName: val }))
-                  updateHappinessContent(prev => prev.happinessScore, prev => prev.actionDescription, val)
+                  updateHappinessContent(formData.happinessScore, formData.actionDescription, val)
+                  handleCustomerSearch(val)
                 }}
                 style={{ fontSize: 13 }}
               />
