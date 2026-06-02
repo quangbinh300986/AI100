@@ -607,9 +607,21 @@ export default function DailyReport() {
             )}
 
             {/* 业主名称 (只读回填) */}
-            <Form layout="vertical">
+            <Form layout="vertical" requiredMarkStyle="asterisk">
               <Form.Item label="业主单位/客户名称" required>
-                <Input value={formData.customerName} readOnly placeholder="选择项目后自动回填" style={{ fontSize: 13 }} />
+                <Input
+                  value={formData.customerName}
+                  readOnly
+                  placeholder="选择项目后自动回填"
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#f5f5f5',
+                    color: '#999'
+                  }}
+                />
               </Form.Item>
 
               {/* 金额输入 (线索和中标允许改金额，合同也允许改) */}
@@ -799,7 +811,7 @@ export default function DailyReport() {
               </span>
             </div>
 
-            <Form layout="vertical">
+            <Form layout="vertical" requiredMarkStyle="asterisk">
               {/* 1. 用户自己的姓名 */}
               <Form.Item label="用户自己的姓名">
                 <Input 
@@ -807,10 +819,11 @@ export default function DailyReport() {
                   readOnly 
                   style={{ 
                     fontSize: 13, 
-                    background: '#fafafa', 
-                    border: '1px solid #eee', 
+                    background: '#f5f5f5', 
+                    border: '1px solid #e8e8e8', 
                     padding: '6px 10px', 
-                    borderRadius: 6 
+                    borderRadius: 6,
+                    color: '#999'
                   }} 
                 />
               </Form.Item>
@@ -855,7 +868,19 @@ export default function DailyReport() {
                     ))}
                   </div>
                 )}
-                <Input value={formData.customerName} readOnly placeholder="在上方搜索或键入确认客户名称" style={{ fontSize: 13, background: '#fafafa', border: '1px solid #eee', padding: '6px 10px', borderRadius: 6 }} />
+                <Input
+                  value={formData.customerName}
+                  readOnly
+                  placeholder="在上方搜索或键入确认客户名称"
+                  style={{
+                    fontSize: 13,
+                    background: '#f5f5f5',
+                    border: '1px solid #e8e8e8',
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    color: '#999'
+                  }}
+                />
               </Form.Item>
 
               {/* 3. 联动人 (非营销岗) */}
@@ -924,7 +949,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, actionDescription: val }))
                     updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, val)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
 
@@ -938,7 +969,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, triangleResult: val }))
                     updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, formData.actionDescription, val, formData.customerFeedback)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
 
@@ -952,7 +989,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, customerFeedback: val }))
                     updateTriangleContent(formData.employeeName, formData.customerName, formData.copartners, formData.marketingCopartners, formData.actionDescription, formData.triangleResult, val)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
             </Form>
@@ -1042,9 +1085,21 @@ export default function DailyReport() {
               </div>
             )}
 
-            <Form layout="vertical">
+            <Form layout="vertical" requiredMarkStyle="asterisk">
               <Form.Item label="选定的客户名称" required>
-                <Input value={formData.customerName} readOnly placeholder="在上方搜索或键入选择" style={{ fontSize: 13 }} />
+                <Input
+                  value={formData.customerName}
+                  readOnly
+                  placeholder="在上方搜索或键入选择"
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#f5f5f5',
+                    color: '#999'
+                  }}
+                />
               </Form.Item>
 
               <Form.Item label="客户幸福动作标准分值" required>
@@ -1148,7 +1203,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, actionDescription: val }))
                     updateHappinessContent(formData.happinessScore, val, formData.customerName)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
 
@@ -1162,7 +1223,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, happinessResult: val }))
                     updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, val, formData.happinessFeedback, formData.recommendAction)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
 
@@ -1176,7 +1243,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, happinessFeedback: val }))
                     updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, val, formData.recommendAction)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
 
@@ -1190,7 +1263,13 @@ export default function DailyReport() {
                     setFormData(prev => ({ ...prev, recommendAction: val }))
                     updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, formData.happinessFeedback, val)
                   }}
-                  style={{ fontSize: 13 }}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff'
+                  }}
                 />
               </Form.Item>
             </Form>
