@@ -2274,13 +2274,12 @@ async def generate_daily_report(
             ReportDetail.crm_opportunity_id.isnot(None),
             ReportDetail.crm_opportunity_id != ""
         )
-        # 合同金额过滤营销新签分摊以对齐大盘累计签约额的统计口径，避免营销与交付分摊额重复累加
+        # 合同金额，直接统计所有明细的分摊金额之和，以反映合同签约的总金额
         contract_amt_stmt = select(
             func.coalesce(func.sum(ReportDetail.amount), 0)
         ).where(
             ReportDetail.report_id.in_(report_ids),
-            ReportDetail.detail_type == DetailType.CONTRACT,
-            ~ReportDetail.description.contains("营销新签分摊")
+            ReportDetail.detail_type == DetailType.CONTRACT
         )
         signed_contracts_cnt = int(await db.scalar(contract_cnt_stmt) or 0)
         signed_contracts_amt = round(float(await db.scalar(contract_amt_stmt) or 0.0), 2)
