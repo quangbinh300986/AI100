@@ -75,9 +75,12 @@ const Dashboard: React.FC = () => {
 
   const handleGenerateDailyReport = async (scope?: string | number) => {
     try {
-      let finalScope: string | number = scope !== undefined ? scope : selectedReportScope
+      // 判定传入的 scope 是否是有效的 string 或 number，以防 React MouseEvent 被当作 scope 传参
+      const isParamValid = scope !== undefined && typeof scope !== 'object'
+      let finalScope: string | number = isParamValid ? scope : selectedReportScope
+      
       // 针对目标官，如果未指定且没有被初始化过，默认展示其所在的战队
-      if (scope === undefined && selectedReportScope === 'company' && user?.role === 'target_officer' && user?.team_id) {
+      if (!isParamValid && selectedReportScope === 'company' && user?.role === 'target_officer' && user?.team_id) {
         finalScope = user.team_id
         setSelectedReportScope(user.team_id)
       }
@@ -953,7 +956,7 @@ const Dashboard: React.FC = () => {
                 style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }} 
                 icon={<FileTextOutlined />} 
                 loading={dailyReportLoading}
-                onClick={handleGenerateDailyReport}
+                onClick={() => handleGenerateDailyReport()}
               >
                 生成今日日报
               </Button>
