@@ -607,8 +607,8 @@ export default function DailyReport() {
             )}
 
             {/* 业主名称 (只读回填) */}
-            <Form layout="vertical" requiredMarkStyle="asterisk">
-              <Form.Item label="业主单位/客户名称" required>
+            <Form layout="vertical">
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>业主单位/客户名称</span>}>
                 <Input
                   value={formData.customerName}
                   readOnly
@@ -625,7 +625,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 金额输入 (线索和中标允许改金额，合同也允许改) */}
-              <Form.Item label="预计合同价格 / 预计金额 (万元)" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>预计合同价格 / 预计金额 (万元)</span>}>
                 <Stepper
                   min={0}
                   max={99999}
@@ -811,7 +811,7 @@ export default function DailyReport() {
               </span>
             </div>
 
-            <Form layout="vertical" requiredMarkStyle="asterisk">
+            <Form layout="vertical">
               {/* 1. 用户自己的姓名 */}
               <Form.Item label="用户自己的姓名">
                 <Input 
@@ -829,7 +829,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 2. 客户选择与选定 */}
-              <Form.Item label="客户/业主名称 (搜索选择)" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>客户/业主名称 (搜索选择)</span>}>
                 <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 8 }}>
                   <SearchOutline style={{ color: '#999', marginRight: 6 }} />
                   <Input
@@ -940,7 +940,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 5. 具体的联动动作 */}
-              <Form.Item label="联动的动作" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>联动的动作</span>}>
                 <TextArea
                   placeholder="请输入具体的铁三角联动动作描述..."
                   rows={3}
@@ -960,7 +960,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 成果 */}
-              <Form.Item label="成果" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>成果</span>}>
                 <TextArea
                   placeholder="（推进到什么阶段/达成什么结果）"
                   rows={3}
@@ -980,7 +980,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 客户反馈 */}
-              <Form.Item label="客户反馈" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>客户反馈</span>}>
                 <TextArea
                   placeholder="“（客户原话或总结）”"
                   rows={3}
@@ -1085,8 +1085,8 @@ export default function DailyReport() {
               </div>
             )}
 
-            <Form layout="vertical" requiredMarkStyle="asterisk">
-              <Form.Item label="选定的客户名称" required>
+            <Form layout="vertical">
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>选定的客户名称</span>}>
                 <Input
                   value={formData.customerName}
                   readOnly
@@ -1102,7 +1102,7 @@ export default function DailyReport() {
                 />
               </Form.Item>
 
-              <Form.Item label="客户幸福动作标准分值" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>客户幸福动作标准分值</span>}>
                 <Selector
                   options={[
                     { label: '0分', value: 0 },
@@ -1193,7 +1193,7 @@ export default function DailyReport() {
                 </Form.Item>
               )}
 
-              <Form.Item label="具体动作描述" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>具体动作描述</span>}>
                 <TextArea
                   placeholder="请输入或由上方勾选生成客户幸福动作的具体叙述（必填）..."
                   rows={3}
@@ -1214,7 +1214,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 成果 */}
-              <Form.Item label="成果" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>成果</span>}>
                 <TextArea
                   placeholder="（推进到什么阶段/达成什么结果）"
                   rows={3}
@@ -1254,7 +1254,7 @@ export default function DailyReport() {
               </Form.Item>
 
               {/* 内部可推广复制的做法 */}
-              <Form.Item label="内部可推广复制的做法" required>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>内部可推广复制的做法</span>}>
                 <TextArea
                   placeholder="具体做法说明"
                   rows={3}
