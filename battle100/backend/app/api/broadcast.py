@@ -1235,10 +1235,15 @@ async def create_broadcast(
                     rep = await get_or_create_report(uid)
                     rep.triangle_count += 1
                     
+                    # 确定对于当前用户 uid 的搭档：除了他自己以外的第一个需要加次数的用户 ID
+                    other_uids = [other_id for other_id in user_ids_to_add if other_id != uid]
+                    partner_id_val = other_uids[0] if other_uids else None
+                    
                     det = ReportDetail(
                         report_id=rep.id,
                         detail_type=DetailType.TRIANGLE,
                         customer_name=broadcast_in.customer_name,
+                        partner_user_id=partner_id_val,
                         description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                         attachment_urls=broadcast_in.attachment_urls
                     )

@@ -2148,12 +2148,31 @@ async def get_team_triangles(
     
     result = []
     for r in final_rows:
+        desc_str = r.description or ""
+        partner_name_val = r.partner_name or "—"
+        if partner_name_val == "—" or not partner_name_val:
+            partners = []
+            m1 = re.search(r"与联动人\((.*?)\)", desc_str)
+            if m1:
+                names = m1.group(1).replace(",", "、").replace("，", "、").strip()
+                if names:
+                    partners.append(names)
+            m2 = re.search(r"营销人员\((.*?)\)", desc_str)
+            if m2:
+                names = m2.group(1).replace(",", "、").replace("，", "、").strip()
+                if names:
+                    partners.append(names)
+            if partners:
+                partner_name_val = "、".join(partners)
+            else:
+                partner_name_val = "—"
+                
         result.append({
             "id": r.id,
             "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
             "reporter_name": r.reporter_name,
             "customer_name": r.customer_name or "—",
-            "partner_name": r.partner_name or "—",
+            "partner_name": partner_name_val,
             "description": r.description or "—",
         })
     return result
@@ -2526,13 +2545,32 @@ async def get_company_kpi_detail(
         final_rows.sort(key=lambda x: (x.report_date or date.min, x.id), reverse=True)
 
         for r in final_rows:
+            desc_str = r.description or ""
+            partner_name_val = r.partner_name or "—"
+            if partner_name_val == "—" or not partner_name_val:
+                partners = []
+                m1 = re.search(r"与联动人\((.*?)\)", desc_str)
+                if m1:
+                    names = m1.group(1).replace(",", "、").replace("，", "、").strip()
+                    if names:
+                        partners.append(names)
+                m2 = re.search(r"营销人员\((.*?)\)", desc_str)
+                if m2:
+                    names = m2.group(1).replace(",", "、").replace("，", "、").strip()
+                    if names:
+                        partners.append(names)
+                if partners:
+                    partner_name_val = "、".join(partners)
+                else:
+                    partner_name_val = "—"
+                    
             list_data.append({
                 "id": r.id,
                 "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
                 "reporter_name": r.reporter_name,
                 "team_name": r.team_name or "—",
                 "customer_name": r.customer_name or "—",
-                "partner_name": r.partner_name or "—",
+                "partner_name": partner_name_val,
                 "description": r.description or "—",
             })
         result_data.update({
