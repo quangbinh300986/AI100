@@ -40,11 +40,13 @@ def clean_description(desc_text: str | None) -> str:
 async def fetch_and_clean_descriptions(db: AsyncSession, items: list[dict]) -> list[dict]:
     """
     批量提取 items 列表中带有 [broadcast_id:xxx] 标签的项，
-    从 BroadcastEvent 数据库中查询对应的 content 字段，
-    并还原为完整的集成播报内容，同时清洗掉 [broadcast_id:xxx] 后缀。
-    items: 格式为 [{"description": str, ...}, ...]
+    1. 从 BroadcastEvent 数据库中查询对应的 content 字段，还原为完整的集成播报内容，并清洗掉后缀。
+    2. 从 ReportDetail 中查询具有相同 [broadcast_id:xxx] 的其他所有提报人，作为其协同搭档补全 partner_name。
     """
     from app.models.broadcast import BroadcastEvent
+    from app.models.report import ReportDetail, DailyReport, ReportStatus
+    from app.models.user import User
+    from sqlalchemy import select, or_
     
     # 1. 扫描所有的 broadcast_id
     bid_to_items = {}
@@ -57,31 +59,97 @@ async def fetch_and_clean_descriptions(db: AsyncSession, items: list[dict]) -> l
                 bid_to_items[bid] = []
             bid_to_items[bid].append(idx)
             
-    # 2. 批量查询 BroadcastEvent
+    if not bid_to_items:
+        # 如果没有带 broadcast_id 的项，直接进行描述清洗返回
+        for item in items:
+            desc = item.get("description") or ""
+            item["description"] = clean_description(desc)
+        return items
+        
+    bids = list(bid_to_items.keys())
+    
+    # 2. 批量查询 BroadcastEvent (用于还原完整的集成播报内容)
     event_contents = {}
-    if bid_to_items:
-        bids = list(bid_to_items.keys())
-        stmt = select(BroadcastEvent.id, BroadcastEvent.content).where(BroadcastEvent.id.in_(bids))
-        res = await db.execute(stmt)
-        for ev_id, ev_content in res.all():
-            event_contents[ev_id] = ev_content
-            
-    # 3. 进行替换与清洗
+    event_stmt = select(BroadcastEvent.id, BroadcastEvent.content).where(BroadcastEvent.id.in_(bids))
+    event_res = await db.execute(event_stmt)
+    for ev_id, ev_content in event_res.all():
+        event_contents[ev_id] = ev_content
+        
+    # 3. 批量查询同 broadcast_id 下的所有参与人 (用于寻找协同搭档)
+    # 因为是用 contains 匹配包含 [broadcast_id:xxx] 后缀的明细
+    like_conds = [ReportDetail.description.contains(f"[broadcast_id:{bid}]") for bid in bids]
+    details_stmt = (
+        select(ReportDetail.description, User.name)
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .where(
+            or_(*like_conds)
+        )
+    )
+    details_res = await db.execute(details_stmt)
+    details_rows = details_res.all()
+    
+    bid_to_reporters = {}
+    for d_desc, u_name in details_rows:
+        d_desc_str = d_desc or ""
+        m = re.search(r"\[broadcast_id:(\d+)\]", d_desc_str)
+        if m:
+            bid = int(m.group(1))
+            if bid not in bid_to_reporters:
+                bid_to_reporters[bid] = set()
+            if u_name:
+                bid_to_reporters[bid].add(u_name.strip())
+                
+    # 4. 进行替换、清洗与搭档补全
     for idx, item in enumerate(items):
         desc = item.get("description") or ""
         m = re.search(r"\[broadcast_id:(\d+)\]", desc)
         if m:
             bid = int(m.group(1))
+            
+            # A. 还原大段播报内容
             real_content = event_contents.get(bid)
             if real_content:
                 desc_text = real_content
             else:
                 desc_text = desc
+                
+            # B. 寻找并补全协同搭档 (排除自己本人)
+            if "partner_name" in item:
+                reporters = bid_to_reporters.get(bid, set())
+                self_name = item.get("reporter_name") or ""
+                # 支持过滤多提报人名字
+                self_names = [n.strip() for n in self_name.split("、") if n.strip()]
+                partners = [r for r in reporters if r not in self_names]
+                
+                # 如果没有从同 broadcast_id 关联中查到其他搭档，做一次正则提取作为后备
+                if not partners:
+                    partners_list = []
+                    desc_str = item.get("description") or ""
+                    m1 = re.search(r"与联动人\((.*?)\)", desc_str)
+                    if m1:
+                        names = m1.group(1).replace(",", "、").replace("，", "、").strip()
+                        if names:
+                            partners_list.append(names)
+                    m2 = re.search(r"营销人员\((.*?)\)", desc_str)
+                    if m2:
+                        names = m2.group(1).replace(",", "、").replace("，", "、").strip()
+                        if names:
+                            partners_list.append(names)
+                    if partners_list:
+                        partners_val = "、".join(partners_list)
+                    else:
+                        partners_val = "—"
+                else:
+                    partners_val = "、".join(partners)
+                    
+                item["partner_name"] = partners_val
         else:
             desc_text = desc
             
         item["description"] = clean_description(desc_text)
-            
+        
     return items
 
 
