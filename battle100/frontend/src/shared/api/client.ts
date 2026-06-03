@@ -43,6 +43,11 @@ client.interceptors.response.use(
       const { status } = error.response
       switch (status) {
         case 401:
+          // 如果是登录请求本身报401（账号密码错误），直接抛给页面处理以显示提示，不应执行Token清除与页面重载
+          const requestUrl = error.config?.url || ''
+          if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/dingtalk-login')) {
+            break
+          }
           // Token过期或无效，清除并跳转登录
           removeToken()
           // 根据当前路径判断跳转哪个登录页
