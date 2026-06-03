@@ -1448,3 +1448,73 @@ async def crm_webhook_broadcast(
         "content": content
     }
 
+
+# -------------------- 播报内容重复检测 --------------------
+
+class BroadcastCheckRequest(BaseModel):
+    content: str = Field(..., description="要比对的播报文本内容")
+    customer_name: Optional[str] = Field(None, description="客户名称")
+
+class BroadcastCheckResponse(BaseModel):
+    is_duplicate: bool = Field(..., description="本日是否已存在相同的播报内容")
+    triangle_count: int = Field(..., description="本日该客户下铁三角联动播报的累计条数")
+    triangle_list: list[str] = Field(..., description="本日该客户下铁三角联动播报的明细列表")
+
+@router.post("/check-duplicate", response_model=BroadcastCheckResponse, summary="检查特定时间段内播报内容是否重复并统计铁三角明细")
+async def check_duplicate_broadcast(
+    req: BroadcastCheckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import timedelta, timezone, time, datetime
+    import re
+    
+    cn_offset = timezone(timedelta(hours=8))
+    now_cn = datetime.now(cn_offset)
+    today = now_cn.date()
+    yesterday = today - timedelta(days=1)
+    
+    # 北京时间昨天上午 09:00:00
+    bj_start_dt = datetime.combine(yesterday, time(9, 0, 0)).replace(tzinfo=cn_offset)
+    # 转换为带时区的 UTC 时间，用于在带时区的 DateTime 字段过滤
+    utc_start_dt = bj_start_dt.astimezone(timezone.utc)
+
+    # 1. 统计该客户在指定时间段（昨天上午九点到现在）所有的铁三角联动已播报明细列表
+    triangle_count = 0
+    triangle_list = []
+    
+    if req.customer_name:
+        customer_to_check = req.customer_name.strip()
+        # 查询从昨天上午九点到现在的所有铁三角联动明细
+        stmt = select(ReportDetail).where(
+            ReportDetail.created_at >= utc_start_dt,
+            ReportDetail.detail_type == DetailType.TRIANGLE
+        )
+        res = await db.execute(stmt)
+        details = res.scalars().all()
+        
+        # 过滤指定客户名并去重统计真实的播报
+        unique_broadcasts = {}
+        for d in details:
+            if d.customer_name and d.customer_name.strip() == customer_to_check:
+                desc = d.description or ""
+                # 从 description 中匹配 [broadcast_id:xxx] 作为去重的 key
+                match = re.search(r"\[broadcast_id:(\d+)\]", desc)
+                bid = match.group(1) if match else desc.strip()
+                
+                clean_content = desc.split("\n[broadcast_id:")[0].strip() if "\n[broadcast_id:" in desc else desc.strip()
+                if bid and clean_content and bid not in unique_broadcasts:
+                    unique_broadcasts[bid] = clean_content
+                
+        triangle_list = list(unique_broadcasts.values())
+        triangle_count = len(triangle_list)
+
+    # 2. 如果当前客户在时间段内已经播放过铁三角联动（数量 > 0），则直接触发重复提示拦截
+    is_duplicate = triangle_count > 0
+
+    return BroadcastCheckResponse(
+        is_duplicate=is_duplicate,
+        triangle_count=triangle_count,
+        triangle_list=triangle_list
+    )
+

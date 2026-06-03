@@ -49,6 +49,35 @@ const Dashboard: React.FC = () => {
   const [selectedTeamMetrics, setSelectedTeamMetrics] = useState<any>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
   
+  // 新增重复播报校验及明细弹窗所需的状态变量
+  const [duplicateModalVisible, setDuplicateModalVisible] = useState(false)
+  const [duplicateCheckData, setDuplicateCheckData] = useState<{
+    customerName: string;
+    count: number;
+    list: string[];
+  } | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const [pendingPublishValues, setPendingPublishValues] = useState<any>(null)
+  
+  const handleYesDuplicate = () => {
+    // 点击“是”：直接关闭整个填报弹窗和重复提示弹窗，并重置表单和附件
+    setBroadcastModalVisible(false)
+    setDuplicateModalVisible(false)
+    setPendingPublishValues(null)
+    setShowDetails(false)
+    broadcastForm.resetFields()
+    setFileList([])
+  }
+
+  const handleNoDuplicate = async () => {
+    // 点击“否”：允许用户发布，跳过拦截直接提报
+    setDuplicateModalVisible(false)
+    setShowDetails(false)
+    if (pendingPublishValues) {
+      await executePublishBroadcast(pendingPublishValues)
+    }
+  }
+  
   // 日报自动生成器状态
   const [dailyReportModalVisible, setDailyReportModalVisible] = useState(false)
   const [dailyReportText, setDailyReportText] = useState('')
@@ -821,8 +850,8 @@ const Dashboard: React.FC = () => {
     loadUsersList()
   }, [])
 
-  // 发布广播
-  const handlePublishBroadcast = async (values: any) => {
+  // 真正执行发布广播的底层方法，所有注释采用中文
+  const executePublishBroadcast = async (values: any) => {
     try {
       let deliveryAllocations: any[] = []
       let marketingAllocations: any[] = []
@@ -954,6 +983,56 @@ const Dashboard: React.FC = () => {
     } catch (err) {
       message.error('发布失败')
     }
+  }
+
+  // 提交战报广播的前置检测与拦截校验方法
+  const handlePublishBroadcast = async (values: any) => {
+    // 1. 进行业绩比例校验等前置校验，防止格式不正确时仍弹框
+    if (values.actionType === 'contract') {
+      const contractAmt = parseFloat(values.expectMoney || 0)
+      if (isNaN(contractAmt) || contractAmt <= 0) {
+        message.error('请输入有效的合同价格！')
+        return
+      }
+      if (!values.deliveryAllocations || values.deliveryAllocations.length === 0) {
+        message.error('请添加交付新签业绩分配人员！')
+        return
+      }
+      if (!values.marketingAllocations || values.marketingAllocations.length === 0) {
+        message.error('请添加营销新签业绩分配人员！')
+        return
+      }
+    }
+
+    try {
+      const customerName = values.customerName || values.contractName || values.projectName || ''
+      // 请求后端进行重复检测与明细条数拉取
+      const checkRes = await post<any>('/broadcast/check-duplicate', {
+        content: values.content,
+        customer_name: customerName
+      })
+      const checkData = checkRes?.data ? checkRes.data : checkRes
+      
+      if (checkData && checkData.is_duplicate) {
+        // 重复了，拦截并弹出提示 Modal，暂存 values
+        setPendingPublishValues(values)
+        setDuplicateCheckData({
+          customerName: customerName || '当前客户',
+          count: checkData.triangle_count || 0,
+          list: checkData.triangle_list || []
+        })
+        setShowDetails(false)
+        setDuplicateModalVisible(true)
+        return
+      }
+    } catch (err: any) {
+      console.error('播报重复性检测发生异常，跳过检测直接发布', err)
+      const errorMsg = err?.response?.data?.detail || err?.message || '未知网络错误'
+      message.warning(`播报重复性检测服务暂时离线或异常（错误：${errorMsg}），已直接发布。`)
+    }
+
+    // 若未发生重复或检查无拦截，正常执行发布
+    await executePublishBroadcast(values)
   }
 
   const kpis = data?.kpiSummary
@@ -2103,6 +2182,57 @@ const Dashboard: React.FC = () => {
             <Input.TextArea rows={4} placeholder="选择动作填入要素后自动生成，也可在此手动微调" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 重复战报检测提示 Modal，所有文字采用纯中文 */}
+      <Modal
+        title="⚠️ 发现重复播报内容"
+        open={duplicateModalVisible}
+        closable={false}
+        maskClosable={false}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <span style={{ color: '#fa8c16', fontSize: 12, textAlign: 'left' }}>
+              提示：按是，确定为重复记录，将不再播报，按否，不是重复记录，将直接播报出去
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button key="yes" type="primary" onClick={handleYesDuplicate}>是</Button>
+              <Button key="no" onClick={handleNoDuplicate}>否</Button>
+            </div>
+          </div>
+        }
+      >
+        <div style={{ padding: '8px 0' }}>
+          <p style={{ fontSize: 14 }}>
+            昨日上午9点至今本【{duplicateCheckData?.customerName}】已经播放{' '}
+            <strong style={{ color: '#ff4d4f', fontSize: 16 }}>{duplicateCheckData?.count}</strong>{' '}
+            条。
+          </p>
+          
+          <Button 
+            type="link" 
+            size="small" 
+            style={{ padding: 0, marginBottom: 8 }}
+            onClick={() => setShowDetails(!showDetails)}
+          >
+            {showDetails ? '收起明细' : '打开明细'}
+          </Button>
+
+          {showDetails && duplicateCheckData?.list && (
+            <Card size="small" style={{ maxHeight: 180, overflowY: 'auto', backgroundColor: '#fafafa', marginTop: 8 }}>
+              <List
+                size="small"
+                dataSource={duplicateCheckData.list}
+                locale={{ emptyText: <span style={{ color: '#bfbfbf', fontSize: 11 }}>本日暂无该客户的铁三角联动记录</span> }}
+                renderItem={(item, index) => (
+                  <List.Item style={{ padding: '4px 0', fontSize: 12 }}>
+                    {index + 1}. {item}
+                  </List.Item>
+                )}
+              />
+            </Card>
+          )}
+        </div>
       </Modal>
 
       {/* 战队多维度精细指标Modal */}
