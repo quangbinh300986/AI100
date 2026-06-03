@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import logoShield from '../../../assets/logo_shield.png'
 
 interface HeaderBannerProps {
   theme?: string
@@ -62,23 +63,18 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
     >
       {/* 1. 左侧：中地顾问盾牌 Logo 与公司副标 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        {/* 仿责任状左上角的公司盾牌 Logo */}
-        <div
+        {/* 中地顾问盾牌 Logo - 已实现透明底色且与大屏背景完美相融 */}
+        <img
+          src={logoShield}
+          alt="中地顾问 Logo"
           style={{
-            width: '42px',
             height: '42px',
-            borderRadius: '50%',
-            backgroundColor: '#0a3d8a',
-            border: '2px solid #ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 3px 8px rgba(0,0,0,0.3)',
+            width: 'auto',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0px 3px 6px rgba(0,0,0,0.3))',
             flexShrink: 0
           }}
-        >
-          <span style={{ color: '#ffffff', fontWeight: 'bold', fontSize: '1.4rem' }}>中</span>
-        </div>
+        />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h2
             style={{
