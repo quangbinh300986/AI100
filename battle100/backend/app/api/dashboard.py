@@ -23,9 +23,19 @@ from app.schemas.dashboard import (
     WeeklyTrend,
 )
 
+import re
+
 logger = logging.getLogger("battle100")
 
 PartnerUser = aliased(User)
+
+def clean_description(desc_text: str | None) -> str:
+    """清理描述中拼凑的 [broadcast_id:xxx] 后缀"""
+    if not desc_text:
+        return "—"
+    # 清除诸如 \n[broadcast_id:xxx] 或 [broadcast_id:xxx] 及其前导空白字符
+    clean_text = re.sub(r"\s*\[broadcast_id:\d+\]", "", desc_text)
+    return clean_text.strip() or "—"
 
 async def get_team_marketing_actual(db: AsyncSession, team_id: int) -> float:
     """计算战队的真实营销新签合同额"""
@@ -2064,7 +2074,7 @@ async def get_team_contracts(
             "customer_name": r.customer_name or "—",
             "amount": r.amount or 0.0,
             "partner_name": r.partner_name or "—",
-            "description": r.description or "—",
+            "description": clean_description(r.description),
         })
     return result
 
@@ -2173,7 +2183,7 @@ async def get_team_triangles(
             "reporter_name": r.reporter_name,
             "customer_name": r.customer_name or "—",
             "partner_name": partner_name_val,
-            "description": r.description or "—",
+            "description": clean_description(r.description),
         })
     return result
 
@@ -2223,7 +2233,7 @@ async def get_team_happiness(
             "reporter_name": r.reporter_name,
             "customer_name": r.customer_name or "—",
             "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
-            "description": r.description or "—",
+            "description": clean_description(r.description),
         })
     return result
 
@@ -2383,7 +2393,7 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": amt,
                 "partner_name": r.partner_name or "—",
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
 
         marketing_res = await db.execute(marketing_stmt)
@@ -2401,7 +2411,7 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": amt,
                 "partner_name": r.partner_name or "—",
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
 
         result_data.update({
@@ -2456,7 +2466,7 @@ async def get_company_kpi_detail(
                 "team_name": r.team_name or "—",
                 "customer_name": r.customer_name or "—",
                 "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
         result_data.update({
             "total": len(list_data),
@@ -2571,7 +2581,7 @@ async def get_company_kpi_detail(
                 "team_name": r.team_name or "—",
                 "customer_name": r.customer_name or "—",
                 "partner_name": partner_name_val,
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
         result_data.update({
             "total": len(list_data),
@@ -2627,7 +2637,7 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": r.amount or 0.0,
                 "progress": r.lead_progress or "—",
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
         return {
             "total": len(list_data),
@@ -2681,7 +2691,7 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": r.amount or 0.0,
                 "progress": r.lead_progress or "—",
-                "description": r.description or "—",
+                "description": clean_description(r.description),
             })
         return {
             "total": len(list_data),
