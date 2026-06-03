@@ -179,23 +179,33 @@ const Dashboard: React.FC = () => {
 
   // 获取战队线索明细数据
   const handleViewLeadsList = async (teamId: number, leadType: 'valid' | 'potential', teamName: string) => {
-    setLeadsModalVisible(true)
-    setLeadsLoading(true)
-    setLeadsList([])
-    setCurrentLeadType(leadType === 'valid' ? '有效需求线索' : '潜力需求线索')
-    setCurrentLeadTeamName(teamName)
-    try {
-      const res = await get(`/dashboard/team-leads?team_id=${teamId}&lead_type=${leadType}`)
-      if (res && Array.isArray(res)) {
-        setLeadsList(res)
+    if (leadType === 'valid') {
+      // 来源于本系统的有效线索库，如附件2
+      setCompanyKpiDetailType('leads')
+      setCompanyFilterTeamId(teamId)
+      setCompanyFilterWeek(undefined)
+      setCompanyFilterReporter(undefined)
+      setCompanyFilterKeyword('')
+      setCompanyKpiDetailModalVisible(true)
+    } else {
+      setLeadsModalVisible(true)
+      setLeadsLoading(true)
+      setLeadsList([])
+      setCurrentLeadType('潜力需求线索')
+      setCurrentLeadTeamName(teamName)
+      try {
+        const res = await get(`/dashboard/team-leads?team_id=${teamId}&lead_type=${leadType}`)
+        if (res && Array.isArray(res)) {
+          setLeadsList(res)
+        }
+      } catch (err: any) {
+        // 捕获异常，并使用 message.error 提示用户连接失败的真实报错原因
+        const errMsg = err?.response?.data?.detail || err?.message || '获取线索明细列表失败'
+        message.error(errMsg)
+        setLeadsModalVisible(false) // 失败时关闭二级Modal，避免显示空白弹框
+      } finally {
+        setLeadsLoading(false)
       }
-    } catch (err: any) {
-      // 捕获异常，并使用 message.error 提示用户连接失败的真实报错原因
-      const errMsg = err?.response?.data?.detail || err?.message || '获取线索明细列表失败'
-      message.error(errMsg)
-      setLeadsModalVisible(false) // 失败时关闭二级Modal，避免显示空白弹框
-    } finally {
-      setLeadsLoading(false)
     }
   }
 
@@ -2289,7 +2299,7 @@ const Dashboard: React.FC = () => {
                 {
                   key: 'valid_leads',
                   name: '🔍 有效需求线索量',
-                  definition: 'CRM线索库中进度在 25%~75% 的线索总数量',
+                  definition: '本系统有效线索库中进度为25%的线索总数量',
                   target: `${selectedTeamMetrics.valid_leads_target} 条`,
                   actual: selectedTeamMetrics.valid_leads_actual !== null ? `${selectedTeamMetrics.valid_leads_actual} 条` : '—',
                   rate: (selectedTeamMetrics.valid_leads_actual !== null && selectedTeamMetrics.valid_leads_target > 0) ? roundPct(selectedTeamMetrics.valid_leads_actual / selectedTeamMetrics.valid_leads_target * 100) : '—'

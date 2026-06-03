@@ -122,7 +122,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
       {
         key: 'valid_leads',
         name: '🔍 有效需求线索量',
-        definition: 'CRM线索库中进度在 25%~75% 的线索总数量',
+        definition: '本系统有效线索库中进度为25%的线索总数量',
         target: `${m.valid_leads_target} 条`,
         actual: m.valid_leads_actual !== null ? `${m.valid_leads_actual} 条` : '—',
         rate: (m.valid_leads_actual !== null && m.valid_leads_target > 0) ? roundPct(m.valid_leads_actual / m.valid_leads_target * 100) : 0.0,

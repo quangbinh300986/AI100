@@ -1611,7 +1611,7 @@ async def get_team_detailed_metrics(
     delivery_actual = await get_team_delivery_actual(db, team_id)
 
     # B. 有效需求线索量 & 潜力需求线索量
-    valid_leads_actual = None
+    valid_leads_actual = 0
     potential_leads_actual = None
     leads_conversion_rate = None
     crm_connected = False
@@ -1622,6 +1622,20 @@ async def get_team_detailed_metrics(
         .where(PersonalGoal.user_id.in_(member_ids), PersonalGoal.goal_type == GoalType.LEADS_COUNT)
     )
     leads_target = float(leads_target_res.scalar() or 20.0)
+
+    # 统计该战队本系统的有效需求线索量（来源于本系统的有效线索库）
+    valid_leads_system_res = await db.execute(
+        select(func.count(ReportDetail.id))
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.user_id.in_(member_ids),
+            ReportDetail.detail_type == DetailType.LEAD,
+            (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+        )
+    )
+    valid_leads_actual = int(valid_leads_system_res.scalar() or 0)
 
     # 尝试直连 CRM 获取线索数量和转化率
     if crm_user_ids:
@@ -1637,7 +1651,7 @@ async def get_team_detailed_metrics(
             )
             cur = conn.cursor(pymysql.cursors.DictCursor)
             
-            # 有效需求线索量 (仅25%阶段，且更新时间在6月1日后才算)
+            # CRM 有效线索用于计算转化率
             user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
             
             cur.execute(f"""
@@ -1648,7 +1662,7 @@ async def get_team_detailed_metrics(
                   AND market_user_id IN ({user_ids_str})
                   AND update_time >= '2026-06-01 00:00:00'
             """)
-            valid_leads_actual = cur.fetchone()["count"]
+            crm_valid_leads = cur.fetchone()["count"]
 
             # 潜力需求线索量 (5%-10%阶段)
             cur.execute(f"""
@@ -1669,7 +1683,7 @@ async def get_team_detailed_metrics(
             """)
             signed_count = cur.fetchone()["count"]
             
-            total_pool = valid_leads_actual + signed_count
+            total_pool = crm_valid_leads + signed_count
             if total_pool > 0:
                 leads_conversion_rate = round((signed_count / total_pool) * 100, 2)
             else:
@@ -1680,7 +1694,6 @@ async def get_team_detailed_metrics(
             crm_connected = True
         except Exception as e:
             logger.warning(f"直连 CRM 失败: {e}")
-            valid_leads_actual = None
             potential_leads_actual = None
             leads_conversion_rate = None
 
