@@ -40,14 +40,14 @@ export default function Login() {
             onSuccess: async (result: { code: string }) => {
               clearTimeout(timeoutTimer) // 成功，清除定时器
               try {
-                # 请求后端钉钉登录接口
+                // 请求后端钉钉登录接口
                 const res = await post<any>('/auth/dingtalk-login', { auth_code: result.code })
                 const tokenData = res?.data ? res.data : res
                 const token = tokenData.access_token
                 
                 if (token) {
                   setToken(token)
-                  # 拉取当前登录用户角色权限明细
+                  // 拉取当前登录用户角色权限明细
                   const meRes = await get<any>('/auth/me')
                   const meData = meRes?.data ? meRes.data : meRes
                   
