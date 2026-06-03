@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -15,7 +15,7 @@ import {
   PlusOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
-import { getDashboardData, getMyStats, getTeamDetailedMetrics } from '@shared/api/dashboard'
+import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import type { DashboardData, MyStatsResponse, RankingItem } from '@shared/types'
@@ -294,6 +294,32 @@ const Dashboard: React.FC = () => {
       render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
     }
   ]
+
+  // 全公司 KPI 详情弹窗状态
+  const [companyKpiDetailModalVisible, setCompanyKpiDetailModalVisible] = useState(false)
+  const [companyKpiDetailLoading, setCompanyKpiDetailLoading] = useState(false)
+  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads'>('contracts')
+  const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
+
+  // 获取公司级 KPI 详细数据，注释全部使用中文
+  const handleViewCompanyKpiDetail = async (type: 'contracts' | 'happiness' | 'triangle' | 'leads') => {
+    setCompanyKpiDetailType(type)
+    setCompanyKpiDetailModalVisible(true)
+    setCompanyKpiDetailLoading(true)
+    setCompanyKpiDetailData(null)
+    try {
+      const res = await getCompanyKpiDetail({ kpi_type: type })
+      if (res) {
+        setCompanyKpiDetailData(res)
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || '获取公司 KPI 明细数据失败'
+      message.error(errMsg)
+      setCompanyKpiDetailModalVisible(false)
+    } finally {
+      setCompanyKpiDetailLoading(false)
+    }
+  }
 
   // 新签合同明细下钻状态
   const [contractsModalVisible, setContractsModalVisible] = useState(false)
@@ -1014,7 +1040,13 @@ const Dashboard: React.FC = () => {
       {/* 第一级：🏆 公司战役总盘四大指标 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={6}>
-          <Card className="card-kpi" bordered={false}>
+          <Card 
+            className="card-kpi" 
+            bordered={false}
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('contracts')}
+          >
             <Statistic
               title="💰 公司累计新签合同额"
               value={kpis?.newContracts.value}
@@ -1034,7 +1066,13 @@ const Dashboard: React.FC = () => {
         </Col>
 
         <Col xs={24} sm={12} md={6}>
-          <Card className="card-kpi" bordered={false}>
+          <Card 
+            className="card-kpi" 
+            bordered={false}
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('happiness')}
+          >
             <Statistic
               title="😊 公司客户幸福动作"
               value={kpis?.happinessActions.value}
@@ -1053,7 +1091,13 @@ const Dashboard: React.FC = () => {
         </Col>
 
         <Col xs={24} sm={12} md={6}>
-          <Card className="card-kpi" bordered={false}>
+          <Card 
+            className="card-kpi" 
+            bordered={false}
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('triangle')}
+          >
             <Statistic
               title="🤝 售前铁三角联动次数"
               value={kpis?.ironTriangle.value}
@@ -1072,7 +1116,13 @@ const Dashboard: React.FC = () => {
         </Col>
 
         <Col xs={24} sm={12} md={6}>
-          <Card className="card-kpi" bordered={false}>
+          <Card 
+            className="card-kpi" 
+            bordered={false}
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('leads')}
+          >
             <Statistic
               title="🔍 新增有效商机线索"
               value={kpis?.validLeads.value}
@@ -2274,6 +2324,243 @@ const Dashboard: React.FC = () => {
             }}
           />
         </div>
+      </Modal>
+
+      {/* 全公司 KPI 详情下钻 Modal，所有注释必须使用中文 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}>
+            {companyKpiDetailType === 'contracts' && <span>💰 公司累计新签合同额明细</span>}
+            {companyKpiDetailType === 'happiness' && <span>😊 公司客户幸福动作明细</span>}
+            {companyKpiDetailType === 'triangle' && <span>🤝 售前铁三角联动明细</span>}
+            {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
+          </div>
+        }
+        open={companyKpiDetailModalVisible}
+        onCancel={() => setCompanyKpiDetailModalVisible(false)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setCompanyKpiDetailModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={950}
+        destroyOnClose
+      >
+        <Spin spinning={companyKpiDetailLoading}>
+          {companyKpiDetailData && (
+            <div>
+              {/* 顶部指标卡汇总看板 */}
+              <div style={{ marginBottom: 20 }}>
+                {companyKpiDetailType === 'contracts' ? (
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <div style={{
+                        background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        boxShadow: '0 4px 12px rgba(24,144,255,0.2)'
+                      }}>
+                        <div style={{ fontSize: 13, opacity: 0.85 }}>交付新签总额 (大盘去重)</div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', marginTop: 4 }}>
+                          {companyKpiDetailData.delivery_total} <span style={{ fontSize: 14 }}>万元</span>
+                        </div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{
+                        background: 'linear-gradient(135deg, #ff7a45 0%, #ff4d4f 100%)',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        boxShadow: '0 4px 12px rgba(255,77,79,0.2)'
+                      }}>
+                        <div style={{ fontSize: 13, opacity: 0.85 }}>营销新签总额</div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', marginTop: 4 }}>
+                          {companyKpiDetailData.marketing_total} <span style={{ fontSize: 14 }}>万元</span>
+                        </div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{
+                        background: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        boxShadow: '0 4px 12px rgba(82,196,26,0.2)'
+                      }}>
+                        <div style={{ fontSize: 13, opacity: 0.85 }}>公司累计总签合同额</div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', marginTop: 4 }}>
+                          {companyKpiDetailData.delivery_total} <span style={{ fontSize: 14 }}>万元</span>
+                        </div>
+                      </div>
+                    </Col>
+                  </Row>
+                ) : (
+                  <div style={{
+                    background: '#f6ffed',
+                    border: '1px solid #b7eb8f',
+                    padding: '12px 20px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <Space size="middle">
+                      <span style={{ fontSize: 15, fontWeight: 500, color: '#389e0d' }}>
+                        {companyKpiDetailType === 'happiness' && '😊 公司客户幸福动作累计已执行'}
+                        {companyKpiDetailType === 'triangle' && '🤝 售前铁三角现场联动累计'}
+                        {companyKpiDetailType === 'leads' && '🔍 新增有效商机线索累计'}
+                      </span>
+                    </Space>
+                    <span style={{ fontSize: 22, fontWeight: 'bold', color: '#389e0d' }}>
+                      {companyKpiDetailData.total}{' '}
+                      <span style={{ fontSize: 14, fontWeight: 'normal' }}>
+                        {companyKpiDetailType === 'leads' ? '条' : '次'}
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 明细展示表格 */}
+              {companyKpiDetailType === 'contracts' ? (
+                <Tabs defaultActiveKey="delivery" type="card">
+                  <Tabs.TabPane tab="交付新签明细" key="delivery">
+                    <Table
+                      dataSource={companyKpiDetailData.delivery_list}
+                      rowKey="id"
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      columns={[
+                        { title: '签单日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                        { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                        { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                        { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                        {
+                          title: '签约金额',
+                          dataIndex: 'amount',
+                          key: 'amount',
+                          width: 110,
+                          align: 'right',
+                          render: (val: number) => <strong style={{ color: '#1677ff' }}>{val} 万</strong>
+                        },
+                        { title: '协同搭档', dataIndex: 'partner_name', key: 'partner_name', width: 90, align: 'center' },
+                        {
+                          title: '项目描述与分摊说明',
+                          dataIndex: 'description',
+                          key: 'description',
+                          render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                        }
+                      ]}
+                    />
+                  </Tabs.TabPane>
+                  <Tabs.TabPane tab="营销新签明细" key="marketing">
+                    <Table
+                      dataSource={companyKpiDetailData.marketing_list}
+                      rowKey="id"
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      columns={[
+                        { title: '签单日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                        { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                        { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                        { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                        {
+                          title: '签约金额',
+                          dataIndex: 'amount',
+                          key: 'amount',
+                          width: 110,
+                          align: 'right',
+                          render: (val: number) => <strong style={{ color: '#ff4d4f' }}>{val} 万</strong>
+                        },
+                        { title: '协同搭档', dataIndex: 'partner_name', key: 'partner_name', width: 90, align: 'center' },
+                        {
+                          title: '项目描述与分摊说明',
+                          dataIndex: 'description',
+                          key: 'description',
+                          render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                        }
+                      ]}
+                    />
+                  </Tabs.TabPane>
+                </Tabs>
+              ) : (
+                <Table
+                  dataSource={companyKpiDetailData.list}
+                  rowKey="id"
+                  size="small"
+                  pagination={{ pageSize: 10 }}
+                  columns={
+                    companyKpiDetailType === 'happiness'
+                      ? [
+                          { title: '填报日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '执行人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          {
+                            title: '标准分值',
+                            dataIndex: 'level',
+                            key: 'level',
+                            width: 100,
+                            align: 'center',
+                            render: (val: string) => <Tag color="green">{val}</Tag>
+                          },
+                          {
+                            title: '动作描述',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          }
+                        ]
+                      : companyKpiDetailType === 'triangle'
+                      ? [
+                          { title: '联动日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          { title: '联动搭档', dataIndex: 'partner_name', key: 'partner_name', width: 110, align: 'center' },
+                          {
+                            title: '活动描述',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          }
+                        ]
+                      : [
+                          { title: '发现日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          {
+                            title: '预计金额',
+                            dataIndex: 'amount',
+                            key: 'amount',
+                            width: 110,
+                            align: 'right',
+                            render: (val: number) => <strong style={{ color: '#722ed1' }}>{val} 万</strong>
+                          },
+                          {
+                            title: '当前进度',
+                            dataIndex: 'progress',
+                            key: 'progress',
+                            width: 100,
+                            align: 'center',
+                            render: (val: string) => <Tag color="purple">{val}</Tag>
+                          },
+                          {
+                            title: '线索描述与反馈',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          }
+                        ]
+                  }
+                />
+              )}
+            </div>
+          )}
+        </Spin>
       </Modal>
     </div>
   )

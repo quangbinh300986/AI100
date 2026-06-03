@@ -2019,6 +2019,253 @@ async def get_team_happiness(
     return result
 
 
+@router.get("/company-kpi-detail", summary="获取全公司 KPI 明细数据")
+async def get_company_kpi_detail(
+    kpi_type: str = Query(..., description="KPI类型: contracts(合同新签), happiness(客户幸福动作), triangle(铁三角联动), leads(有效商机线索)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取全公司级别的 KPI 指标明细列表及相关统计数据，所有注释必须使用中文
+    """
+    from app.models.user import User, PositionType
+    from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
+    from app.models.organization import Team
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import select, func
+
+    PartnerUser = aliased(User)
+
+    if kpi_type == "contracts":
+        # 1. 交付新签明细 (去重累计，大盘展示的也是交付视角累计)
+        delivery_stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                PartnerUser.name.label("partner_name"),
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                ~ReportDetail.description.contains("营销新签分摊")
+            )
+            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        )
+        delivery_res = await db.execute(delivery_stmt)
+        delivery_rows = delivery_res.all()
+
+        delivery_list = []
+        delivery_total = 0.0
+        for r in delivery_rows:
+            amt = r.amount or 0.0
+            delivery_total += amt
+            delivery_list.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": amt,
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+
+        # 2. 营销新签明细
+        marketing_stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                PartnerUser.name.label("partner_name"),
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) |
+                    (
+                        (~ReportDetail.description.contains("交付新签分摊")) &
+                        (
+                            (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])) |
+                            (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))
+                        )
+                    )
+                )
+            )
+            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        )
+        marketing_res = await db.execute(marketing_stmt)
+        marketing_rows = marketing_res.all()
+
+        marketing_list = []
+        marketing_total = 0.0
+        for r in marketing_rows:
+            amt = r.amount or 0.0
+            marketing_total += amt
+            marketing_list.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": amt,
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+
+        return {
+            "delivery_total": round(delivery_total, 2),
+            "marketing_total": round(marketing_total, 2),
+            "delivery_list": delivery_list,
+            "marketing_list": marketing_list
+        }
+
+    elif kpi_type == "happiness":
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.happiness_level,
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.HAPPINESS,
+            )
+            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        )
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            list_data.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
+                "description": r.description or "—",
+            })
+        return {
+            "total": len(list_data),
+            "list": list_data
+        }
+
+    elif kpi_type == "triangle":
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                PartnerUser.name.label("partner_name"),
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.TRIANGLE,
+            )
+            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        )
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            list_data.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+        return {
+            "total": len(list_data),
+            "list": list_data
+        }
+
+    elif kpi_type == "leads":
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.lead_progress,
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.LEAD,
+                (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+            )
+            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        )
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            list_data.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": r.amount or 0.0,
+                "progress": r.lead_progress or "—",
+                "description": r.description or "—",
+            })
+        return {
+            "total": len(list_data),
+            "list": list_data
+        }
+
+    else:
+        raise HTTPException(status_code=400, detail="无效的 KPI 类型")
+
+
 @router.get("/daily-report", summary="生成个人/战队当天日报")
 async def generate_daily_report(
     team_id: int | None = Query(None, description="战队ID"),

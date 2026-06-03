@@ -54,3 +54,8 @@ export function getTeamRanking(params?: { start_date?: string; end_date?: string
   return get<{ rank_by: string; items: any[] }>('/ranking/team', params)
 }
 
+/** 获取全公司 KPI 明细数据 */
+export function getCompanyKpiDetail(params: { kpi_type: string }) {
+  return get<any>('/dashboard/company-kpi-detail', { params })
+}
+
