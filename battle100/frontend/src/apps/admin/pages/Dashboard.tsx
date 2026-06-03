@@ -280,7 +280,7 @@ const Dashboard: React.FC = () => {
       title: '客户名称',
       dataIndex: 'customer_name',
       key: 'customer_name',
-      width: 240
+      width: 140
     },
     {
       title: '联动搭档',
@@ -290,7 +290,7 @@ const Dashboard: React.FC = () => {
       align: 'center' as const
     },
     {
-      title: '联动描述说明',
+      title: '播报内容',
       dataIndex: 'description',
       key: 'description',
       render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
@@ -317,7 +317,7 @@ const Dashboard: React.FC = () => {
       title: '客户名称',
       dataIndex: 'customer_name',
       key: 'customer_name',
-      width: 240
+      width: 140
     },
     {
       title: '标准分值',
@@ -328,7 +328,7 @@ const Dashboard: React.FC = () => {
       render: (val: string) => <strong style={{ color: '#3f51b5' }}>{val}</strong>
     },
     {
-      title: '客户关怀与拜访动作描述',
+      title: '播报内容',
       dataIndex: 'description',
       key: 'description',
       render: (val: string) => <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{val}</div>
@@ -2924,7 +2924,7 @@ const Dashboard: React.FC = () => {
                           { title: '填报日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
                           { title: '执行人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
-                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
                           {
                             title: '标准分值',
                             dataIndex: 'level',
@@ -2934,7 +2934,7 @@ const Dashboard: React.FC = () => {
                             render: (val: string) => <Tag color="green">{val}</Tag>
                           },
                           {
-                            title: '动作描述',
+                            title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
@@ -2945,10 +2945,10 @@ const Dashboard: React.FC = () => {
                           { title: '联动日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
                           { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
-                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
                           { title: '联动搭档', dataIndex: 'partner_name', key: 'partner_name', width: 110, align: 'center' },
                           {
-                            title: '活动描述',
+                            title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
