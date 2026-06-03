@@ -990,42 +990,28 @@ async def get_dashboard_overview(
         if crm_uid:
             crm_user_to_team_map[crm_uid] = team_id
 
+    # 统计本系统中各战队的有效需求线索量（来源于本系统的有效线索库）
+    system_leads_query = await db.execute(
+        select(
+            User.team_id,
+            func.count(ReportDetail.id)
+        )
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.LEAD,
+            (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%")),
+            User.team_id.isnot(None)
+        )
+        .group_by(User.team_id)
+    )
+    system_leads_rows = system_leads_query.all()
+    
     team_leads_actual_map = {}
-    if crm_user_to_team_map:
-        import pymysql
-        try:
-            crm_conn = pymysql.connect(
-                host=settings.CRM_DB_HOST,
-                port=settings.CRM_DB_PORT,
-                user=settings.CRM_DB_USER,
-                password=settings.CRM_DB_PASSWORD,
-                database=settings.CRM_DB_NAME,
-                charset='utf8mb4',
-                connect_timeout=3
-            )
-            crm_cur = crm_conn.cursor(pymysql.cursors.DictCursor)
-            # 仅统计更新时间在6月1日后且进度等于25%的线索
-            crm_cur.execute("""
-                SELECT market_user_id
-                FROM zdcrm_business_opportunity
-                WHERE progress = 25
-                  AND is_del = '0'
-                  AND (is_suspension = '0' OR is_suspension IS NULL)
-                  AND update_time >= '2026-06-01 00:00:00'
-            """)
-            crm_rows = crm_cur.fetchall()
-            for row in crm_rows:
-                m_uid = row["market_user_id"]
-                if m_uid:
-                    for part in m_uid.split(","):
-                        part = part.strip()
-                        if part in crm_user_to_team_map:
-                            tid = crm_user_to_team_map[part]
-                            team_leads_actual_map[tid] = team_leads_actual_map.get(tid, 0) + 1
-            crm_cur.close()
-            crm_conn.close()
-        except Exception as crm_err:
-            logger.warning(f"双轨动力卡片直连 CRM 获取有效线索失败: {crm_err}")
+    for team_id, count in system_leads_rows:
+        team_leads_actual_map[team_id] = count
 
     t_res = await db.execute(select(Team).order_by(Team.zone_id, Team.id))
     all_teams = t_res.scalars().all()
