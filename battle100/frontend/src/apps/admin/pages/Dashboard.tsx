@@ -2959,7 +2959,7 @@ const Dashboard: React.FC = () => {
                           { title: '中标日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
                           { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
-                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
                           {
                             title: '预计金额',
                             dataIndex: 'amount',
@@ -2977,7 +2977,7 @@ const Dashboard: React.FC = () => {
                             render: (val: string) => <Tag color="cyan">{val}</Tag>
                           },
                           {
-                            title: '项目描述与反馈',
+                            title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
@@ -2987,7 +2987,7 @@ const Dashboard: React.FC = () => {
                           { title: '发现日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
                           { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
-                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
                           {
                             title: '预计金额',
                             dataIndex: 'amount',
@@ -3005,7 +3005,7 @@ const Dashboard: React.FC = () => {
                             render: (val: string) => <Tag color="purple">{val}</Tag>
                           },
                           {
-                            title: '线索描述与反馈',
+                            title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
