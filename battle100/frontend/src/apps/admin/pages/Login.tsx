@@ -18,6 +18,12 @@ const Login: React.FC = () => {
   /** 钉钉免密登录流程 */
   const handleDingTalkLogin = async () => {
     setDdLoading(true)
+    // 增加 4 秒超时强制兜底，防止任何 ready 失败或未捕获的报错导致页面永久卡死在登录加载中
+    const timeoutTimer = setTimeout(() => {
+      setDdLoading(false)
+      console.warn('钉钉免登环境检测超时，已自动降级回退至普通密码登录。')
+    }, 4000)
+
     try {
       const ddApi = dd as any
       ddApi.ready(async () => {
@@ -26,6 +32,7 @@ const Login: React.FC = () => {
           ddApi.runtime.permission.requestAuthCode({
             corpId: corpId,
             onSuccess: async (result: { code: string }) => {
+              clearTimeout(timeoutTimer) // 成功，清除定时器
               try {
                 // 请求后端免登
                 const res = await post<any>('/auth/dingtalk-login', { auth_code: result.code })
@@ -63,18 +70,21 @@ const Login: React.FC = () => {
               }
             },
             onFail: (err: any) => {
+              clearTimeout(timeoutTimer) // 失败，清除定时器
               console.error('获取钉钉授权码失败', err)
               antMessage.error(`钉钉授权码获取失败: ${JSON.stringify(err) || '未知错误'}`)
               setDdLoading(false)
             }
           })
         } catch (readyErr: any) {
+          clearTimeout(timeoutTimer) // 异常，清除定时器
           console.error('钉钉 Ready 初始化错误', readyErr)
           antMessage.error(`Ready初始化异常: ${readyErr.message}`)
           setDdLoading(false)
         }
       })
     } catch (e: any) {
+      clearTimeout(timeoutTimer) // 异常，清除定时器
       console.error('钉钉免登引导异常', e)
       antMessage.error(`引导失败: ${e.message}`)
       setDdLoading(false)
