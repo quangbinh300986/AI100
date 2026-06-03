@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import logoShield from '../../../assets/logo_shield.png'
+import logoShield from '../../../assets/logo_shield_v2.png'
 
 interface HeaderBannerProps {
   theme?: string
