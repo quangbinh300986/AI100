@@ -37,6 +37,54 @@ def clean_description(desc_text: str | None) -> str:
     clean_text = re.sub(r"\s*\[broadcast_id:\d+\]", "", desc_text)
     return clean_text.strip() or "—"
 
+async def fetch_and_clean_descriptions(db: AsyncSession, items: list[dict]) -> list[dict]:
+    """
+    批量提取 items 列表中带有 [broadcast_id:xxx] 标签的项，
+    从 BroadcastEvent 数据库中查询对应的 content 字段，
+    并还原为完整的集成播报内容，同时清洗掉 [broadcast_id:xxx] 后缀。
+    items: 格式为 [{"description": str, ...}, ...]
+    """
+    from app.models.broadcast import BroadcastEvent
+    
+    # 1. 扫描所有的 broadcast_id
+    bid_to_items = {}
+    for idx, item in enumerate(items):
+        desc = item.get("description") or ""
+        m = re.search(r"\[broadcast_id:(\d+)\]", desc)
+        if m:
+            bid = int(m.group(1))
+            if bid not in bid_to_items:
+                bid_to_items[bid] = []
+            bid_to_items[bid].append(idx)
+            
+    # 2. 批量查询 BroadcastEvent
+    event_contents = {}
+    if bid_to_items:
+        bids = list(bid_to_items.keys())
+        stmt = select(BroadcastEvent.id, BroadcastEvent.content).where(BroadcastEvent.id.in_(bids))
+        res = await db.execute(stmt)
+        for ev_id, ev_content in res.all():
+            event_contents[ev_id] = ev_content
+            
+    # 3. 进行替换与清洗
+    for idx, item in enumerate(items):
+        desc = item.get("description") or ""
+        m = re.search(r"\[broadcast_id:(\d+)\]", desc)
+        if m:
+            bid = int(m.group(1))
+            real_content = event_contents.get(bid)
+            if real_content:
+                desc_text = real_content
+            else:
+                desc_text = desc
+        else:
+            desc_text = desc
+            
+        item["description"] = clean_description(desc_text)
+            
+    return items
+
+
 async def get_team_marketing_actual(db: AsyncSession, team_id: int) -> float:
     """计算战队的真实营销新签合同额"""
     query = (
@@ -2074,9 +2122,9 @@ async def get_team_contracts(
             "customer_name": r.customer_name or "—",
             "amount": r.amount or 0.0,
             "partner_name": r.partner_name or "—",
-            "description": clean_description(r.description),
+            "description": r.description or "—",
         })
-    return result
+    return await fetch_and_clean_descriptions(db, result)
 
 
 @router.get("/team-triangles", summary="获取战队售前铁三角联动明细列表")
@@ -2183,9 +2231,9 @@ async def get_team_triangles(
             "reporter_name": r.reporter_name,
             "customer_name": r.customer_name or "—",
             "partner_name": partner_name_val,
-            "description": clean_description(r.description),
+            "description": r.description or "—",
         })
-    return result
+    return await fetch_and_clean_descriptions(db, result)
 
 
 @router.get("/team-happiness", summary="获取战队客户幸福标准动作明细列表")
@@ -2233,9 +2281,9 @@ async def get_team_happiness(
             "reporter_name": r.reporter_name,
             "customer_name": r.customer_name or "—",
             "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
-            "description": clean_description(r.description),
+            "description": r.description or "—",
         })
-    return result
+    return await fetch_and_clean_descriptions(db, result)
 
 
 @router.get("/company-kpi-detail", summary="获取全公司 KPI 明细数据")
@@ -2393,7 +2441,7 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": amt,
                 "partner_name": r.partner_name or "—",
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
 
         marketing_res = await db.execute(marketing_stmt)
@@ -2411,14 +2459,16 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": amt,
                 "partner_name": r.partner_name or "—",
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
 
+        delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
+        marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
         result_data.update({
             "delivery_total": round(delivery_total, 2),
             "marketing_total": round(marketing_total, 2),
-            "delivery_list": delivery_list,
-            "marketing_list": marketing_list
+            "delivery_list": delivery_list_clean,
+            "marketing_list": marketing_list_clean
         })
         return result_data
 
@@ -2466,11 +2516,12 @@ async def get_company_kpi_detail(
                 "team_name": r.team_name or "—",
                 "customer_name": r.customer_name or "—",
                 "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
+        list_data_clean = await fetch_and_clean_descriptions(db, list_data)
         result_data.update({
-            "total": len(list_data),
-            "list": list_data
+            "total": len(list_data_clean),
+            "list": list_data_clean
         })
         return result_data
 
@@ -2581,11 +2632,12 @@ async def get_company_kpi_detail(
                 "team_name": r.team_name or "—",
                 "customer_name": r.customer_name or "—",
                 "partner_name": partner_name_val,
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
+        list_data_clean = await fetch_and_clean_descriptions(db, list_data)
         result_data.update({
-            "total": len(list_data),
-            "list": list_data
+            "total": len(list_data_clean),
+            "list": list_data_clean
         })
         return result_data
 
@@ -2637,11 +2689,12 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": r.amount or 0.0,
                 "progress": r.lead_progress or "—",
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
+        list_data_clean = await fetch_and_clean_descriptions(db, list_data)
         return {
-            "total": len(list_data),
-            "list": list_data
+            "total": len(list_data_clean),
+            "list": list_data_clean
         }
 
     elif kpi_type == "tenders":
@@ -2691,11 +2744,12 @@ async def get_company_kpi_detail(
                 "customer_name": r.customer_name or "—",
                 "amount": r.amount or 0.0,
                 "progress": r.lead_progress or "—",
-                "description": clean_description(r.description),
+                "description": r.description or "—",
             })
+        list_data_clean = await fetch_and_clean_descriptions(db, list_data)
         return {
-            "total": len(list_data),
-            "list": list_data
+            "total": len(list_data_clean),
+            "list": list_data_clean
         }
 
     else:

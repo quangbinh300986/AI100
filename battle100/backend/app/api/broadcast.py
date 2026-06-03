@@ -823,7 +823,7 @@ async def update_broadcast(
                 detail_type=DetailType.HAPPINESS,
                 customer_name=c_name,
                 happiness_level=score_val,
-                description=f"{broadcast_in.action_description or event.content}\n[broadcast_id:{event.id}]"
+                description=f"{event.content}\n[broadcast_id:{event.id}]"
             )
             db.add(det)
         elif event.event_type == "triangle":
@@ -1259,7 +1259,7 @@ async def create_broadcast(
                     detail_type=DetailType.HAPPINESS,
                     customer_name=broadcast_in.customer_name or "客户幸福关怀单位",
                     happiness_level=score_val,
-                    description=f"{broadcast_in.action_description or broadcast_in.content}\n[broadcast_id:{event.id}]",
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
 
