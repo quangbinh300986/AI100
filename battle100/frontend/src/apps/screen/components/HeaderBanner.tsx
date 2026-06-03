@@ -68,9 +68,10 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
           src={logoShield}
           alt="中地顾问 Logo"
           style={{
-            height: '62px',
+            height: '65px',
             width: 'auto',
             objectFit: 'contain',
+            filter: 'brightness(1.3) contrast(1.1) drop-shadow(0 0 6px rgba(0, 191, 255, 0.45))',
             flexShrink: 0
           }}
         />
