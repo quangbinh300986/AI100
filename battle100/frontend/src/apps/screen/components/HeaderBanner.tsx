@@ -62,16 +62,15 @@ const HeaderBanner: React.FC<HeaderBannerProps> = ({
       }}
     >
       {/* 1. 左侧：中地顾问盾牌 Logo 与公司副标 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
         {/* 中地顾问盾牌 Logo - 已实现透明底色且与大屏背景完美相融 */}
         <img
           src={logoShield}
           alt="中地顾问 Logo"
           style={{
-            height: '56px',
+            height: '62px',
             width: 'auto',
             objectFit: 'contain',
-            filter: 'drop-shadow(0px 3px 6px rgba(0,0,0,0.3))',
             flexShrink: 0
           }}
         />
