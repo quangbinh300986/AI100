@@ -335,14 +335,54 @@ async def get_dashboard_overview(
     total_count_res = await db.execute(total_count_stmt)
     total_count_val = int(total_count_res.scalar() or 0)
 
-    summary_result = await db.execute(
-        select(
-            func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("total_happiness"),
-            func.coalesce(func.sum(DailyReport.triangle_count), 0).label("total_triangle"),
-            func.coalesce(func.sum(DailyReport.leads_count), 0).label("total_leads"),
-        ).where(DailyReport.status == ReportStatus.REVIEWED)
+    # 统计去重后全公司的售前铁三角联动次数
+    triangle_details_stmt = select(
+        ReportDetail.id,
+        ReportDetail.description
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.TRIANGLE
     )
-    row = summary_result.one()
+    triangle_details_res = await db.execute(triangle_details_stmt)
+    triangle_rows = triangle_details_res.all()
+    
+    # 内存中按照 broadcast_id 逻辑去重
+    import re
+    broadcast_bids = set()
+    triangle_count_val = 0
+    for r_id, desc_text in triangle_rows:
+        desc_str = desc_text or ""
+        bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc_str)
+        if bid_match:
+            bid = int(bid_match.group(1))
+            if bid not in broadcast_bids:
+                broadcast_bids.add(bid)
+                triangle_count_val += 1
+        else:
+            triangle_count_val += 1
+            
+    val_triangle = triangle_count_val
+
+    # 统计全公司有效商机线索量（来源于本系统的有效线索库）
+    leads_details_stmt = select(
+        func.count(ReportDetail.id)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.LEAD,
+        (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+    )
+    leads_details_res = await db.execute(leads_details_stmt)
+    val_leads = int(leads_details_res.scalar() or 0)
+
+    # 统计全公司客户幸福动作次数
+    happiness_details_stmt = select(
+        func.count(ReportDetail.id)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.HAPPINESS
+    )
+    happiness_details_res = await db.execute(happiness_details_stmt)
+    val_happiness = int(happiness_details_res.scalar() or 0)
 
     # 查询战区与战队总目标以计算总签约目标额（仅包含营销新签目标以修正分轨，并保留两位小数）
     total_base_target_res = await db.execute(
@@ -358,17 +398,14 @@ async def get_dashboard_overview(
     kpi_contracts = KpiItem(value=round(val_contracts, 2), target=total_contract_target, percentage=pct_contracts)
 
     # 客户幸福：目标 3300 次
-    val_happiness = int(row.total_happiness)
     pct_happiness = round((val_happiness / 3300) * 100, 2)
     kpi_happiness = KpiItem(value=val_happiness, target=3300, percentage=pct_happiness)
 
     # 铁三角：目标 500 次
-    val_triangle = int(row.total_triangle)
     pct_triangle = round((val_triangle / 500) * 100, 2)
     kpi_triangle = KpiItem(value=val_triangle, target=500, percentage=pct_triangle)
 
     # 有效线索：目标 600 条
-    val_leads = int(row.total_leads)
     pct_leads = round((val_leads / 600) * 100, 2)
     kpi_leads = KpiItem(value=val_leads, target=600, percentage=pct_leads)
 
