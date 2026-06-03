@@ -1750,17 +1750,44 @@ async def get_team_detailed_metrics(
     )
     renew_amount_actual = float(renew_amount_res.scalar() or 0.0)
 
-    # F. 售前铁三角联动
-    triangle_res = await db.execute(
-        select(func.coalesce(func.sum(DailyReport.triangle_count), 0))
-        .where(DailyReport.user_id.in_(member_ids), DailyReport.status == ReportStatus.REVIEWED)
+    # F. 售前铁三角联动（从明细表统计并按战报ID去重）
+    team_triangle_stmt = select(
+        ReportDetail.id,
+        ReportDetail.description
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.TRIANGLE,
+        DailyReport.user_id.in_(member_ids)
     )
-    triangle_actual = int(triangle_res.scalar() or 0)
+    team_triangle_res = await db.execute(team_triangle_stmt)
+    team_triangle_rows = team_triangle_res.all()
+    
+    import re
+    team_broadcast_bids = set()
+    team_triangle_count = 0
+    for r_id, desc_text in team_triangle_rows:
+        desc_str = desc_text or ""
+        bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc_str)
+        if bid_match:
+            bid = int(bid_match.group(1))
+            if bid not in team_broadcast_bids:
+                team_broadcast_bids.add(bid)
+                team_triangle_count += 1
+        else:
+            team_triangle_count += 1
+            
+    triangle_actual = team_triangle_count
 
-    # G. 客户幸福动作
+    # G. 客户幸福动作（直接统计已审核明细数）
     happiness_res = await db.execute(
-        select(func.coalesce(func.sum(DailyReport.happiness_actions), 0))
-        .where(DailyReport.user_id.in_(member_ids), DailyReport.status == ReportStatus.REVIEWED)
+        select(func.count(ReportDetail.id))
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.HAPPINESS,
+            DailyReport.user_id.in_(member_ids)
+        )
     )
     happiness_actual = int(happiness_res.scalar() or 0)
 
@@ -2080,8 +2107,47 @@ async def get_team_triangles(
     res = await db.execute(stmt)
     rows = res.all()
     
-    result = []
+    import re
+    broadcast_groups = {}
+    non_broadcast_rows = []
+    
     for r in rows:
+        desc = r.description or ""
+        bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc)
+        if bid_match:
+            bid = int(bid_match.group(1))
+            if bid not in broadcast_groups:
+                broadcast_groups[bid] = []
+            broadcast_groups[bid].append(r)
+        else:
+            non_broadcast_rows.append(r)
+            
+    final_rows = []
+    for bid, group_rows in broadcast_groups.items():
+        if len(group_rows) == 1:
+            final_rows.append(group_rows[0])
+        else:
+            # 优先保留真正的播报发布人自己的那条明细
+            first_desc = group_rows[0].description or ""
+            initiator_match = re.search(r"我司【(.*?)】", first_desc)
+            selected_r = None
+            if initiator_match:
+                initiator_name = initiator_match.group(1).strip()
+                for gr in group_rows:
+                    if gr.reporter_name and gr.reporter_name.strip() == initiator_name:
+                        selected_r = gr
+                        break
+            if not selected_r:
+                selected_r = group_rows[0]
+            final_rows.append(selected_r)
+            
+    final_rows.extend(non_broadcast_rows)
+    
+    # 重新按报表日期降序、ID 降序排序
+    final_rows.sort(key=lambda x: (x.report_date or date.min, x.id), reverse=True)
+    
+    result = []
+    for r in final_rows:
         result.append({
             "id": r.id,
             "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
