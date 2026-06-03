@@ -6,7 +6,6 @@ import { login as apiLogin } from '@shared/api/auth'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import { setToken, removeToken } from '@shared/utils'
-import dd from 'dingtalk-jsapi'
 
 const Login: React.FC = () => {
   const navigate = useNavigate()
@@ -25,7 +24,9 @@ const Login: React.FC = () => {
     }, 4000)
 
     try {
-      const ddApi = dd as any
+      // 动态导入钉钉JSAPI以防止在非钉钉环境下其自运行初始化代码抛出未捕获异常
+      const ddModule = await import('dingtalk-jsapi')
+      const ddApi = (ddModule.default || ddModule) as any
       ddApi.ready(async () => {
         try {
           const corpId = 'dingdaec913f1d2b741235c2f4657eb6378f'

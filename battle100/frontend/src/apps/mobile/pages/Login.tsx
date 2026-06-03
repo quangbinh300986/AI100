@@ -9,7 +9,6 @@ import { EyeInvisibleOutline, EyeOutline } from 'antd-mobile-icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import { setToken, removeToken } from '@shared/utils'
-import dd from 'dingtalk-jsapi'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -23,23 +22,32 @@ export default function Login() {
   /** 钉钉免密登录流程 */
   const handleDingTalkLogin = async () => {
     setDdLoading(true)
+    // 增加 4 秒超时强制兜底，防止任何 ready 失败或未捕获的报错导致页面永久卡死在登录加载中
+    const timeoutTimer = setTimeout(() => {
+      setDdLoading(false)
+      console.warn('移动端钉钉免登检测超时，已自动降级至密码登录。')
+    }, 4000)
+
     try {
-      const ddApi = dd as any
+      // 动态导入钉钉JSAPI以防止在非钉钉环境下自运行初始化抛出未捕获异常
+      const ddModule = await import('dingtalk-jsapi')
+      const ddApi = (ddModule.default || ddModule) as any
       ddApi.ready(async () => {
         try {
           const corpId = 'dingdaec913f1d2b741235c2f4657eb6378f'
           ddApi.runtime.permission.requestAuthCode({
             corpId: corpId,
             onSuccess: async (result: { code: string }) => {
+              clearTimeout(timeoutTimer) // 成功，清除定时器
               try {
-                // 请求后端钉钉登录接口
+                # 请求后端钉钉登录接口
                 const res = await post<any>('/auth/dingtalk-login', { auth_code: result.code })
                 const tokenData = res?.data ? res.data : res
                 const token = tokenData.access_token
                 
                 if (token) {
                   setToken(token)
-                  // 拉取当前登录用户角色权限明细
+                  # 拉取当前登录用户角色权限明细
                   const meRes = await get<any>('/auth/me')
                   const meData = meRes?.data ? meRes.data : meRes
                   
@@ -61,6 +69,7 @@ export default function Login() {
               }
             },
             onFail: (err: any) => {
+              clearTimeout(timeoutTimer) // 失败，清除定时器
               console.error('获取钉钉免登授权码失败', err)
               Toast.show({
                 icon: 'fail',
@@ -70,12 +79,14 @@ export default function Login() {
             }
           })
         } catch (readyErr: any) {
+          clearTimeout(timeoutTimer) // 异常，清除定时器
           console.error('钉钉 Ready 事件内部错误', readyErr)
           Toast.show({ icon: 'fail', content: `Ready初始化异常: ${readyErr.message}` })
           setDdLoading(false)
         }
       })
     } catch (e: any) {
+      clearTimeout(timeoutTimer) // 异常，清除定时器
       console.error('钉钉免登引导异常', e)
       Toast.show({ icon: 'fail', content: `引导失败: ${e.message}` })
       setDdLoading(false)
