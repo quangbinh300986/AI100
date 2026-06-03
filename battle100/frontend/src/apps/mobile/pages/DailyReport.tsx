@@ -54,6 +54,16 @@ export default function DailyReport() {
   const [copartnersModalVisible, setCopartnersModalVisible] = useState(false)
   const [marketingCopartnersModalVisible, setMarketingCopartnersModalVisible] = useState(false)
 
+  // 重复播报检测状态变量
+  const [duplicateModalVisible, setDuplicateModalVisible] = useState(false)
+  const [duplicateCheckData, setDuplicateCheckData] = useState<{
+    customerName: string;
+    count: number;
+    list: string[];
+  } | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const [pendingPayload, setPendingPayload] = useState<any>(null)
+
   // 表单数据
   const [formData, setFormData] = useState({
     crmOpportunityId: '',
@@ -231,22 +241,29 @@ export default function DailyReport() {
     setDeliveryAllocations(currentDelivery)
 
     if (proj.marketing_users && proj.marketing_users.length > 0) {
-      const marketingUsersCount = proj.marketing_users.length
-      const avgRatio = Math.round((100 / marketingUsersCount) * 100) / 100
-      
-      const initMarketingAlloc = proj.marketing_users.map((mu: any, index: number) => {
-        const matchedLocalId = mu.local_user_id || 0
-        const allocRatio = index === marketingUsersCount - 1 
-          ? Math.round((100 - avgRatio * (marketingUsersCount - 1)) * 100) / 100 
-          : avgRatio
+      // 过滤出已绑定本地账号的营销人员，对齐电脑端
+      const validMarketingUsers = proj.marketing_users.filter((mu: any) => mu.local_user_id !== null)
+      const marketingUsersCount = validMarketingUsers.length
 
-        return {
-          user_id: matchedLocalId,
-          ratio: allocRatio,
-          amount: Math.round((defaultAmount * (allocRatio / 100)) * 100) / 100
-        }
-      })
-      setMarketingAllocations(initMarketingAlloc)
+      if (marketingUsersCount > 0) {
+        const avgRatio = Math.round((100 / marketingUsersCount) * 100) / 100
+        
+        const initMarketingAlloc = validMarketingUsers.map((mu: any, index: number) => {
+          const matchedLocalId = mu.local_user_id
+          const allocRatio = index === marketingUsersCount - 1 
+            ? Math.round((100 - avgRatio * (marketingUsersCount - 1)) * 100) / 100 
+            : avgRatio
+
+          return {
+            user_id: matchedLocalId,
+            ratio: allocRatio,
+            amount: Math.round((defaultAmount * (allocRatio / 100)) * 100) / 100
+          }
+        })
+        setMarketingAllocations(initMarketingAlloc)
+      } else {
+        setMarketingAllocations([])
+      }
     } else {
       setMarketingAllocations([])
     }
@@ -342,6 +359,28 @@ export default function DailyReport() {
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
+  // 真正执行提交的接口
+  const executeSubmit = async (payload: any) => {
+    setSubmitting(true)
+    try {
+      const res = await post<any>('/broadcast', payload)
+      if (res) {
+        setSubmitted(true)
+        Toast.show({ icon: 'success', content: '战报填报提交成功！' })
+      }
+    } catch (err: any) {
+      console.error(err)
+      const detail = err?.response?.data?.detail
+      Toast.show({
+        icon: 'fail',
+        content: typeof detail === 'string' ? detail : '提报失败，今天该商机可能已被他人绑定或已被使用',
+        duration: 3000
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // 提交接口
   const handleSubmit = async () => {
     if (!formData.content.trim()) {
@@ -433,43 +472,52 @@ export default function DailyReport() {
       }
     }
 
-    setSubmitting(true)
-    try {
-      const payload = {
-        event_type: actionType === 'contract' ? 'contract_signed' : actionType,
-        team_id: user?.teamId || null,
-        content: formData.content,
-        push_channel: 'all',
-        action_type: actionType,
-        customer_name: formData.customerName,
-        amount: formData.amount,
-        crm_opportunity_id: formData.crmOpportunityId || null,
-        happiness_score: actionType === 'happiness' ? formData.happinessScore : null,
-        action_description: (actionType === 'happiness' || actionType === 'triangle') ? formData.actionDescription : null,
-        delivery_allocations: actionType === 'contract' ? deliveryAllocations : null,
-        marketing_allocations: actionType === 'contract' ? marketingAllocations : null,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null,
-        employee_name: formData.employeeName || null,
-        copartners: actionType === 'triangle' ? formData.copartners : null,
-        marketing_copartners: actionType === 'triangle' ? formData.marketingCopartners : null
-      }
+    const payload = {
+      event_type: actionType === 'contract' ? 'contract_signed' : actionType,
+      team_id: user?.teamId || null,
+      content: formData.content,
+      push_channel: 'all',
+      action_type: actionType,
+      customer_name: formData.customerName || formData.projectName || '',
+      amount: formData.amount,
+      crm_opportunity_id: formData.crmOpportunityId || null,
+      happiness_score: actionType === 'happiness' ? formData.happinessScore : null,
+      action_description: (actionType === 'happiness' || actionType === 'triangle') ? formData.actionDescription : null,
+      delivery_allocations: actionType === 'contract' ? deliveryAllocations : null,
+      marketing_allocations: actionType === 'contract' ? marketingAllocations : null,
+      attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null,
+      employee_name: formData.employeeName || null,
+      copartners: actionType === 'triangle' ? formData.copartners : null,
+      marketing_copartners: actionType === 'triangle' ? formData.marketingCopartners : null
+    }
 
-      const res = await post<any>('/broadcast', payload)
-      if (res) {
-        setSubmitted(true)
-        Toast.show({ icon: 'success', content: '战报填报提交成功！' })
+    // 运行重复检测，对齐电脑端
+    try {
+      const customerName = formData.customerName || formData.projectName || ''
+      const checkRes = await post<any>('/broadcast/check-duplicate', {
+        content: formData.content,
+        customer_name: customerName
+      })
+      const checkData = checkRes?.data ? checkRes.data : checkRes
+      
+      if (checkData && checkData.is_duplicate) {
+        // 重复了，拦截并弹出提示 Modal，暂存 payload
+        setPendingPayload(payload)
+        setDuplicateCheckData({
+          customerName: customerName || '当前客户',
+          count: checkData.triangle_count || 0,
+          list: checkData.triangle_list || []
+        })
+        setShowDetails(false)
+        setDuplicateModalVisible(true)
+        return
       }
     } catch (err: any) {
-      console.error(err)
-      const detail = err?.response?.data?.detail
-      Toast.show({
-        icon: 'fail',
-        content: typeof detail === 'string' ? detail : '提报失败，今天该商机可能已被他人绑定或已被使用',
-        duration: 3000
-      })
-    } finally {
-      setSubmitting(false)
+      console.error('播报重复性检测发生异常，跳过检测直接发布', err)
     }
+
+    // 未重复则正常提交
+    await executeSubmit(payload)
   }
 
   // 协同人员添加
@@ -1355,6 +1403,19 @@ export default function DailyReport() {
             </div>
             {(() => {
               const filtered = users.filter(u => {
+                // 根据分配类型进行岗位角色过滤，对齐电脑端
+                if (allocTargetType === 'marketing') {
+                  // 营销业绩分摊人员必须为营销岗、营销人员角色或管理员
+                  if (!(u.position_type === 'marketing' || u.role === 'marketing_staff' || u.role === 'admin')) {
+                    return false;
+                  }
+                } else if (allocTargetType === 'delivery') {
+                  // 交付业绩分摊人员必须为非营销岗
+                  if (u.position_type === 'marketing') {
+                    return false;
+                  }
+                }
+
                 const nameMatch = u.name.toLowerCase().includes(allocUserSearch.toLowerCase());
                 const roleMap: Record<string, string> = {
                   admin: '管理员',
@@ -1514,6 +1575,73 @@ export default function DailyReport() {
         onAction={() => setMarketingCopartnersModalVisible(false)}
         closeOnMaskClick
         actions={[{ key: 'close', text: '确定' }]}
+      />
+
+      {/* 重复战报检测提示 Modal，所有文字采用纯中文，与电脑端对齐 */}
+      <Modal
+        visible={duplicateModalVisible}
+        title="⚠️ 发现重复播报内容"
+        content={
+          <div style={{ padding: '8px 0' }}>
+            <p style={{ fontSize: 14 }}>
+              昨日上午9点至今本【{duplicateCheckData?.customerName}】已经播放{' '}
+              <strong style={{ color: '#ff4d4f', fontSize: 16 }}>{duplicateCheckData?.count}</strong>{' '}
+              条。
+            </p>
+            
+            <Button 
+              fill="none"
+              size="mini"
+              style={{ padding: 0, marginBottom: 8, color: '#1677ff' }}
+              onClick={() => setShowDetails(!showDetails)}
+            >
+              {showDetails ? '收起明细' : '打开明细'}
+            </Button>
+
+            {showDetails && duplicateCheckData?.list && (
+              <div style={{ maxHeight: 150, overflowY: 'auto', backgroundColor: '#fafafa', marginTop: 8, padding: 8, border: '1px solid #eee', borderRadius: 6 }}>
+                {duplicateCheckData.list.length === 0 ? (
+                  <div style={{ color: '#bfbfbf', fontSize: 11 }}>本日暂无该客户的铁三角联动记录</div>
+                ) : (
+                  duplicateCheckData.list.map((item, index) => (
+                    <div key={index} style={{ padding: '4px 0', fontSize: 12, borderBottom: index === duplicateCheckData.list.length - 1 ? 'none' : '1px solid #f5f5f5' }}>
+                      {index + 1}. {item}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            <p style={{ color: '#fa8c16', fontSize: 11, marginTop: 12 }}>
+              提示：按是，确定为重复记录，将不再播报，按否，不是重复记录，将直接播报出去
+            </p>
+          </div>
+        }
+        onClose={() => setDuplicateModalVisible(false)}
+        actions={[
+          {
+            key: 'yes',
+            text: '是',
+            primary: true,
+            onClick: () => {
+              setDuplicateModalVisible(false)
+              setPendingPayload(null)
+              setShowDetails(false)
+              // 放弃播报，重定向回移动端首页
+              navigate('/m/home')
+            }
+          },
+          {
+            key: 'no',
+            text: '否',
+            onClick: async () => {
+              setDuplicateModalVisible(false)
+              setShowDetails(false)
+              if (pendingPayload) {
+                await executeSubmit(pendingPayload)
+              }
+            }
+          }
+        ]}
       />
     </div>
   )
