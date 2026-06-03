@@ -12,7 +12,8 @@ import {
   FlagOutlined,
   UserOutlined,
   FileTextOutlined,
-  PlusOutlined
+  PlusOutlined,
+  TrophyOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
@@ -298,28 +299,100 @@ const Dashboard: React.FC = () => {
   // 全公司 KPI 详情弹窗状态
   const [companyKpiDetailModalVisible, setCompanyKpiDetailModalVisible] = useState(false)
   const [companyKpiDetailLoading, setCompanyKpiDetailLoading] = useState(false)
-  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads'>('contracts')
+  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders'>('contracts')
   const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
 
-  // 获取公司级 KPI 详细数据，注释全部使用中文
-  const handleViewCompanyKpiDetail = async (type: 'contracts' | 'happiness' | 'triangle' | 'leads') => {
-    setCompanyKpiDetailType(type)
-    setCompanyKpiDetailModalVisible(true)
+  // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
+  const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'>('marketing_signing')
+
+  // 定时轮播：每 8 秒自动轮播一次，所有注释必须使用中文
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveRankTab(prev => {
+        if (prev === 'marketing_signing') return 'delivery_signing'
+        if (prev === 'delivery_signing') return 'leads'
+        if (prev === 'leads') return 'happiness'
+        if (prev === 'happiness') return 'triangle'
+        return 'marketing_signing'
+      })
+    }, 8000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // 全公司 KPI 筛选条件状态变量，所有注释必须使用中文
+  const [companyFilterTeamId, setCompanyFilterTeamId] = useState<number | undefined>(undefined)
+  const [companyFilterWeek, setCompanyFilterWeek] = useState<number | undefined>(undefined)
+  const [companyFilterReporter, setCompanyFilterReporter] = useState<string | undefined>(undefined)
+  const [companyFilterKeyword, setCompanyFilterKeyword] = useState<string>('')
+
+  // 接口返回的可用战队和提报人下拉缓存
+  const [availableTeams, setAvailableTeams] = useState<any[]>([])
+  const [availableReporters, setAvailableReporters] = useState<string[]>([])
+
+  // 核心数据拉取函数，注释全部使用中文
+  const loadCompanyKpiData = async (
+    type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders',
+    params: {
+      team_id?: number
+      week?: number
+      reporter_name?: string
+      keyword?: string
+    }
+  ) => {
     setCompanyKpiDetailLoading(true)
-    setCompanyKpiDetailData(null)
     try {
-      const res = await getCompanyKpiDetail({ kpi_type: type })
+      const res = await getCompanyKpiDetail({
+        kpi_type: type,
+        ...params
+      })
       if (res) {
         setCompanyKpiDetailData(res)
+        if (res.teams) {
+          setAvailableTeams(res.teams)
+        }
+        if (res.reporters) {
+          setAvailableReporters(res.reporters)
+        }
       }
     } catch (err: any) {
-      const errMsg = err?.response?.data?.detail || err?.message || '获取公司 KPI 明细数据失败'
+      const errMsg = err?.response?.data?.detail || err?.message || '加载明细数据失败'
       message.error(errMsg)
-      setCompanyKpiDetailModalVisible(false)
     } finally {
       setCompanyKpiDetailLoading(false)
     }
   }
+
+  // 首次点击指标卡片，打开明细弹窗重置筛选条件，所有注释必须使用中文
+  const handleViewCompanyKpiDetail = (type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders') => {
+    setCompanyKpiDetailType(type)
+    setCompanyFilterTeamId(undefined)
+    setCompanyFilterWeek(undefined)
+    setCompanyFilterReporter(undefined)
+    setCompanyFilterKeyword('')
+    setCompanyKpiDetailModalVisible(true)
+  }
+
+  // 监听筛选条件变动，防抖重新加载数据，所有注释必须使用中文
+  useEffect(() => {
+    if (companyKpiDetailModalVisible) {
+      const timer = setTimeout(() => {
+        loadCompanyKpiData(companyKpiDetailType, {
+          team_id: companyFilterTeamId,
+          week: companyFilterWeek,
+          reporter_name: companyFilterReporter,
+          keyword: companyFilterKeyword
+        })
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    companyFilterTeamId,
+    companyFilterWeek,
+    companyFilterReporter,
+    companyFilterKeyword,
+    companyKpiDetailModalVisible,
+    companyKpiDetailType
+  ])
 
   // 新签合同明细下钻状态
   const [contractsModalVisible, setContractsModalVisible] = useState(false)
@@ -896,6 +969,10 @@ const Dashboard: React.FC = () => {
           name: t.name,
           score: t.score,
           trend: t.trend,
+          weeklyMarketingActual: t.weeklyMarketingActual,
+          weeklyMarketingTarget: t.weeklyMarketingTarget,
+          weeklyDeliveryActual: t.weeklyDeliveryActual,
+          weeklyDeliveryTarget: t.weeklyDeliveryTarget,
           key: `${zoneName}-${t.name}`,
           rowSpan: idx === 0 ? teams.length : 0
         })
@@ -917,13 +994,74 @@ const Dashboard: React.FC = () => {
       title: '区内排名', 
       dataIndex: 'rank', 
       key: 'rank', 
-      width: 100, 
+      width: 90, 
       render: (val: number) => <Tag color={val === 1 ? 'gold' : val === 2 ? 'blue' : 'default'}>Top {val}</Tag> 
     },
-    { title: '战队名称', dataIndex: 'name', key: 'name' },
-    { title: '完成百分比 (%)', dataIndex: 'score', key: 'score', render: (val: number) => <strong>{val}%</strong> },
-    { title: '趋势', dataIndex: 'trend', key: 'trend', render: (val: string) => val === 'up' ? <Tag color="success">↑ 上升</Tag> : val === 'down' ? <Tag color="error">↓ 下降</Tag> : <Tag color="warning">→ 持平</Tag> }
+    { title: '战队名称', dataIndex: 'name', key: 'name', width: 140 },
+    { 
+      title: '营销 (万)', 
+      key: 'marketing',
+      width: 105,
+      render: (record: any) => {
+        const act = record.weeklyMarketingActual ?? 0
+        const tgt = record.weeklyMarketingTarget ?? 0
+        return <span>{act.toFixed(1).replace('.0', '')}/{tgt.toFixed(1).replace('.0', '')}</span>
+      }
+    },
+    { 
+      title: '交付 (万)', 
+      key: 'delivery',
+      width: 105,
+      render: (record: any) => {
+        const act = record.weeklyDeliveryActual ?? 0
+        const tgt = record.weeklyDeliveryTarget ?? 0
+        return <span>{act.toFixed(1).replace('.0', '')}/{tgt.toFixed(1).replace('.0', '')}</span>
+      }
+    },
+    { title: '完成百分比 (%)', dataIndex: 'score', key: 'score', width: 115, render: (val: number) => <strong>{val}%</strong> },
+    { title: '趋势', dataIndex: 'trend', key: 'trend', width: 90, render: (val: string) => val === 'up' ? <Tag color="success">↑ 上升</Tag> : val === 'down' ? <Tag color="error">↓ 下降</Tag> : <Tag color="warning">→ 持平</Tag> }
   ]
+
+  const getRankListDetails = () => {
+    switch (activeRankTab) {
+      case 'delivery_signing':
+        return {
+          title: '🏆 交付签单先锋周战将榜 (TOP 15)',
+          unit: '万元',
+          color: '#08979c',
+          list: data?.deliveryHeroBoard || []
+        }
+      case 'leads':
+        return {
+          title: '🔍 周线索先锋奖榜 (TOP 15)',
+          unit: '条',
+          color: '#1677ff',
+          list: data?.leadsBoard || []
+        }
+      case 'happiness':
+        return {
+          title: '🌟 周客户幸福动作卷王榜 (TOP 15)',
+          unit: '次',
+          color: '#52c41a',
+          list: data?.happinessBoard || []
+        }
+      case 'triangle':
+        return {
+          title: '🤝 周铁三角协作标杆榜 (TOP 15)',
+          unit: '次',
+          color: '#fa8c16',
+          list: data?.triangleBoard || []
+        }
+      case 'marketing_signing':
+      default:
+        return {
+          title: '🏆 营销签单先锋周战将榜 (TOP 15)',
+          unit: '万元',
+          color: '#ff4d4f',
+          list: data?.marketingHeroBoard || []
+        }
+    }
+  }
 
   // 状态灯辅助方法
   const getLightStatus = (light: 'red' | 'yellow' | 'green' | undefined) => {
@@ -1037,9 +1175,9 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 第一级：🏆 公司战役总盘四大指标 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} md={6}>
+      {/* 第一级：🏆 公司战役总盘五大指标 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
             bordered={false}
@@ -1065,7 +1203,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
             bordered={false}
@@ -1090,7 +1228,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
             bordered={false}
@@ -1115,7 +1253,32 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+          <Card 
+            className="card-kpi" 
+            bordered={false}
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('tenders')}
+          >
+            <Statistic
+              title="🏆 公司累计中标项目"
+              value={kpis?.tenderProjects?.value}
+              valueStyle={{ color: '#13c2c2', fontSize: 26, fontWeight: 700 }}
+              prefix={<TrophyOutlined />}
+              suffix="个"
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifySelf: 'space-between', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text type="secondary">目标: {kpis?.tenderProjects?.target}个</Text>
+                <Text strong style={{ color: '#13c2c2' }}>{kpis?.tenderProjects?.percentage}%</Text>
+              </div>
+              <Progress percent={kpis?.tenderProjects?.percentage} size="small" strokeColor="#13c2c2" />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
             bordered={false}
@@ -1221,7 +1384,7 @@ const Dashboard: React.FC = () => {
       {/* 第三级：战区赛马 & 个人英雄榜 & 个人岗位考核水位 */}
       <Row gutter={[16, 16]}>
         {/* 各战区战队冲刺排名 */}
-        <Col xs={24} lg={9}>
+        <Col xs={24} lg={10}>
           <Card title="🏆 各战区战队冲刺排名" bordered={false} style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
             <Table
               dataSource={teamRankingDataSource}
@@ -1236,40 +1399,104 @@ const Dashboard: React.FC = () => {
         </Col>
 
         {/* 个人英雄榜 */}
-        <Col xs={24} lg={8}>
-          <Card title="🥇 个人签约战将榜 TOP 5" bordered={false} style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <List
-              loading={loading}
-              itemLayout="horizontal"
-              dataSource={data?.heroBoard?.slice(0, 5)}
-              renderItem={(item, index) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={
-                      <div
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          backgroundColor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#f5f5f5',
-                          color: index < 3 ? '#fff' : '#666',
-                          textAlign: 'center',
-                          lineHeight: '24px',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {index + 1}
+        <Col xs={24} lg={7}>
+          <Card 
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <span>{getRankListDetails().title}</span>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal' }}>⏳ 8s 轮播</span>
+              </div>
+            }
+            bordered={false} 
+            style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+          >
+            {/* 5个 Tab 按钮选择器 */}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[
+                { id: 'marketing_signing', label: '营销签单' },
+                { id: 'delivery_signing', label: '交付签单' },
+                { id: 'leads', label: '线索先锋' },
+                { id: 'happiness', label: '幸福卷王' },
+                { id: 'triangle', label: '铁三角协作' }
+              ].map(t => {
+                const isActive = activeRankTab === t.id
+                const isDelivery = t.id === 'delivery_signing'
+                return (
+                  <Button
+                    key={t.id}
+                    size="small"
+                    onClick={() => setActiveRankTab(t.id as any)}
+                    style={{
+                      fontSize: 11,
+                      padding: '0 6px',
+                      height: 22,
+                      background: isActive 
+                        ? isDelivery 
+                          ? '#08979c' 
+                          : '#ff4d4f'
+                        : '#f5f5f5',
+                      borderColor: isActive 
+                        ? isDelivery 
+                          ? '#08979c' 
+                          : '#ff4d4f'
+                        : '#d9d9d9',
+                      color: isActive ? '#ffffff' : '#595959',
+                      fontWeight: isActive ? 'bold' : 'normal',
+                      borderRadius: 4
+                    }}
+                  >
+                    {t.label}
+                  </Button>
+                )
+              })}
+            </div>
+
+            {/* 英雄榜数据列表容器 */}
+            <div style={{ paddingRight: 4 }}>
+              <List
+                loading={loading}
+                itemLayout="horizontal"
+                dataSource={getRankListDetails().list.slice(0, 15)}
+                locale={{ emptyText: <span style={{ color: '#bfbfbf', fontSize: 12 }}>暂无当周数据记录</span> }}
+                renderItem={(item, index) => {
+                  const details = getRankListDetails()
+                  return (
+                    <List.Item style={{ padding: '6px 0' }}>
+                      <List.Item.Meta
+                        avatar={
+                          <div
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: '50%',
+                              backgroundColor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#f5f5f5',
+                              color: index < 3 ? '#fff' : '#666',
+                              textAlign: 'center',
+                              lineHeight: '20px',
+                              fontWeight: 'bold',
+                              fontSize: 11
+                            }}
+                          >
+                            {index + 1}
+                          </div>
+                        }
+                        title={
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 'bold' }}>{item.name}</span>
+                            <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal' }}>{item.teamName}</span>
+                          </div>
+                        }
+                      />
+                      <div>
+                        <Text strong style={{ color: details.color, fontSize: 13 }}>
+                          {details.unit === '万元' ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)} {details.unit}
+                        </Text>
                       </div>
-                    }
-                    title={<strong>{item.name}</strong>}
-                    description={`战队：${item.teamName}`}
-                  />
-                  <div>
-                    <Text strong style={{ color: '#f5222d', fontSize: 14 }}>{item.score} 万元</Text>
-                  </div>
-                </List.Item>
-              )}
-            />
+                    </List.Item>
+                  )
+                }}
+              />
+            </div>
           </Card>
         </Col>
 
@@ -2329,11 +2556,70 @@ const Dashboard: React.FC = () => {
       {/* 全公司 KPI 详情下钻 Modal，所有注释必须使用中文 */}
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}>
-            {companyKpiDetailType === 'contracts' && <span>💰 公司累计新签合同额明细</span>}
-            {companyKpiDetailType === 'happiness' && <span>😊 公司客户幸福动作明细</span>}
-            {companyKpiDetailType === 'triangle' && <span>🤝 售前铁三角联动明细</span>}
-            {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingRight: 40 }}>
+            <div style={{ fontWeight: 'bold', fontSize: 16 }}>
+              {companyKpiDetailType === 'contracts' && <span>💰 公司累计新签合同额明细</span>}
+              {companyKpiDetailType === 'happiness' && <span>😊 公司客户幸福动作明细</span>}
+              {companyKpiDetailType === 'triangle' && <span>🤝 售前铁三角联动明细</span>}
+              {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
+              {companyKpiDetailType === 'tenders' && <span>🏆 公司累计中标项目明细</span>}
+            </div>
+            
+            {/* 标题栏右侧的筛选组合栏，所有注释必须使用中文 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+              {/* 战队筛选 */}
+              <Select
+                placeholder="选择战队"
+                value={companyFilterTeamId}
+                onChange={(val) => setCompanyFilterTeamId(val)}
+                allowClear
+                style={{ width: 125 }}
+                size="small"
+              >
+                {availableTeams.map(t => (
+                  <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                ))}
+              </Select>
+              
+              {/* 周筛选 */}
+              <Select
+                placeholder="选择周"
+                value={companyFilterWeek}
+                onChange={(val) => setCompanyFilterWeek(val)}
+                allowClear
+                style={{ width: 105 }}
+                size="small"
+              >
+                {Array.from({ length: 15 }, (_, i) => i + 1).map(w => (
+                  <Select.Option key={w} value={w}>第 {w} 周</Select.Option>
+                ))}
+              </Select>
+              
+              {/* 提报人筛选 */}
+              <Select
+                placeholder="选择提报人"
+                value={companyFilterReporter}
+                onChange={(val) => setCompanyFilterReporter(val)}
+                allowClear
+                showSearch
+                style={{ width: 115 }}
+                size="small"
+              >
+                {availableReporters.map(r => (
+                  <Select.Option key={r} value={r}>{r}</Select.Option>
+                ))}
+              </Select>
+              
+              {/* 模糊搜索 */}
+              <Input
+                placeholder="搜索客户/描述..."
+                value={companyFilterKeyword}
+                onChange={(e) => setCompanyFilterKeyword(e.target.value)}
+                allowClear
+                style={{ width: 145 }}
+                size="small"
+              />
+            </div>
           </div>
         }
         open={companyKpiDetailModalVisible}
@@ -2398,8 +2684,8 @@ const Dashboard: React.FC = () => {
                   </Row>
                 ) : (
                   <div style={{
-                    background: '#f6ffed',
-                    border: '1px solid #b7eb8f',
+                    background: companyKpiDetailType === 'tenders' ? '#e6fffb' : '#f6ffed',
+                    border: companyKpiDetailType === 'tenders' ? '1px solid #87e8de' : '1px solid #b7eb8f',
                     padding: '12px 20px',
                     borderRadius: '8px',
                     display: 'flex',
@@ -2407,16 +2693,17 @@ const Dashboard: React.FC = () => {
                     justifyContent: 'space-between'
                   }}>
                     <Space size="middle">
-                      <span style={{ fontSize: 15, fontWeight: 500, color: '#389e0d' }}>
+                      <span style={{ fontSize: 15, fontWeight: 500, color: companyKpiDetailType === 'tenders' ? '#08979c' : '#389e0d' }}>
                         {companyKpiDetailType === 'happiness' && '😊 公司客户幸福动作累计已执行'}
                         {companyKpiDetailType === 'triangle' && '🤝 售前铁三角现场联动累计'}
                         {companyKpiDetailType === 'leads' && '🔍 新增有效商机线索累计'}
+                        {companyKpiDetailType === 'tenders' && '🏆 公司累计中标项目累计'}
                       </span>
                     </Space>
-                    <span style={{ fontSize: 22, fontWeight: 'bold', color: '#389e0d' }}>
+                    <span style={{ fontSize: 22, fontWeight: 'bold', color: companyKpiDetailType === 'tenders' ? '#08979c' : '#389e0d' }}>
                       {companyKpiDetailData.total}{' '}
                       <span style={{ fontSize: 14, fontWeight: 'normal' }}>
-                        {companyKpiDetailType === 'leads' ? '条' : '次'}
+                        {companyKpiDetailType === 'leads' ? '条' : companyKpiDetailType === 'tenders' ? '个' : '次'}
                       </span>
                     </span>
                   </div>
@@ -2522,6 +2809,35 @@ const Dashboard: React.FC = () => {
                           { title: '联动搭档', dataIndex: 'partner_name', key: 'partner_name', width: 110, align: 'center' },
                           {
                             title: '活动描述',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          }
+                        ]
+                      : companyKpiDetailType === 'tenders'
+                      ? [
+                          { title: '中标日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 200 },
+                          {
+                            title: '预计金额',
+                            dataIndex: 'amount',
+                            key: 'amount',
+                            width: 110,
+                            align: 'right',
+                            render: (val: number) => <strong style={{ color: '#13c2c2' }}>{val} 万</strong>
+                          },
+                          {
+                            title: '当前进度',
+                            dataIndex: 'progress',
+                            key: 'progress',
+                            width: 100,
+                            align: 'center',
+                            render: (val: string) => <Tag color="cyan">{val}</Tag>
+                          },
+                          {
+                            title: '项目描述与反馈',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>

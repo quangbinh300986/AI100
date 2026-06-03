@@ -710,7 +710,7 @@ async def update_broadcast(
     final_opp_id = event.crm_opportunity_id
     
     # 只有当前三种关联 CRM 时，且类型是合同新签或线索，才重新计入系统数据 (中标确定不更新系统实绩)
-    if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type == "triangle"):
+    if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type in ["triangle", "happiness"]):
         report_date = get_business_report_date(event.created_at if event.created_at else datetime.now(timezone.utc))
         
         async def get_or_create_report(uid: int) -> DailyReport:
@@ -811,6 +811,19 @@ async def update_broadcast(
                 lead_progress="25%",
                 crm_opportunity_id=final_opp_id,
                 description=f"{event.content}\n[broadcast_id:{event.id}]"
+            )
+            db.add(det)
+        elif event.event_type == "happiness":
+            # 客户幸福动作重新录入，所有注释必须使用中文
+            rep = await get_or_create_report(event.user_id or current_user.id)
+            rep.happiness_actions += 1
+            score_val = broadcast_in.happiness_score if broadcast_in.happiness_score is not None else 20
+            det = ReportDetail(
+                report_id=rep.id,
+                detail_type=DetailType.HAPPINESS,
+                customer_name=c_name,
+                happiness_level=score_val,
+                description=f"{broadcast_in.action_description or event.content}\n[broadcast_id:{event.id}]"
             )
             db.add(det)
         elif event.event_type == "triangle":
@@ -1235,7 +1248,7 @@ async def create_broadcast(
                 detail = None
             elif action == "happiness":
                 report.happiness_actions += 1
-                score_val = broadcast_in.happiness_score or 20
+                score_val = broadcast_in.happiness_score if broadcast_in.happiness_score is not None else 20
                 detail = ReportDetail(
                     report_id=report.id,
                     detail_type=DetailType.HAPPINESS,
@@ -1350,8 +1363,8 @@ async def crm_webhook_broadcast(
     db.add(event)
     await db.flush()  # 得到 event.id
 
-    # 4. 如果是有效线索（lead_25），自动为该员工创建或更新当天的日报
-    if event_type == "lead_25":
+    # 4. 如果是有效线索（lead_25）或中标确定（lead_75），自动为该员工创建或更新当天的日报
+    if event_type in ["lead_25", "lead_75"]:
         report_date = get_business_report_date(event.event_time)
         
         # 查找或创建当天日报
@@ -1386,8 +1399,9 @@ async def crm_webhook_broadcast(
                 report.submitted_at = report.submitted_at or datetime.now(timezone.utc)
                 report.reviewed_at = datetime.now(timezone.utc)
         
-        # 增加线索总数计数
-        report.leads_count += 1
+        # 增加线索总数计数 (中标确定不作为新增线索计数，只有25%有效商机线索才计数)
+        if event_type == "lead_25":
+            report.leads_count += 1
         
         # 新增日报明细记录，绑定 broadcast_id 以支持级联清退/删除
         detail = ReportDetail(
@@ -1395,7 +1409,7 @@ async def crm_webhook_broadcast(
             detail_type=DetailType.LEAD,
             customer_name=payload.customer_name,
             amount=money or 0.0,
-            lead_progress="25%",
+            lead_progress="25%" if event_type == "lead_25" else "75%",
             crm_opportunity_id=payload.id,
             description=f"{content}\n[broadcast_id:{event.id}]"
         )

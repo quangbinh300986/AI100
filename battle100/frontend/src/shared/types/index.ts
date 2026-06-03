@@ -190,6 +190,8 @@ export interface DashboardData {
   liveFeed: LiveFeedItem[]
   /** 英雄榜TOP10 */
   heroBoard: RankingItem[]
+  marketingHeroBoard?: RankingItem[]
+  deliveryHeroBoard?: RankingItem[]
   /** 客户幸福之星榜TOP10 */
   happinessBoard?: RankingItem[]
   /** 铁三角协作标杆榜TOP10 */

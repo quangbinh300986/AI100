@@ -4,21 +4,25 @@ import type { RankingItem } from '@shared/types'
 interface HeroBoardProps {
   theme?: string
   heroBoard?: RankingItem[]
+  marketingHeroBoard?: RankingItem[]
+  deliveryHeroBoard?: RankingItem[]
   happinessBoard?: RankingItem[]
   triangleBoard?: RankingItem[]
   leadsBoard?: RankingItem[]
 }
 
-type TabType = 'marketing' | 'leads' | 'happiness' | 'triangle'
+type TabType = 'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'
 
 const HeroBoard: React.FC<HeroBoardProps> = ({
   theme = 'theme-light-red',
   heroBoard = [],
+  marketingHeroBoard = [],
+  deliveryHeroBoard = [],
   happinessBoard = [],
   triangleBoard = [],
   leadsBoard = []
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('marketing')
+  const [activeTab, setActiveTab] = useState<TabType>('marketing_signing')
   const timerRef = useRef<any>(null)
 
   // 默认周排行兜底设为空，保证全真数据展示
@@ -34,10 +38,11 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
     }
     timerRef.current = setInterval(() => {
       setActiveTab((prev) => {
-        if (prev === 'marketing') return 'leads'
+        if (prev === 'marketing_signing') return 'delivery_signing'
+        if (prev === 'delivery_signing') return 'leads'
         if (prev === 'leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
-        return 'marketing'
+        return 'marketing_signing'
       })
     }, 8000)
   }
@@ -82,7 +87,22 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           list: triangleBoard.length > 0 ? triangleBoard : defaultTriangle,
           color: '#fa541c'
         }
-      case 'marketing':
+      case 'marketing_signing':
+        return {
+          title: '🏆 营销签单先锋周战将榜 (当周营销新签合同额)',
+          unit: '万',
+          isFloat: true,
+          list: marketingHeroBoard.length > 0 ? marketingHeroBoard : defaultHeroes,
+          color: 'var(--accent-color, #b71c1c)'
+        }
+      case 'delivery_signing':
+        return {
+          title: '🏆 交付签单先锋周战将榜 (当周交付新签合同额)',
+          unit: '万',
+          isFloat: true,
+          list: deliveryHeroBoard.length > 0 ? deliveryHeroBoard : defaultHeroes,
+          color: '#08979c'
+        }
       default:
         return {
           title: '🏆 签单先锋周战将榜 (当周新签合同额)',
@@ -123,14 +143,16 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           {[
-            { id: 'marketing', label: '签单战将' },
+            { id: 'marketing_signing', label: '营销签单战将' },
+            { id: 'delivery_signing', label: '交付签单战将' },
             { id: 'leads', label: '线索先锋' },
             { id: 'happiness', label: '幸福动作卷王' },
             { id: 'triangle', label: '铁三角协作' },
           ].map((tab) => {
             const isActive = activeTab === tab.id
+            const isDelivery = tab.id === 'delivery_signing'
             return (
               <button
                 key={tab.id}
@@ -139,16 +161,22 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                   border: 'none',
                   outline: 'none',
                   background: isActive
-                    ? 'linear-gradient(90deg, #b71c1c 0%, #ff4d4f 100%)'
+                    ? isDelivery
+                      ? 'linear-gradient(90deg, #08979c 0%, #36cfc9 100%)'
+                      : 'linear-gradient(90deg, #b71c1c 0%, #ff4d4f 100%)'
                     : 'rgba(0,0,0,0.04)',
                   color: isActive ? '#ffffff' : 'var(--text-secondary, #666666)',
-                  padding: '0.4rem 0.8rem',
+                  padding: '0.4rem 0.6rem',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 'bold',
-                  fontSize: '0.85rem',
+                  fontSize: '0.8rem',
                   transition: 'all 0.3s ease',
-                  boxShadow: isActive ? '0 2px 8px rgba(183,28,28,0.25)' : 'none',
+                  boxShadow: isActive
+                    ? isDelivery
+                      ? '0 2px 8px rgba(8,151,156,0.25)'
+                      : '0 2px 8px rgba(183,28,28,0.25)'
+                    : 'none',
                 }}
               >
                 {tab.label}
@@ -156,9 +184,9 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
             )
           })}
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #666666)', display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 'bold' }}>
           <span>⏳</span>
-          8s 轮播中
+          8s 轮播
         </div>
       </div>
 

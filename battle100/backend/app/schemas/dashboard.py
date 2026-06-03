@@ -16,10 +16,11 @@ class KpiItem(BaseModel):
 
 
 class KpiSummary(BaseModel):
-    """四大指标汇总"""
+    """五大指标汇总"""
     newContracts: KpiItem = Field(..., description="新签合同总额")
     happinessActions: KpiItem = Field(..., description="客户幸福动作次数")
     ironTriangle: KpiItem = Field(..., description="售前铁三角联动次数")
+    tenderProjects: Optional[KpiItem] = Field(default=None, description="中标项目确定数")
     validLeads: KpiItem = Field(..., description="新增有效线索数")
 
 
@@ -97,6 +98,8 @@ class DashboardResponse(BaseModel):
     weeklyTrend: WeeklyTrendData = Field(..., description="周趋势折线数据")
     liveFeed: list[LiveFeedItem] = Field(default_factory=list, description="实时动态播报")
     heroBoard: list[RankingItem] = Field(default_factory=list, description="签单先锋榜TOP10")
+    marketingHeroBoard: list[RankingItem] = Field(default_factory=list, description="营销签单战将榜TOP10")
+    deliveryHeroBoard: list[RankingItem] = Field(default_factory=list, description="交付签单战将榜TOP10")
     happinessBoard: list[RankingItem] = Field(default_factory=list, description="客户幸福之星榜TOP10")
     triangleBoard: list[RankingItem] = Field(default_factory=list, description="铁三角协作标杆榜TOP10")
     leadsBoard: list[RankingItem] = Field(default_factory=list, description="线索先锋榜TOP10")

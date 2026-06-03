@@ -272,6 +272,8 @@ const BigScreen: React.FC = () => {
             <HeroBoard
               theme={theme}
               heroBoard={data?.heroBoard}
+              marketingHeroBoard={data?.marketingHeroBoard}
+              deliveryHeroBoard={data?.deliveryHeroBoard}
               happinessBoard={data?.happinessBoard}
               triangleBoard={data?.triangleBoard}
               leadsBoard={data?.leadsBoard}

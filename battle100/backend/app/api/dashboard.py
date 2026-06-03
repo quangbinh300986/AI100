@@ -372,10 +372,24 @@ async def get_dashboard_overview(
     pct_leads = round((val_leads / 600) * 100, 2)
     kpi_leads = KpiItem(value=val_leads, target=600, percentage=pct_leads)
 
+    # 中标项目：目标 150 个（统计已审核的中标确定明细数 75%）
+    total_tenders_stmt = select(
+        func.coalesce(func.count(ReportDetail.id), 0)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.LEAD,
+        (ReportDetail.lead_progress.contains("75") | (ReportDetail.lead_progress == "75%"))
+    )
+    total_tenders_res = await db.execute(total_tenders_stmt)
+    val_tenders = int(total_tenders_res.scalar() or 0)
+    pct_tenders = round((val_tenders / 150) * 100, 2)
+    kpi_tenders = KpiItem(value=val_tenders, target=150, percentage=pct_tenders)
+
     kpi_summary = KpiSummary(
         newContracts=kpi_contracts,
         happinessActions=kpi_happiness,
         ironTriangle=kpi_triangle,
+        tenderProjects=kpi_tenders,
         validLeads=kpi_leads
     )
 
@@ -712,7 +726,7 @@ async def get_dashboard_overview(
             
         # 5. 客户幸福动作
         elif d.detail_type == DetailType.HAPPINESS:
-            score = d.happiness_level or 20
+            score = d.happiness_level if d.happiness_level is not None else 20
             if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                 content = d.description
             else:
@@ -752,7 +766,7 @@ async def get_dashboard_overview(
         )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
-        .limit(10)
+        .limit(15)
     )
     hero_rows = hero_query.all()
 
@@ -767,6 +781,78 @@ async def get_dashboard_overview(
                 trend="up" if idx == 0 else "same"
             )
         )
+
+    # 5.1 营销新签周战将榜 TOP 10 (按当周营销新签金额降序，每周一清零)
+    marketing_hero_query = await db.execute(
+        select(
+            User.name,
+            Team.name.label("team_name"),
+            func.coalesce(func.sum(ReportDetail.amount), 0).label("score")
+        ).select_from(User)
+        .join(Team, User.team_id == Team.id)
+        .join(DailyReport, User.id == DailyReport.user_id)
+        .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ReportDetail.description.contains("营销新签分摊")
+        )
+        .group_by(User.id, User.name, Team.name)
+        .order_by(desc("score"))
+        .limit(15)
+    )
+    marketing_hero_rows = marketing_hero_query.all()
+    
+    marketing_hero_board = []
+    for idx, row in enumerate(marketing_hero_rows):
+        if row.score > 0:
+            marketing_hero_board.append(
+                RankingItem(
+                    rank=idx + 1,
+                    name=row.name,
+                    teamName=row.team_name,
+                    score=round(float(row.score), 2),
+                    trend="up" if idx == 0 else "same"
+                )
+            )
+
+    # 5.2 交付新签周战将榜 TOP 10 (按当周交付新签金额降序，每周一清零)
+    delivery_hero_query = await db.execute(
+        select(
+            User.name,
+            Team.name.label("team_name"),
+            func.coalesce(func.sum(ReportDetail.amount), 0).label("score")
+        ).select_from(User)
+        .join(Team, User.team_id == Team.id)
+        .join(DailyReport, User.id == DailyReport.user_id)
+        .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_of_week,
+            DailyReport.report_date <= end_of_week,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ~ReportDetail.description.contains("营销新签分摊")
+        )
+        .group_by(User.id, User.name, Team.name)
+        .order_by(desc("score"))
+        .limit(15)
+    )
+    delivery_hero_rows = delivery_hero_query.all()
+    
+    delivery_hero_board = []
+    for idx, row in enumerate(delivery_hero_rows):
+        if row.score > 0:
+            delivery_hero_board.append(
+                RankingItem(
+                    rank=idx + 1,
+                    name=row.name,
+                    teamName=row.team_name,
+                    score=round(float(row.score), 2),
+                    trend="up" if idx == 0 else "same"
+                )
+            )
         
     # 6. 周客户幸福动作卷王榜 TOP 10 (按当周幸福动作次数降序，每周一清零)
     happiness_query = await db.execute(
@@ -784,7 +870,7 @@ async def get_dashboard_overview(
         )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
-        .limit(10)
+        .limit(15)
     )
     happiness_rows = happiness_query.all()
 
@@ -817,7 +903,7 @@ async def get_dashboard_overview(
         )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
-        .limit(10)
+        .limit(15)
     )
     triangle_rows = triangle_query.all()
 
@@ -850,7 +936,7 @@ async def get_dashboard_overview(
         )
         .group_by(User.id, User.name, Team.name)
         .order_by(desc("score"))
-        .limit(10)
+        .limit(15)
     )
     leads_rows = leads_query.all()
 
@@ -1123,6 +1209,8 @@ async def get_dashboard_overview(
         weeklyTrend=weekly_trend,
         liveFeed=live_feed,
         heroBoard=hero_board,
+        marketingHeroBoard=marketing_hero_board,
+        deliveryHeroBoard=delivery_hero_board,
         happinessBoard=happiness_board,
         triangleBoard=triangle_board,
         leadsBoard=leads_board,
@@ -2022,6 +2110,10 @@ async def get_team_happiness(
 @router.get("/company-kpi-detail", summary="获取全公司 KPI 明细数据")
 async def get_company_kpi_detail(
     kpi_type: str = Query(..., description="KPI类型: contracts(合同新签), happiness(客户幸福动作), triangle(铁三角联动), leads(有效商机线索)"),
+    team_id: int | None = Query(None, description="按战队筛选"),
+    week: int | None = Query(None, description="按周筛选 (1-15)"),
+    reporter_name: str | None = Query(None, description="按提报人筛选"),
+    keyword: str | None = Query(None, description="按客户或描述搜索"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -2032,8 +2124,48 @@ async def get_company_kpi_detail(
     from app.models.organization import Team
     from sqlalchemy.orm import aliased
     from sqlalchemy import select, func
+    from datetime import date
 
     PartnerUser = aliased(User)
+
+    # 官方标准的百日战役15周日期区间定义
+    STANDARD_WEEKS = {
+        1: (date(2026, 6, 1), date(2026, 6, 7)),
+        2: (date(2026, 6, 8), date(2026, 6, 14)),
+        3: (date(2026, 6, 15), date(2026, 6, 21)),
+        4: (date(2026, 6, 22), date(2026, 6, 28)),
+        5: (date(2026, 6, 29), date(2026, 7, 5)),
+        6: (date(2026, 7, 6), date(2026, 7, 12)),
+        7: (date(2026, 7, 13), date(2026, 7, 19)),
+        8: (date(2026, 7, 20), date(2026, 7, 26)),
+        9: (date(2026, 7, 27), date(2026, 8, 2)),
+        10: (date(2026, 8, 3), date(2026, 8, 9)),
+        11: (date(2026, 8, 10), date(2026, 8, 16)),
+        12: (date(2026, 8, 17), date(2026, 8, 23)),
+        13: (date(2026, 8, 24), date(2026, 8, 30)),
+        14: (date(2026, 8, 31), date(2026, 9, 6)),
+        15: (date(2026, 9, 7), date(2026, 9, 8))
+    }
+
+    # 查出下拉菜单所需的过滤列表
+    teams_query = select(Team.id, Team.name).order_by(Team.id)
+    teams_res = await db.execute(teams_query)
+    teams_list = [{"id": r.id, "name": r.name} for r in teams_res.all()]
+
+    reporters_query = (
+        select(User.name)
+        .join(DailyReport, User.id == DailyReport.user_id)
+        .where(DailyReport.status == ReportStatus.REVIEWED)
+        .distinct()
+        .order_by(User.name)
+    )
+    reporters_res = await db.execute(reporters_query)
+    reporters_list = [r.name for r in reporters_res.all()]
+
+    result_data = {
+        "teams": teams_list,
+        "reporters": reporters_list
+    }
 
     if kpi_type == "contracts":
         # 1. 交付新签明细 (去重累计，大盘展示的也是交付视角累计)
@@ -2058,26 +2190,7 @@ async def get_company_kpi_detail(
                 ReportDetail.detail_type == DetailType.CONTRACT,
                 ~ReportDetail.description.contains("营销新签分摊")
             )
-            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         )
-        delivery_res = await db.execute(delivery_stmt)
-        delivery_rows = delivery_res.all()
-
-        delivery_list = []
-        delivery_total = 0.0
-        for r in delivery_rows:
-            amt = r.amount or 0.0
-            delivery_total += amt
-            delivery_list.append({
-                "id": r.id,
-                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
-                "reporter_name": r.reporter_name,
-                "team_name": r.team_name or "—",
-                "customer_name": r.customer_name or "—",
-                "amount": amt,
-                "partner_name": r.partner_name or "—",
-                "description": r.description or "—",
-            })
 
         # 2. 营销新签明细
         marketing_stmt = (
@@ -2110,11 +2223,50 @@ async def get_company_kpi_detail(
                     )
                 )
             )
-            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         )
+
+        # 动态拼装合同额过滤条件
+        if team_id is not None:
+            delivery_stmt = delivery_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            marketing_stmt = marketing_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+        
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            delivery_stmt = delivery_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            marketing_stmt = marketing_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+
+        if reporter_name:
+            delivery_stmt = delivery_stmt.where(User.name == reporter_name)
+            marketing_stmt = marketing_stmt.where(User.name == reporter_name)
+
+        if keyword:
+            kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+            delivery_stmt = delivery_stmt.where(kw_filter)
+            marketing_stmt = marketing_stmt.where(kw_filter)
+
+        delivery_stmt = delivery_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        marketing_stmt = marketing_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+
+        delivery_res = await db.execute(delivery_stmt)
+        delivery_rows = delivery_res.all()
+        delivery_list = []
+        delivery_total = 0.0
+        for r in delivery_rows:
+            amt = r.amount or 0.0
+            delivery_total += amt
+            delivery_list.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": amt,
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+
         marketing_res = await db.execute(marketing_stmt)
         marketing_rows = marketing_res.all()
-
         marketing_list = []
         marketing_total = 0.0
         for r in marketing_rows:
@@ -2131,12 +2283,13 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
 
-        return {
+        result_data.update({
             "delivery_total": round(delivery_total, 2),
             "marketing_total": round(marketing_total, 2),
             "delivery_list": delivery_list,
             "marketing_list": marketing_list
-        }
+        })
+        return result_data
 
     elif kpi_type == "happiness":
         stmt = (
@@ -2157,8 +2310,19 @@ async def get_company_kpi_detail(
                 DailyReport.status == ReportStatus.REVIEWED,
                 ReportDetail.detail_type == DetailType.HAPPINESS,
             )
-            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         )
+
+        if team_id is not None:
+            stmt = stmt.where(User.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+        stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         res = await db.execute(stmt)
         rows = res.all()
 
@@ -2173,10 +2337,11 @@ async def get_company_kpi_detail(
                 "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
                 "description": r.description or "—",
             })
-        return {
+        result_data.update({
             "total": len(list_data),
             "list": list_data
-        }
+        })
+        return result_data
 
     elif kpi_type == "triangle":
         stmt = (
@@ -2198,13 +2363,67 @@ async def get_company_kpi_detail(
                 DailyReport.status == ReportStatus.REVIEWED,
                 ReportDetail.detail_type == DetailType.TRIANGLE,
             )
-            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         )
+
+        if team_id is not None:
+            stmt = stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+        stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         res = await db.execute(stmt)
         rows = res.all()
 
         list_data = []
+        import re
+
+        # 按战报 ID 进行分组去重，优先保留真正的播报发布人自己的那条明细
+        broadcast_groups = {}
+        non_broadcast_rows = []
+
         for r in rows:
+            desc = r.description or ""
+            bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc)
+            if bid_match:
+                bid = int(bid_match.group(1))
+                if bid not in broadcast_groups:
+                    broadcast_groups[bid] = []
+                broadcast_groups[bid].append(r)
+            else:
+                non_broadcast_rows.append(r)
+
+        final_rows = []
+        for bid, group_rows in broadcast_groups.items():
+            if len(group_rows) == 1:
+                final_rows.append(group_rows[0])
+            else:
+                # 从第一条的描述中提取发起人（如 "我司【黄青】"）
+                first_desc = group_rows[0].description or ""
+                initiator_match = re.search(r"我司【(.*?)】", first_desc)
+                selected_r = None
+                if initiator_match:
+                    initiator_name = initiator_match.group(1).strip()
+                    for gr in group_rows:
+                        if gr.reporter_name and gr.reporter_name.strip() == initiator_name:
+                            selected_r = gr
+                            break
+                # 如果没有匹配上，则兜底使用第一条
+                if not selected_r:
+                    selected_r = group_rows[0]
+                final_rows.append(selected_r)
+
+        # 合并无战报 ID 的记录
+        final_rows.extend(non_broadcast_rows)
+
+        # 重新按报表日期降序、ID 降序排序
+        final_rows.sort(key=lambda x: (x.report_date or date.min, x.id), reverse=True)
+
+        for r in final_rows:
             list_data.append({
                 "id": r.id,
                 "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
@@ -2214,10 +2433,12 @@ async def get_company_kpi_detail(
                 "partner_name": r.partner_name or "—",
                 "description": r.description or "—",
             })
-        return {
+        result_data.update({
             "total": len(list_data),
             "list": list_data
-        }
+        })
+        return result_data
+
 
     elif kpi_type == "leads":
         stmt = (
@@ -2240,8 +2461,73 @@ async def get_company_kpi_detail(
                 ReportDetail.detail_type == DetailType.LEAD,
                 (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
             )
-            .order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         )
+
+        if team_id is not None:
+            stmt = stmt.where(User.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+        stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            list_data.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": r.amount or 0.0,
+                "progress": r.lead_progress or "—",
+                "description": r.description or "—",
+            })
+        return {
+            "total": len(list_data),
+            "list": list_data
+        }
+
+    elif kpi_type == "tenders":
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.lead_progress,
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.LEAD,
+                (ReportDetail.lead_progress.contains("75") | (ReportDetail.lead_progress == "75%"))
+            )
+        )
+
+        if team_id is not None:
+            stmt = stmt.where(User.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+        stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
         res = await db.execute(stmt)
         rows = res.all()
 
