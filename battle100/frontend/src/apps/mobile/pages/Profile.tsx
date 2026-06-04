@@ -8,6 +8,7 @@ import {
   SetOutline,
   ExclamationCircleOutline,
   RightOutline,
+  FileOutline,
 } from 'antd-mobile-icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@shared/hooks/useAuth'
@@ -33,6 +34,88 @@ export default function Profile() {
   // 日报主表总结及动作明细（二级 Popup）
   const [reportDetailVisible, setReportDetailVisible] = useState(false)
   const [selectedReport, setSelectedReport] = useState<any>(null)
+
+  // 今日日报自动生成器相关状态
+  const [dailyReportVisible, setDailyReportVisible] = useState(false)
+  const [dailyReportLoading, setDailyReportLoading] = useState(false)
+  const [dailyReportText, setDailyReportText] = useState('')
+  const [reportScope, setReportScope] = useState<string | number>('company')
+  const [reportRole, setReportRole] = useState('admin')
+
+  // 提取去重后的所有战队列表 (用于下拉筛选)
+  const allTeams = stats?.zone_teams_data?.reduce((acc: Array<{ teamId: number; teamName: string }>, zone) => {
+    if (zone.teams) {
+      zone.teams.forEach(t => {
+        if (!acc.some(existing => existing.teamId === t.team_id)) {
+          acc.push({ teamId: t.team_id, teamName: t.team_name })
+        }
+      })
+    }
+    return acc
+  }, []) || []
+
+  // 接口生成日报方法
+  const handleGenerateDailyReport = async (scope?: string | number, roleParam?: string) => {
+    try {
+      const finalScope = scope !== undefined ? scope : reportScope
+      let finalRole = roleParam !== undefined ? roleParam : reportRole
+      
+      // 如果范围是全公司大盘，强制锁定为系统管理员角色视角
+      if (finalScope === 'company') {
+        finalRole = 'admin'
+      } else {
+        // 如果当前视角为 admin，但范围换成了战队，切换为数字专员或者目标官视角
+        if (finalRole === 'admin') {
+          if (user?.role === 'target_officer') {
+            finalRole = 'target_officer'
+          } else {
+            finalRole = 'digital_specialist'
+          }
+        }
+      }
+      
+      setReportScope(finalScope)
+      setReportRole(finalRole)
+      setDailyReportLoading(true)
+
+      let url = `/dashboard/daily-report?role=${finalRole}`
+      if (finalScope !== 'company') {
+        url += `&team_id=${finalScope}`
+      }
+
+      const res: any = await get(url)
+      const data = res?.data ? res.data : res
+      if (data && data.text) {
+        setDailyReportText(data.text)
+      } else {
+        Toast.show({ icon: 'fail', content: '生成日报失败，返回内容为空' })
+      }
+    } catch (err) {
+      console.error('日报生成失败:', err)
+      Toast.show({ icon: 'fail', content: '获取日报失败' })
+    } finally {
+      setDailyReportLoading(false)
+    }
+  }
+
+  // 打开弹窗并根据角色初始化范围和视角
+  const handleOpenDailyReportModal = () => {
+    let initialScope: string | number = 'company'
+    let initialRole = 'admin'
+
+    if (user?.role === 'target_officer' && user?.team_id) {
+      initialScope = user.team_id
+      initialRole = 'target_officer'
+    } else if (user?.role === 'digital_specialist' && user?.team_id) {
+      initialScope = 'company'
+      initialRole = 'admin'
+    }
+
+    setReportScope(initialScope)
+    setReportRole(initialRole)
+    setDailyReportVisible(true)
+    handleGenerateDailyReport(initialScope, initialRole)
+  }
 
   // 挂载数据获取逻辑，所有注释均为中文
   const loadReportsList = async () => {
@@ -187,6 +270,15 @@ export default function Profile() {
           >
             我的填报记录
           </List.Item>
+          {['admin', 'digital_specialist', 'target_officer'].includes(user?.role || '') && (
+            <List.Item
+              prefix={<FileOutline style={{ fontSize: 20, color: '#9f22c6' }} />}
+              extra={<RightOutline />}
+              onClick={handleOpenDailyReportModal}
+            >
+              生成今日日报
+            </List.Item>
+          )}
           <List.Item
             prefix={<SetOutline style={{ fontSize: 20, color: '#faad14' }} />}
             extra={<RightOutline />}
@@ -479,6 +571,171 @@ export default function Profile() {
             )}
           </div>
         )}
+      </Popup>
+
+      {/* ================= 今日日报自动生成器弹窗 ================= */}
+      <Popup
+        visible={dailyReportVisible}
+        onMaskClick={() => setDailyReportVisible(false)}
+        bodyStyle={{ borderTopLeftRadius: 16, borderTopRightRadius: 16, minHeight: '80vh', maxHeight: '95vh', padding: 20, overflowY: 'auto' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid #f0f0f0' }}>
+          <span style={{ fontSize: 16, fontWeight: 'bold' }}>📅 今日日报自动生成器</span>
+          <span onClick={() => setDailyReportVisible(false)} style={{ color: '#1677ff', fontSize: 14, cursor: 'pointer', fontWeight: 'bold' }}>关闭</span>
+        </div>
+
+        {/* 1. 日报范围 */}
+        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#555', minWidth: '70px' }}>日报范围：</span>
+          {['admin', 'digital_specialist'].includes(user?.role || '') ? (
+            <select
+              value={reportScope}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                border: '1px solid #d9d9d9',
+                borderRadius: 8,
+                fontSize: 13,
+                background: '#fff',
+                outline: 'none',
+                color: '#333'
+              }}
+              onChange={(e) => {
+                const val = e.target.value
+                const finalScope = val === 'company' ? 'company' : Number(val)
+                handleGenerateDailyReport(finalScope)
+              }}
+            >
+              <option value="company">全公司大盘</option>
+              {allTeams.map((t) => (
+                <option key={t.teamId} value={t.teamId}>
+                  {t.teamName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Tag color="blue" style={{ fontSize: '13px', padding: '4px 10px', borderRadius: 4 }}>
+              {stats?.team_stats?.team_name || '本战队'}
+            </Tag>
+          )}
+        </div>
+
+        {/* 2. 角色视角 */}
+        <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 13, color: '#555' }}>角色视角：</span>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+            {[
+              { value: 'target_officer', label: '目标官 (当晚)', disabled: reportScope === 'company' },
+              { value: 'digital_specialist', label: '数字专员 (次晨)', disabled: reportScope === 'company' },
+              { value: 'admin', label: '系统管理员 (大盘)', disabled: reportScope !== 'company' }
+            ].map((roleOption) => {
+              const isSelected = reportRole === roleOption.value
+              return (
+                <button
+                  key={roleOption.value}
+                  disabled={roleOption.disabled}
+                  onClick={() => handleGenerateDailyReport(undefined, roleOption.value)}
+                  style={{
+                    flex: '1 0 auto',
+                    padding: '6px 12px',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    border: '1px solid',
+                    borderColor: roleOption.disabled ? '#f0f0f0' : isSelected ? '#1677ff' : '#d9d9d9',
+                    background: roleOption.disabled ? '#f5f5f5' : isSelected ? '#e6f7ff' : '#fff',
+                    color: roleOption.disabled ? '#bfbfbf' : isSelected ? '#1677ff' : '#595959',
+                    fontWeight: isSelected ? 'bold' : 'normal',
+                    cursor: roleOption.disabled ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s',
+                    outline: 'none'
+                  }}
+                >
+                  {roleOption.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 温馨提示 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#0050b3', marginBottom: 14 }}>
+          <span>ℹ️ 点击下方按钮一键复制日报文案，直接发送至群！</span>
+        </div>
+
+        {/* 3. 文本域及 Loading */}
+        <div style={{ position: 'relative', border: '1px solid #d9d9d9', borderRadius: 8, overflow: 'hidden', background: '#fafafa', marginBottom: 20 }}>
+          {dailyReportLoading && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255, 255, 255, 0.7)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 10 }}>
+              <DotLoading color="primary" />
+              <span style={{ fontSize: 11, color: '#999', marginTop: 6 }}>生成最新日报中...</span>
+            </div>
+          )}
+          <textarea
+            readOnly
+            value={dailyReportText}
+            placeholder="暂无日报文案，请检查筛选或重试"
+            style={{
+              width: '100%',
+              minHeight: '260px',
+              border: 'none',
+              background: 'transparent',
+              padding: 12,
+              fontSize: 12,
+              fontFamily: 'monospace',
+              lineHeight: '18px',
+              color: '#333',
+              outline: 'none',
+              boxSizing: 'border-box',
+              display: 'block'
+            }}
+          />
+        </div>
+
+        {/* 4. 底部复制及关闭 */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={() => setDailyReportVisible(false)}
+            style={{
+              flex: 1,
+              padding: '10px 0',
+              borderRadius: 8,
+              border: '1px solid #d9d9d9',
+              background: '#fff',
+              fontSize: 14,
+              color: '#595959',
+              cursor: 'pointer',
+              fontWeight: 500,
+              outline: 'none'
+            }}
+          >
+            关闭
+          </button>
+          <button
+            onClick={() => {
+              if (!dailyReportText) {
+                Toast.show({ icon: 'fail', content: '无可复制的日报文本' })
+                return
+              }
+              navigator.clipboard.writeText(dailyReportText)
+              Toast.show({ icon: 'success', content: '日报已成功复制到剪贴板！' })
+            }}
+            style={{
+              flex: 2,
+              padding: '10px 0',
+              borderRadius: 8,
+              border: 'none',
+              background: 'linear-gradient(135deg, #1677ff, #4096ff)',
+              fontSize: 14,
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 4px 10px rgba(22,119,255,0.2)',
+              outline: 'none'
+            }}
+          >
+            一键复制日报
+          </button>
+        </div>
       </Popup>
     </div>
   )
