@@ -328,6 +328,24 @@ export interface MyStatsResponse {
     base_percentage: number
     challenge_percentage: number
     unit: string
+  zone_teams_data?: Array<{
+    zone_id: number
+    zone_name: string
+    teams: Array<{
+      team_id: number
+      team_name: string
+      leader: string
+      marketing_actual: number
+      marketing_target: number
+      marketing_rate: number
+      delivery_actual: number
+      delivery_target: number
+      delivery_rate: number
+      valid_leads_actual: number
+      valid_leads_target: number
+      valid_leads_rate: number
+      status_light: 'red' | 'yellow' | 'green'
+    }>
   }>
   user_meta?: {
     join_days: number

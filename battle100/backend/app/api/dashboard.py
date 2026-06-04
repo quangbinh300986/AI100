@@ -1798,10 +1798,134 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     # 计算填报率，保留一位小数
     report_rate = round((total_reports / join_days * 100), 1) if join_days > 0 else 0.0
 
+    # ====== 新增：4. 战区与战队累计达成数据（用于移动端首页大PK及下钻看板） ======
+    # 统计本系统中各战队的有效需求线索量
+    system_leads_query = await db.execute(
+        select(
+            User.team_id,
+            func.count(ReportDetail.id)
+        )
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .join(User, DailyReport.user_id == User.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.LEAD,
+            (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%")),
+            User.team_id.isnot(None)
+        )
+        .group_by(User.team_id)
+    )
+    system_leads_rows = system_leads_query.all()
+    
+    team_leads_actual_map = {}
+    for team_id, count in system_leads_rows:
+        team_leads_actual_map[team_id] = count
+
+    team_leaders_map = {
+        "清远战队": "郑子鹏",
+        "广州一战队": "陈浩龙",
+        "广州二战队": "刘罗军",
+        "广州三战队（大数据）": "伍耀强",
+        "广州三战队": "伍耀强",
+        "佛山战队": "卢俊松",
+        "湛江战队": "周真波",
+        "云浮战队": "尹晓明",
+        "东莞战队": "董卓佼",
+        "茂名战队": "陈鸿源"
+    }
+
+    # 批量汇聚所有战队有效需求线索目标
+    user_goals_query = await db.execute(
+        select(
+            User.id,
+            User.team_id,
+            func.coalesce(PersonalGoal.base_target, 0)
+        ).select_from(User)
+        .outerjoin(PersonalGoal, (User.id == PersonalGoal.user_id) & (PersonalGoal.goal_type == GoalType.LEADS_COUNT))
+        .where(User.is_active == True)
+    )
+    user_goals_rows = user_goals_query.all()
+    
+    team_leads_target_map = {}
+    for uid, team_id, target in user_goals_rows:
+        if not team_id:
+            continue
+        team_leads_target_map[team_id] = team_leads_target_map.get(team_id, 0.0) + float(target)
+
+    # 查出全部战区和它底下的战队
+    zones_res = await db.execute(select(Zone).order_by(Zone.sort_order))
+    zones = zones_res.scalars().all()
+    
+    zone_teams_data = []
+    for z in zones:
+        t_res = await db.execute(select(Team).where(Team.zone_id == z.id).order_by(Team.id))
+        zone_teams = t_res.scalars().all()
+        
+        teams_data = []
+        for t in zone_teams:
+            if "战队" not in t.name:
+                continue
+                
+            leader = team_leaders_map.get(t.name, "未知巴长")
+            
+            # 战队大目标
+            g_res = await db.execute(select(TeamGoal).where(TeamGoal.team_id == t.id))
+            goals_list = g_res.scalars().all()
+            m_target = next((g.base_target for g in goals_list if g.category == TeamGoalCategory.MARKETING), 0.0)
+            d_target = next((g.base_target for g in goals_list if g.category == TeamGoalCategory.DELIVERY), 0.0)
+            
+            # 营销实际合同额
+            m_actual = await get_team_marketing_actual(db, t.id)
+            # 交付实际合同额
+            d_actual = await get_team_delivery_actual(db, t.id)
+            
+            m_rate = (m_actual / m_target * 100) if m_target > 0 else 0.0
+            d_rate = (d_actual / d_target * 100) if d_target > 0 else 0.0
+            
+            # 有效线索实际与目标
+            leads_target = team_leads_target_map.get(t.id, 0.0)
+            leads_actual = team_leads_actual_map.get(t.id, 0)
+            leads_rate = (leads_actual / leads_target * 100) if leads_target > 0 else 0.0
+            
+            # 状态灯逻辑与大盘一致
+            avg_rate = (m_rate + d_rate) / 2
+            if m_target == 0 and d_target == 0:
+                light = "red"
+            elif avg_rate >= 80:
+                light = "green"
+            elif avg_rate >= 40:
+                light = "yellow"
+            else:
+                light = "red"
+                
+            teams_data.append({
+                "team_id": t.id,
+                "team_name": t.name,
+                "leader": leader,
+                "marketing_actual": round(m_actual, 2),
+                "marketing_target": round(m_target, 2),
+                "marketing_rate": round(m_rate, 2),
+                "delivery_actual": round(d_actual, 2),
+                "delivery_target": round(d_target, 2),
+                "delivery_rate": round(d_rate, 2),
+                "valid_leads_actual": leads_actual,
+                "valid_leads_target": round(leads_target, 2),
+                "valid_leads_rate": round(leads_rate, 2),
+                "status_light": light
+            })
+            
+        zone_teams_data.append({
+            "zone_id": z.id,
+            "zone_name": z.name,
+            "teams": teams_data
+        })
+
     return {
         "company_stats": company_stats,
         "team_stats": team_stats,
         "personal_stats": personal_stats,
+        "zone_teams_data": zone_teams_data,
         "user_meta": {
             "join_days": join_days,
             "total_reports": total_reports,
