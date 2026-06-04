@@ -1755,6 +1755,7 @@ const Dashboard: React.FC = () => {
                   <Select.Option key={b} value={b}>{b}</Select.Option>
                 ))}
               </Select>
+              {/* 🛌 躺平榜切换开关暂时隐藏，保留后台逻辑
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: 12, color: rankFilterLyingFlat ? '#d4380d' : '#595959', fontWeight: rankFilterLyingFlat ? 'bold' : 'normal' }}>
                   🛌 躺平榜
@@ -1764,6 +1765,7 @@ const Dashboard: React.FC = () => {
                   onChange={(e) => setRankFilterLyingFlat(e.target.checked)}
                 />
               </div>
+              */}
             </div>
 
             {/* 英雄榜数据列表容器 */}
