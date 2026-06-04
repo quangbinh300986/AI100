@@ -117,6 +117,50 @@ export default function Profile() {
     handleGenerateDailyReport(initialScope, initialRole)
   }
 
+  // 高兼容性复制剪切板文本函数，支持 HTTP、WebView 及安全域回退
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          Toast.show({ icon: 'success', content: '日报已复制到剪贴板！' })
+        })
+        .catch(() => {
+          fallbackCopyTextToClipboard(text)
+        })
+    } else {
+      fallbackCopyTextToClipboard(text)
+    }
+  }
+
+  const fallbackCopyTextToClipboard = (text: string) => {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.style.position = 'fixed'
+    textArea.style.top = '0'
+    textArea.style.left = '0'
+    textArea.style.width = '2em'
+    textArea.style.height = '2em'
+    textArea.style.padding = '0'
+    textArea.style.border = 'none'
+    textArea.style.outline = 'none'
+    textArea.style.boxShadow = 'none'
+    textArea.style.background = 'transparent'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    try {
+      const successful = document.execCommand('copy')
+      if (successful) {
+        Toast.show({ icon: 'success', content: '日报已复制到剪贴板！' })
+      } else {
+        Toast.show({ icon: 'fail', content: '复制失败，请长按手动选择复制' })
+      }
+    } catch (err) {
+      Toast.show({ icon: 'fail', content: '复制失败，请长按手动选择复制' })
+    }
+    document.body.removeChild(textArea)
+  }
+
   // 挂载数据获取逻辑，所有注释均为中文
   const loadReportsList = async () => {
     try {
@@ -717,8 +761,7 @@ export default function Profile() {
                 Toast.show({ icon: 'fail', content: '无可复制的日报文本' })
                 return
               }
-              navigator.clipboard.writeText(dailyReportText)
-              Toast.show({ icon: 'success', content: '日报已成功复制到剪贴板！' })
+              copyToClipboard(dailyReportText)
             }}
             style={{
               flex: 2,
