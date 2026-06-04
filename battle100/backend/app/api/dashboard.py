@@ -957,23 +957,28 @@ async def get_dashboard_overview(
             func.coalesce(func.sum(ReportDetail.amount), 0).label("score")
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
-        .where(
-            DailyReport.status == ReportStatus.REVIEWED,
-            DailyReport.report_date >= start_of_week,
-            DailyReport.report_date <= end_of_week,
-            ReportDetail.detail_type == DetailType.CONTRACT,
-            ReportDetail.description.contains("营销新签分摊")
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
         )
+        .outerjoin(
+            ReportDetail,
+            (DailyReport.id == ReportDetail.report_id) &
+            (ReportDetail.detail_type == DetailType.CONTRACT) &
+            (ReportDetail.description.contains("营销新签分摊"))
+        )
+        .where(User.is_active == True)
     )
     if team_id is not None:
         marketing_hero_stmt = marketing_hero_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         marketing_hero_stmt = marketing_hero_stmt.where(User.third_class_bar == third_class_bar)
+        
     marketing_hero_stmt = (
         marketing_hero_stmt.group_by(User.id, User.name, Team.name)
-        .having(func.coalesce(func.sum(ReportDetail.amount), 0) > 0)
         .order_by(order_direction)
         .limit(15)
     )
@@ -983,7 +988,7 @@ async def get_dashboard_overview(
     
     marketing_hero_board = []
     for idx, row in enumerate(marketing_hero_rows):
-        if row.score > 0:
+        if is_lying_flat or row.score > 0:
             marketing_hero_board.append(
                 RankingItem(
                     rank=idx + 1,
@@ -1002,23 +1007,28 @@ async def get_dashboard_overview(
             func.coalesce(func.sum(ReportDetail.amount), 0).label("score")
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
-        .where(
-            DailyReport.status == ReportStatus.REVIEWED,
-            DailyReport.report_date >= start_of_week,
-            DailyReport.report_date <= end_of_week,
-            ReportDetail.detail_type == DetailType.CONTRACT,
-            ~ReportDetail.description.contains("营销新签分摊")
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
         )
+        .outerjoin(
+            ReportDetail,
+            (DailyReport.id == ReportDetail.report_id) &
+            (ReportDetail.detail_type == DetailType.CONTRACT) &
+            (~ReportDetail.description.contains("营销新签分摊"))
+        )
+        .where(User.is_active == True)
     )
     if team_id is not None:
         delivery_hero_stmt = delivery_hero_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         delivery_hero_stmt = delivery_hero_stmt.where(User.third_class_bar == third_class_bar)
+        
     delivery_hero_stmt = (
         delivery_hero_stmt.group_by(User.id, User.name, Team.name)
-        .having(func.coalesce(func.sum(ReportDetail.amount), 0) > 0)
         .order_by(order_direction)
         .limit(15)
     )
@@ -1028,7 +1038,7 @@ async def get_dashboard_overview(
     
     delivery_hero_board = []
     for idx, row in enumerate(delivery_hero_rows):
-        if row.score > 0:
+        if is_lying_flat or row.score > 0:
             delivery_hero_board.append(
                 RankingItem(
                     rank=idx + 1,
@@ -1047,20 +1057,22 @@ async def get_dashboard_overview(
             func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("score")
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .where(
-            DailyReport.status == ReportStatus.REVIEWED,
-            DailyReport.report_date >= start_of_week,
-            DailyReport.report_date <= end_of_week
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
         )
+        .where(User.is_active == True)
     )
     if team_id is not None:
         happiness_stmt = happiness_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         happiness_stmt = happiness_stmt.where(User.third_class_bar == third_class_bar)
+        
     happiness_stmt = (
         happiness_stmt.group_by(User.id, User.name, Team.name)
-        .having(func.coalesce(func.sum(DailyReport.happiness_actions), 0) > 0)
         .order_by(order_direction)
         .limit(15)
     )
@@ -1070,7 +1082,7 @@ async def get_dashboard_overview(
 
     happiness_board = []
     for idx, row in enumerate(happiness_rows):
-        if row.score > 0:
+        if is_lying_flat or row.score > 0:
             happiness_board.append(
                 RankingItem(
                     rank=idx + 1,
@@ -1089,20 +1101,22 @@ async def get_dashboard_overview(
             func.coalesce(func.sum(DailyReport.triangle_count), 0).label("score")
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .where(
-            DailyReport.status == ReportStatus.REVIEWED,
-            DailyReport.report_date >= start_of_week,
-            DailyReport.report_date <= end_of_week
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
         )
+        .where(User.is_active == True)
     )
     if team_id is not None:
         triangle_stmt = triangle_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         triangle_stmt = triangle_stmt.where(User.third_class_bar == third_class_bar)
+        
     triangle_stmt = (
         triangle_stmt.group_by(User.id, User.name, Team.name)
-        .having(func.coalesce(func.sum(DailyReport.triangle_count), 0) > 0)
         .order_by(order_direction)
         .limit(15)
     )
@@ -1112,7 +1126,7 @@ async def get_dashboard_overview(
 
     triangle_board = []
     for idx, row in enumerate(triangle_rows):
-        if row.score > 0:
+        if is_lying_flat or row.score > 0:
             triangle_board.append(
                 RankingItem(
                     rank=idx + 1,
@@ -1131,20 +1145,22 @@ async def get_dashboard_overview(
             func.coalesce(func.sum(DailyReport.leads_count), 0).label("score")
         ).select_from(User)
         .join(Team, User.team_id == Team.id)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .where(
-            DailyReport.status == ReportStatus.REVIEWED,
-            DailyReport.report_date >= start_of_week,
-            DailyReport.report_date <= end_of_week
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
         )
+        .where(User.is_active == True)
     )
     if team_id is not None:
         leads_stmt = leads_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         leads_stmt = leads_stmt.where(User.third_class_bar == third_class_bar)
+        
     leads_stmt = (
         leads_stmt.group_by(User.id, User.name, Team.name)
-        .having(func.coalesce(func.sum(DailyReport.leads_count), 0) > 0)
         .order_by(order_direction)
         .limit(15)
     )
@@ -1154,7 +1170,7 @@ async def get_dashboard_overview(
 
     leads_board = []
     for idx, row in enumerate(leads_rows):
-        if row.score > 0:
+        if is_lying_flat or row.score > 0:
             leads_board.append(
                 RankingItem(
                     rank=idx + 1,
