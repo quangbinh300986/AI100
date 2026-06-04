@@ -3361,10 +3361,11 @@ async def get_personal_weekly_detail(
     user_name: str = Query(..., description="员工真实姓名"),
     category: str = Query(..., description="实绩类别: marketing_signing, delivery_signing, leads, happiness, triangle"),
     target_date: date | None = Query(None, description="数据日期"),
+    is_all: bool = Query(False, description="是否拉取全部明细"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    根据员工姓名和指标类别，拉取该员工当周（对应日期所在周的周一到周日）的已审核数据明细。
+    根据员工姓名和指标类别，拉取该员工已审核的数据明细。默认拉取当周（对应日期所在周的周一到周日），若is_all为True则拉取全周期。
     """
     if target_date is None:
         target_date = date.today()
@@ -3382,6 +3383,12 @@ async def get_personal_weekly_detail(
         
     details_list = []
     
+    # 构造动态时间区间过滤，所有注释必须使用中文
+    date_filters = []
+    if not is_all:
+        date_filters.append(DailyReport.report_date >= start_of_week)
+        date_filters.append(DailyReport.report_date <= end_of_week)
+    
     # 根据类别进行差异化查询
     if category == "marketing_signing":
         # 营销新签明细：detail_type == CONTRACT，且描述包含 "营销新签分摊"
@@ -3397,10 +3404,9 @@ async def get_personal_weekly_detail(
             .where(
                 DailyReport.status == ReportStatus.REVIEWED,
                 DailyReport.user_id == user_obj.id,
-                DailyReport.report_date >= start_of_week,
-                DailyReport.report_date <= end_of_week,
                 ReportDetail.detail_type == DetailType.CONTRACT,
-                ReportDetail.description.contains("营销新签分摊")
+                ReportDetail.description.contains("营销新签分摊"),
+                *date_filters
             )
             .order_by(DailyReport.report_date.desc())
         )
@@ -3428,10 +3434,9 @@ async def get_personal_weekly_detail(
             .where(
                 DailyReport.status == ReportStatus.REVIEWED,
                 DailyReport.user_id == user_obj.id,
-                DailyReport.report_date >= start_of_week,
-                DailyReport.report_date <= end_of_week,
                 ReportDetail.detail_type == DetailType.CONTRACT,
-                ~ReportDetail.description.contains("营销新签分摊")
+                ~ReportDetail.description.contains("营销新签分摊"),
+                *date_filters
             )
             .order_by(DailyReport.report_date.desc())
         )
@@ -3461,10 +3466,9 @@ async def get_personal_weekly_detail(
             .where(
                 DailyReport.status == ReportStatus.REVIEWED,
                 DailyReport.user_id == user_obj.id,
-                DailyReport.report_date >= start_of_week,
-                DailyReport.report_date <= end_of_week,
                 ReportDetail.detail_type == DetailType.LEAD,
-                (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+                (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%")),
+                *date_filters
             )
             .order_by(DailyReport.report_date.desc())
         )
@@ -3537,9 +3541,8 @@ async def get_personal_weekly_detail(
             .where(
                 DailyReport.status == ReportStatus.REVIEWED,
                 DailyReport.user_id == user_obj.id,
-                DailyReport.report_date >= start_of_week,
-                DailyReport.report_date <= end_of_week,
-                ReportDetail.detail_type == DetailType.HAPPINESS
+                ReportDetail.detail_type == DetailType.HAPPINESS,
+                *date_filters
             )
             .order_by(DailyReport.report_date.desc())
         )
@@ -3567,9 +3570,8 @@ async def get_personal_weekly_detail(
             .where(
                 DailyReport.status == ReportStatus.REVIEWED,
                 DailyReport.user_id == user_obj.id,
-                DailyReport.report_date >= start_of_week,
-                DailyReport.report_date <= end_of_week,
-                ReportDetail.detail_type == DetailType.TRIANGLE
+                ReportDetail.detail_type == DetailType.TRIANGLE,
+                *date_filters
             )
             .order_by(DailyReport.report_date.desc())
         )

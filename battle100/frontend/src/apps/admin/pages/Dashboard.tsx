@@ -466,19 +466,19 @@ const Dashboard: React.FC = () => {
   }
 
   // 点击排行榜中员工实绩查看明细触发方法，所有注释必须使用中文
-  const handleViewPersonalDetail = (userName: string, category: string) => {
+  const handleViewPersonalDetail = (userName: string, category: string, isAll = false) => {
     setDetailUser(userName)
     setDetailCategory(category)
     setDetailData([])
     setDetailDrawerVisible(true)
-    fetchPersonalWeeklyDetail(userName, category)
+    fetchPersonalWeeklyDetail(userName, category, isAll)
   }
 
-  // 异步获取员工当周对应的指标详细数据列表，所有注释必须使用中文
-  const fetchPersonalWeeklyDetail = async (userName: string, category: string) => {
+  // 异步获取员工对应的指标详细数据列表，所有注释必须使用中文
+  const fetchPersonalWeeklyDetail = async (userName: string, category: string, isAll = false) => {
     setDetailLoading(true)
     try {
-      const res = await get<any>(`/dashboard/personal-weekly-detail?user_name=${encodeURIComponent(userName)}&category=${category}`)
+      const res = await get<any>(`/dashboard/personal-weekly-detail?user_name=${encodeURIComponent(userName)}&category=${category}&is_all=${isAll}`)
       const data = res?.data ? res.data : res
       if (data && Array.isArray(data)) {
         setDetailData(data)
@@ -486,8 +486,8 @@ const Dashboard: React.FC = () => {
         setDetailData([])
       }
     } catch (err) {
-      console.error('拉取员工当周排行明细失败', err)
-      message.error('获取个人当周实绩明细失败')
+      console.error('拉取员工实绩明细失败', err)
+      message.error('获取个人实绩明细失败')
       setDetailData([])
     } finally {
       setDetailLoading(false)
@@ -2028,12 +2028,30 @@ const Dashboard: React.FC = () => {
 
                 const isAchieved = baseTarget > 0 && val >= baseTarget;
                 const showColor = baseTarget > 0;
+
+                const actualNode = val > 0 ? (
+                  <Tooltip title="点击查看个人累计实绩明细 🔍">
+                    <span 
+                      onClick={() => handleViewPersonalDetail(record.user_name, kpi.key, true)}
+                      style={{ 
+                        fontWeight: 'bold', 
+                        color: showColor ? (isAchieved ? '#52c41a' : '#ff4d4f') : '#1677ff', 
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      {formattedVal}
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <span style={{ fontWeight: 'bold', color: showColor ? (isAchieved ? '#52c41a' : '#ff4d4f') : 'inherit' }}>
+                    {formattedVal}
+                  </span>
+                )
                 
                 return (
                   <div>
-                    <span style={{ fontWeight: 'bold', color: showColor ? (isAchieved ? '#52c41a' : '#ff4d4f') : 'inherit' }}>
-                      {formattedVal}
-                    </span>
+                    {actualNode}
                     <span style={{ color: '#8c8c8c', marginLeft: 4 }} title="奋斗目标">/ {formattedTarget}</span>
                   </div>
                 )
