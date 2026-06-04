@@ -455,15 +455,15 @@ const Dashboard: React.FC = () => {
         title: '日期',
         dataIndex: 'date',
         key: 'date',
-        width: 110,
+        width: 95,
         align: 'center' as const
       },
       {
         title: '客户名称',
         dataIndex: 'customer_name',
         key: 'customer_name',
-        width: 180,
-        ellipsis: true
+        width: 130,
+        render: (val: string) => <div style={{ wordBreak: 'break-all' }}>{val || '未关联客户'}</div>
       }
     ]
 
@@ -473,12 +473,12 @@ const Dashboard: React.FC = () => {
         return [
           ...baseColumns,
           {
-            title: '业绩分摊金额',
+            title: '分摊金额',
             dataIndex: 'amount',
             key: 'amount',
-            width: 130,
+            width: 95,
             align: 'right' as const,
-            render: (val: number) => <strong style={{ color: '#ff4d4f' }}>{val} 万元</strong>
+            render: (val: number) => <strong style={{ color: '#ff4d4f' }}>{val} 万</strong>
           },
           {
             title: '描述',
@@ -494,16 +494,16 @@ const Dashboard: React.FC = () => {
             title: '项目名称',
             dataIndex: 'project_name',
             key: 'project_name',
-            width: 160,
-            ellipsis: true
+            width: 120,
+            render: (val: string) => <div style={{ wordBreak: 'break-all' }}>{val || '未定'}</div>
           },
           {
             title: '预计金额',
             dataIndex: 'amount',
             key: 'amount',
-            width: 120,
+            width: 90,
             align: 'right' as const,
-            render: (val: number) => <strong style={{ color: '#722ed1' }}>{val} 万元</strong>
+            render: (val: number) => <strong style={{ color: '#722ed1' }}>{val} 万</strong>
           },
           {
             title: '播报描述',
@@ -519,16 +519,16 @@ const Dashboard: React.FC = () => {
             title: '项目名称',
             dataIndex: 'project_name',
             key: 'project_name',
-            width: 160,
-            ellipsis: true
+            width: 120,
+            render: (val: string) => <div style={{ wordBreak: 'break-all' }}>{val || '未定'}</div>
           },
           {
-            title: '关怀分值',
+            title: '关怀分',
             dataIndex: 'happiness_score',
             key: 'happiness_score',
-            width: 110,
+            width: 75,
             align: 'center' as const,
-            render: (val: number) => <Tag color="green">+{val} 分</Tag>
+            render: (val: number) => <Tag color="green" style={{ marginRight: 0 }}>+{val}分</Tag>
           },
           {
             title: '关怀动作描述',
