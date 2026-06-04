@@ -450,93 +450,15 @@ export default function Home() {
         </div>
       ) : null}
 
-      {/* 第三级：🎯 个人双轨水位绩效盘 */}
-      <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>🎯 个人核心目标双轨盘</span>
-          <span style={{ fontSize: 11, color: '#999' }}>基础 / 挑战双水位</span>
-        </div>
-
-        {personalStats.length > 0 ? (
-          personalStats.map((item) => {
-            // 定位刻度，挑战目标为上限，如果实际值超出，则实际值为上限。
-            const maxVal = Math.max(item.challenge_target, item.actual, 1)
-            const basePos = (item.base_target / maxVal) * 100
-            const challengePos = (item.challenge_target / maxVal) * 100
-            const actualPos = (item.actual / maxVal) * 100
-
-            return (
-              <div key={item.goal_type} style={{ marginBottom: 20 }}>
-                {/* 标题及数值展示 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>{item.goal_name}</span>
-                  <span style={{ fontSize: 13, color: '#1677ff', fontWeight: 700 }}>
-                    实际：{item.actual} <span style={{ fontSize: 11, color: '#999', fontWeight: 'normal' }}>{item.unit}</span>
-                  </span>
-                </div>
-
-                {/* 精美双水位进度条 */}
-                <div style={{ position: 'relative', height: 12, background: '#e2e8f0', borderRadius: 6, margin: '8px 0' }}>
-                  {/* 实际值条 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      height: '100%',
-                      width: `${Math.min(actualPos, 100)}%`,
-                      background: 'linear-gradient(90deg, #1677ff, #00d4ff)',
-                      borderRadius: 6,
-                      transition: 'width 0.6s ease'
-                    }}
-                  />
-                  {/* 基础水位刻度线 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${basePos}%`,
-                      top: -3,
-                      bottom: -3,
-                      width: 3,
-                      backgroundColor: '#ff4d4f',
-                      borderRadius: 1.5,
-                      zIndex: 2
-                    }}
-                  />
-                  {/* 挑战水位刻度线 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${challengePos}%`,
-                      top: -3,
-                      bottom: -3,
-                      width: 3,
-                      backgroundColor: '#ffd700',
-                      borderRadius: 1.5,
-                      zIndex: 2
-                    }}
-                  />
-                </div>
-
-                {/* 底部详细水位指标数值 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#718096' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ff4d4f' }} />
-                    基础：{item.base_target}{item.unit} ({item.actual >= item.base_target ? '✅已达成' : '未达成'})
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffd700' }} />
-                    挑战：{item.challenge_target}{item.unit} ({item.actual >= item.challenge_target ? '🔥已破线' : '未破线'})
-                  </span>
-                </div>
-              </div>
-            )
-          })
-        ) : (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: '#999', fontSize: 13 }}>
-            暂无关联岗位考核目标，加油填报！
-          </div>
-        )}
+      {/* 🎯 查看个人目标跳转入口 */}
+      <div
+        className="card"
+        onClick={() => navigate('/m/goals')}
+        style={{ padding: '14px 16px', textAlign: 'center', cursor: 'pointer' }}
+      >
+        <span style={{ fontSize: 14, color: '#1677ff', fontWeight: 700 }}>
+          🎯 查看我的个人目标 ›
+        </span>
       </div>
 
       {/* ================= 一级弹窗：战队多维指标明细 ================= */}

@@ -120,10 +120,7 @@ export default function Profile() {
   // 高兼容性复制剪切板文本函数，支持 HTTP、WebView 及安全域回退
   const copyToClipboard = (text: string) => {
     if (!text) {
-      Dialog.alert({
-        content: '无可复制的日报文本，请稍后再试。',
-        confirmText: '我知道了'
-      })
+      window.alert('无可复制的日报文本，请稍后再试。')
       return
     }
 
@@ -158,31 +155,19 @@ export default function Profile() {
     document.body.removeChild(textArea)
 
     if (success) {
-      Dialog.alert({
-        content: '日报已成功复制到剪贴板！可以直接粘贴发送！',
-        confirmText: '我知道了'
-      })
+      window.alert('日报已成功复制到剪贴板！可以直接粘贴发送！')
     } else {
       // 同步复制失败后使用 navigator.clipboard 兜底
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text)
           .then(() => {
-            Dialog.alert({
-              content: '日报已复制到剪贴板！可以直接粘贴发送！',
-              confirmText: '我知道了'
-            })
+            window.alert('日报已复制到剪贴板！可以直接粘贴发送！')
           })
           .catch(() => {
-            Dialog.alert({
-              content: '复制失败，请长按文本框手动选择复制。',
-              confirmText: '我知道了'
-            })
+            window.alert('复制失败，请长按文本框手动选择复制。')
           })
       } else {
-        Dialog.alert({
-          content: '复制失败，请长按文本框手动选择复制。',
-          confirmText: '我知道了'
-        })
+        window.alert('复制失败，请长按文本框手动选择复制。')
       }
     }
   }

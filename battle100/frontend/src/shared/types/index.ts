@@ -328,6 +328,7 @@ export interface MyStatsResponse {
     base_percentage: number
     challenge_percentage: number
     unit: string
+  }>
   zone_teams_data?: Array<{
     zone_id: number
     zone_name: string

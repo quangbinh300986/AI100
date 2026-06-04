@@ -1,73 +1,38 @@
 import { useState, useEffect } from 'react'
-import { ProgressCircle, Tabs, DotLoading } from 'antd-mobile'
+import { DotLoading } from 'antd-mobile'
 import { getMyStats } from '@shared/api/dashboard'
 import type { MyStatsResponse } from '@shared/types'
 
-/** 渲染进度环卡片 */
-function GoalCard({
-  label,
-  icon,
-  current,
-  target,
-  unit,
-  color,
-}: {
-  label: string
-  icon: string
-  current: number
-  target: number
-  unit: string
-  color: string
-}) {
-  const percent = target > 0 ? Math.min((current / target) * 100, 100) : 0
-
-  return (
-    <div
-      className="card"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '20px 10px',
-        textAlign: 'center'
-      }}
-    >
-      <ProgressCircle
-        percent={percent}
-        style={{
-          '--size': '90px',
-          '--track-width': '6px',
-          '--fill-color': color,
-          '--track-color': '#f0f0f0',
-        } as React.CSSProperties}
-      >
-        <span style={{ fontSize: 18, fontWeight: 700, color: color }}>
-          {percent.toFixed(0)}%
-        </span>
-      </ProgressCircle>
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#333', minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {icon} {label}
-        </div>
-        <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-          {current.toFixed(1).replace('.0', '')} / {target.toFixed(1).replace('.0', '')} {unit}
-        </div>
-      </div>
-    </div>
-  )
+/**
+ * 8种指标的元数据映射：emoji图标 + 主题色
+ */
+const GOAL_META: Record<string, { icon: string; color: string }> = {
+  contract_amount:        { icon: '💰', color: '#1677ff' },
+  happiness_action:       { icon: '😊', color: '#52c41a' },
+  triangle_count:         { icon: '🤝', color: '#faad14' },
+  leads_count:            { icon: '🔍', color: '#ff4d4f' },
+  leads_conversion_rate:  { icon: '📊', color: '#ff4d4f' },
+  new_customer_count:     { icon: '🆕', color: '#722ed1' },
+  happiness_story_count:  { icon: '📖', color: '#52c41a' },
+  contract_count:         { icon: '📝', color: '#1677ff' },
 }
+
+/** 根据 goal_type 获取图标，无匹配时返回默认 */
+const getIcon = (type: string) => GOAL_META[type]?.icon ?? '🎯'
+/** 根据 goal_type 获取主题色 */
+const getColor = (type: string) => GOAL_META[type]?.color ?? '#1677ff'
 
 export default function MyGoals() {
   const [stats, setStats] = useState<MyStatsResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  /** 个人目标胶囊Tab：'base' 保底 / 'challenge' 挑战 */
+  const [activeGoalTab, setActiveGoalTab] = useState<'base' | 'challenge'>('base')
 
   useEffect(() => {
     let active = true
     getMyStats()
       .then((res) => {
-        if (active && res) {
-          setStats(res)
-        }
+        if (active && res) setStats(res)
       })
       .catch((err) => {
         console.error('获取个人目标作战数据失败:', err)
@@ -75,11 +40,10 @@ export default function MyGoals() {
       .finally(() => {
         if (active) setLoading(false)
       })
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [])
 
+  /* ────────── 加载状态 ────────── */
   if (loading) {
     return (
       <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
@@ -89,161 +53,337 @@ export default function MyGoals() {
     )
   }
 
-  // 1. 公司盘数据
-  const companyStats = stats?.company_stats || {
-    newContracts: { value: 0, target: 6200, percentage: 0 }
-  }
-
-  // 2. 个人目标列表
+  /* ────────── 数据准备 ────────── */
   const personalStats = stats?.personal_stats || []
+  const teamStats = stats?.team_stats ?? null
 
-  // 3. 计算已过天数与剩余天数（从 2026-06-01 到 2026-09-08 共 100 天）
-  const endDate = new Date('2026-09-08')
+  // 百日奋战时间计算：2026-06-01 → 2026-09-08，共100天
   const startDate = new Date('2026-06-01')
+  const endDate = new Date('2026-09-08')
   const now = new Date()
-  
-  endDate.setHours(0, 0, 0, 0)
   startDate.setHours(0, 0, 0, 0)
+  endDate.setHours(0, 0, 0, 0)
   now.setHours(0, 0, 0, 0)
 
   const totalDays = 100
   const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-  const passedDays = Math.max(0, totalDays - remainingDays)
+  const passedDays = Math.max(0, Math.min(totalDays, totalDays - remainingDays))
 
-  // 指标图标映射
-  const getGoalIcon = (type: string) => {
-    if (type.includes('contract')) return '💰'
-    if (type.includes('happiness_action')) return '😊'
-    if (type.includes('triangle')) return '🤝'
-    if (type.includes('leads')) return '🔍'
-    if (type.includes('customer')) return '🆕'
-    if (type.includes('story')) return '📖'
-    return '🎯'
-  }
-
-  // 指标颜色映射
-  const getGoalColor = (type: string) => {
-    if (type.includes('contract')) return '#1677ff'
-    if (type.includes('happiness_action')) return '#52c41a'
-    if (type.includes('triangle')) return '#faad14'
-    if (type.includes('leads')) return '#ff4d4f'
-    return '#722ed1'
-  }
-
+  /* ────────── 渲染 ────────── */
   return (
     <div className="page-content">
-      {/* 页面标题 */}
-      <div style={{ padding: '16px 0 8px' }}>
-        <h2 className="page-title">🎯 我的目标</h2>
-      </div>
 
-      {/* 总览卡片 */}
+      {/* ═══════════ 模块一：百日奋战时间线 ═══════════ */}
       <div
-        className="card"
         style={{
           background: 'linear-gradient(135deg, #667eea, #764ba2)',
           color: '#fff',
           padding: 20,
-          textAlign: 'center',
+          borderRadius: 12,
         }}
       >
-        <div style={{ fontSize: 14, opacity: 0.8 }}>百日奋战公司总体进度</div>
-        <div style={{ fontSize: 36, fontWeight: 800, marginTop: 8 }}>
-          {companyStats.newContracts.percentage}%
+        {/* 标题行：左侧标题 + 右侧天数 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>✈️ 百日奋战进度</div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>
+            第 <span style={{ fontSize: 22, fontWeight: 700 }}>{passedDays}</span> 天 / 共100天
+          </div>
         </div>
-        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-          第 {passedDays} 天 / 共 100 天 · 剩余 {remainingDays} 天
-        </div>
+
+        {/* 进度条 */}
         <div
           style={{
             height: 6,
             borderRadius: 3,
             background: 'rgba(255,255,255,0.2)',
-            marginTop: 16,
+            marginTop: 14,
             overflow: 'hidden',
           }}
         >
           <div
             style={{
               height: '100%',
-              width: `${Math.min(companyStats.newContracts.percentage, 100)}%`,
+              width: `${Math.min((passedDays / totalDays) * 100, 100)}%`,
               borderRadius: 3,
               background: 'rgba(255,255,255,0.8)',
               transition: 'width 0.8s ease',
             }}
           />
         </div>
+
+        {/* 剩余天数 */}
+        <div style={{ textAlign: 'right', marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+          剩余 {remainingDays} 天
+        </div>
       </div>
 
-      {/* 分Tab查看 */}
-      <Tabs
-        defaultActiveKey="base"
-        style={{
-          '--title-font-size': '14px',
-          '--active-title-color': '#1677ff',
-          '--active-line-color': '#1677ff',
-          marginTop: 16,
-        } as React.CSSProperties}
-      >
-        <Tabs.Tab title="保底奋斗目标" key="base">
-          {personalStats.length > 0 ? (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 12,
-                marginTop: 12,
-              }}
-            >
-              {personalStats.map((item) => (
-                <GoalCard
-                  key={item.goal_type}
-                  label={item.goal_name}
-                  icon={getGoalIcon(item.goal_type)}
-                  current={item.actual}
-                  target={item.base_target}
-                  unit={item.unit}
-                  color={getGoalColor(item.goal_type)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
-              暂无关联岗位的保底奋斗目标
-            </div>
-          )}
-        </Tabs.Tab>
-        <Tabs.Tab title="挑战破线目标" key="challenge">
-          {personalStats.length > 0 ? (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 12,
-                marginTop: 12,
-              }}
-            >
-              {personalStats.map((item) => (
-                <GoalCard
-                  key={item.goal_type}
-                  label={item.goal_name}
-                  icon={getGoalIcon(item.goal_type)}
-                  current={item.actual}
-                  target={item.challenge_target}
-                  unit={item.unit}
-                  color={getGoalColor(item.goal_type)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
-              暂无关联岗位的挑战破线目标
-            </div>
-          )}
-        </Tabs.Tab>
-      </Tabs>
+      {/* ═══════════ 模块二：我的个人目标 ═══════════ */}
+      <div style={{ marginTop: 16 }}>
+        {/* 模块标题 */}
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>💪 我的个人目标</div>
 
-      {/* 目标说明 */}
+        {/* 胶囊Tab */}
+        <div
+          style={{
+            display: 'flex',
+            background: '#f5f5f5',
+            borderRadius: 20,
+            padding: 3,
+            marginBottom: 14,
+          }}
+        >
+          {(['base', 'challenge'] as const).map((tab) => {
+            const isActive = activeGoalTab === tab
+            const label = tab === 'base' ? '保底奋斗目标' : '挑战破线目标'
+            return (
+              <div
+                key={tab}
+                onClick={() => setActiveGoalTab(tab)}
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  padding: '7px 0',
+                  borderRadius: 20,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease',
+                  ...(isActive
+                    ? { background: '#1677ff', color: '#fff', boxShadow: '0 2px 8px rgba(22,119,255,0.3)' }
+                    : { background: 'transparent', color: '#595959' }),
+                }}
+              >
+                {label}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 指标卡片列表 */}
+        {personalStats.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {personalStats.map((item) => {
+              const color = getColor(item.goal_type)
+              const icon = getIcon(item.goal_type)
+              const target = activeGoalTab === 'base' ? item.base_target : item.challenge_target
+              const percentage = activeGoalTab === 'base' ? item.base_percentage : item.challenge_percentage
+              const isCompleted = percentage >= 100
+
+              // 达成状态标签
+              let statusLabel: string
+              let statusBg: string
+              let statusColor: string
+              if (isCompleted && activeGoalTab === 'challenge') {
+                statusLabel = '🔥已破线'
+                statusBg = 'rgba(255,77,79,0.1)'
+                statusColor = '#ff4d4f'
+              } else if (isCompleted) {
+                statusLabel = '✅已达成'
+                statusBg = 'rgba(82,196,26,0.1)'
+                statusColor = '#52c41a'
+              } else {
+                statusLabel = '进行中'
+                statusBg = 'rgba(250,173,20,0.1)'
+                statusColor = '#faad14'
+              }
+
+              return (
+                <div
+                  key={item.goal_type}
+                  style={{
+                    background: '#fafafa',
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 10,
+                    padding: 14,
+                  }}
+                >
+                  {/* 头部：emoji + 名称（左）+ 状态标签（右） */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>
+                      {icon} {item.goal_name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        background: statusBg,
+                        color: statusColor,
+                      }}
+                    >
+                      {statusLabel}
+                    </div>
+                  </div>
+
+                  {/* 数值行 */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 10 }}>
+                    <span style={{ fontSize: 20, fontWeight: 700, color }}>
+                      {item.actual % 1 === 0 ? item.actual : item.actual.toFixed(1)}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#999', marginLeft: 6 }}>
+                      / {target % 1 === 0 ? target : target.toFixed(1)} {item.unit}
+                    </span>
+                  </div>
+
+                  {/* 渐变进度条 + 百分比 */}
+                  <div style={{ marginTop: 10 }}>
+                    <div
+                      style={{
+                        height: 6,
+                        borderRadius: 3,
+                        background: '#f0f0f0',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${Math.min(percentage, 100)}%`,
+                          borderRadius: 3,
+                          background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+                          transition: 'width 0.6s ease',
+                        }}
+                      />
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: 12, color: '#999', marginTop: 4 }}>
+                      {percentage.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '36px 0', color: '#999', fontSize: 13 }}>
+            暂无关联岗位的个人目标数据
+          </div>
+        )}
+      </div>
+
+      {/* ═══════════ 模块三：我的战队目标盘 ═══════════ */}
+      {teamStats && (
+        <div
+          style={{
+            marginTop: 16,
+            background: 'linear-gradient(135deg, #0a1929, #102a4c)',
+            color: '#fff',
+            padding: 20,
+            borderRadius: 12,
+          }}
+        >
+          {/* 标题行：战队名 + 战区Tag + 状态灯 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>⚔️ {teamStats.team_name}</span>
+            <span
+              style={{
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 10,
+                border: '1px solid #00d4ff',
+                color: '#00d4ff',
+              }}
+            >
+              {teamStats.zone_name}
+            </span>
+            {/* 状态灯 */}
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                display: 'inline-block',
+                marginLeft: 'auto',
+                background:
+                  teamStats.status_light === 'green'
+                    ? '#52c41a'
+                    : teamStats.status_light === 'yellow'
+                      ? '#faad14'
+                      : '#ff4d4f',
+                boxShadow: `0 0 6px ${
+                  teamStats.status_light === 'green'
+                    ? '#52c41a'
+                    : teamStats.status_light === 'yellow'
+                      ? '#faad14'
+                      : '#ff4d4f'
+                }`,
+              }}
+            />
+          </div>
+
+          {/* 营销新签进度 */}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, opacity: 0.85 }}>📈 营销新签</span>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                {teamStats.marketing_actual} / {teamStats.marketing_target} 万元 · {teamStats.marketing_percentage}%
+              </span>
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(teamStats.marketing_percentage, 100)}%`,
+                  borderRadius: 3,
+                  background: 'linear-gradient(90deg, #1677ff, #69b1ff)',
+                  transition: 'width 0.6s ease',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 交付新签进度 */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, opacity: 0.85 }}>📦 交付新签</span>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                {teamStats.delivery_actual} / {teamStats.delivery_target} 万元 · {teamStats.delivery_percentage}%
+              </span>
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(teamStats.delivery_percentage, 100)}%`,
+                  borderRadius: 3,
+                  background: 'linear-gradient(90deg, #52c41a, #95de64)',
+                  transition: 'width 0.6s ease',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 过程指标：3列grid */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              marginTop: 16,
+              paddingTop: 14,
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              textAlign: 'center',
+            }}
+          >
+            {/* 幸福动作 */}
+            <div style={{ borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ fontSize: 11, opacity: 0.6 }}>😊 幸福动作</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{teamStats.happiness_actions}</div>
+            </div>
+            {/* 铁三角 */}
+            <div style={{ borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ fontSize: 11, opacity: 0.6 }}>🤝 铁三角</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{teamStats.iron_triangle}</div>
+            </div>
+            {/* 有效线索 */}
+            <div>
+              <div style={{ fontSize: 11, opacity: 0.6 }}>🔍 有效线索</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{teamStats.valid_leads}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ 模块四：目标说明 ═══════════ */}
       <div className="card" style={{ marginTop: 16 }}>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>📌 目标说明</div>
         <ul style={{ fontSize: 13, color: '#666', lineHeight: 2, paddingLeft: 16 }}>
