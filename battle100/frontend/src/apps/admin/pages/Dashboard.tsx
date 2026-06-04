@@ -26,15 +26,15 @@ import type { DashboardData, MyStatsResponse, RankingItem } from '@shared/types'
 const { Title, Text } = Typography
 
 const MATRIX_KPI_CONFIG = [
-  { key: 'marketing_signing', label: '营销新签实际/目标', unit: '万元', headerBg: '#e6f7ff', titleColor: '#096dd9' },
-  { key: 'delivery_signing', label: '交付新签实际/目标', unit: '万元', headerBg: '#e6fffb', titleColor: '#08979c' },
-  { key: 'happiness_action', label: '客户幸福动作完成数', unit: '次', headerBg: '#feffe6', titleColor: '#ad8b00' },
-  { key: 'triangle_count', label: '售前铁三角联动次数', unit: '次', headerBg: '#f6ffed', titleColor: '#389e0d' },
-  { key: 'leads_count', label: '有效线索数', unit: '条', headerBg: '#fff2e8', titleColor: '#d4380d' },
-  { key: 'leads_conversion_rate', label: '线索转化率', unit: '%', headerBg: '#f9f0ff', titleColor: '#531dab' },
-  { key: 'new_customer_count', label: '新客户数', unit: '个', headerBg: '#fcffe6', titleColor: '#5b8c00' },
-  { key: 'happiness_story_count', label: '幸福故事数', unit: '个', headerBg: '#fff0f6', titleColor: '#c41d7f' },
-  { key: 'contract_count', label: '新签合同单数', unit: '个', headerBg: '#e6fffb', titleColor: '#08979c' }
+  { key: 'marketing_signing', label: '营销新签实际/目标', unit: '万元', headerBg: '#e6f7ff', titleColor: '#096dd9', width: 130 },
+  { key: 'delivery_signing', label: '交付新签实际/目标', unit: '万元', headerBg: '#e6fffb', titleColor: '#08979c', width: 130 },
+  { key: 'happiness_action', label: '客户幸福动作完成数', unit: '次', headerBg: '#feffe6', titleColor: '#ad8b00', width: 100 },
+  { key: 'triangle_count', label: '售前铁三角联动次数', unit: '次', headerBg: '#f6ffed', titleColor: '#389e0d', width: 100 },
+  { key: 'leads_count', label: '有效线索数', unit: '条', headerBg: '#fff2e8', titleColor: '#d4380d', width: 85 },
+  { key: 'leads_conversion_rate', label: '线索转化率', unit: '%', headerBg: '#f9f0ff', titleColor: '#531dab', width: 85 },
+  { key: 'new_customer_count', label: '新客户数', unit: '个', headerBg: '#fcffe6', titleColor: '#5b8c00', width: 85 },
+  { key: 'happiness_story_count', label: '幸福故事数', unit: '个', headerBg: '#fff0f6', titleColor: '#c41d7f', width: 85 },
+  { key: 'contract_count', label: '新签合同单数', unit: '个', headerBg: '#e6fffb', titleColor: '#08979c', width: 85 }
 ]
 
 const Dashboard: React.FC = () => {
@@ -2010,7 +2010,7 @@ const Dashboard: React.FC = () => {
                 </div>
               ),
               key: kpi.key,
-              width: 145,
+              width: kpi.width,
               align: 'center' as const,
               render: (_: any, record: any) => {
                 const goal = record.goals[kpi.key]
