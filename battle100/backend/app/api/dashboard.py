@@ -4,7 +4,7 @@ import logging
 import pymysql
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, asc
 from sqlalchemy.orm import selectinload, aliased
 
 from app.config import settings
@@ -427,6 +427,7 @@ async def get_dashboard_overview(
     target_date: date | None = Query(None, description="数据日期，默认今天"),
     team_id: int | None = Query(None, description="过滤战队ID"),
     third_class_bar: str | None = Query(None, description="过滤三级巴/三级部门"),
+    is_lying_flat: bool = Query(False, description="是否切换为躺平榜(反向排序)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -946,7 +947,9 @@ async def get_dashboard_overview(
             )
         )
 
-    # 5.1 营销新签周战将榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    # 5.1 营销新签周战将榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
+    order_direction = asc("score") if is_lying_flat else desc("score")
+
     marketing_hero_stmt = (
         select(
             User.name,
@@ -968,7 +971,12 @@ async def get_dashboard_overview(
         marketing_hero_stmt = marketing_hero_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         marketing_hero_stmt = marketing_hero_stmt.where(User.third_class_bar == third_class_bar)
-    marketing_hero_stmt = marketing_hero_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    marketing_hero_stmt = (
+        marketing_hero_stmt.group_by(User.id, User.name, Team.name)
+        .having(func.coalesce(func.sum(ReportDetail.amount), 0) > 0)
+        .order_by(order_direction)
+        .limit(15)
+    )
     
     marketing_hero_query = await db.execute(marketing_hero_stmt)
     marketing_hero_rows = marketing_hero_query.all()
@@ -986,7 +994,7 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 5.2 交付新签周战将榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    # 5.2 交付新签周战将榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
     delivery_hero_stmt = (
         select(
             User.name,
@@ -1008,7 +1016,12 @@ async def get_dashboard_overview(
         delivery_hero_stmt = delivery_hero_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         delivery_hero_stmt = delivery_hero_stmt.where(User.third_class_bar == third_class_bar)
-    delivery_hero_stmt = delivery_hero_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    delivery_hero_stmt = (
+        delivery_hero_stmt.group_by(User.id, User.name, Team.name)
+        .having(func.coalesce(func.sum(ReportDetail.amount), 0) > 0)
+        .order_by(order_direction)
+        .limit(15)
+    )
     
     delivery_hero_query = await db.execute(delivery_hero_stmt)
     delivery_hero_rows = delivery_hero_query.all()
@@ -1026,7 +1039,7 @@ async def get_dashboard_overview(
                 )
             )
         
-    # 6. 周客户幸福动作卷王榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    # 6. 周客户幸福动作卷王榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
     happiness_stmt = (
         select(
             User.name,
@@ -1045,7 +1058,12 @@ async def get_dashboard_overview(
         happiness_stmt = happiness_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         happiness_stmt = happiness_stmt.where(User.third_class_bar == third_class_bar)
-    happiness_stmt = happiness_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    happiness_stmt = (
+        happiness_stmt.group_by(User.id, User.name, Team.name)
+        .having(func.coalesce(func.sum(DailyReport.happiness_actions), 0) > 0)
+        .order_by(order_direction)
+        .limit(15)
+    )
     
     happiness_query = await db.execute(happiness_stmt)
     happiness_rows = happiness_query.all()
@@ -1063,7 +1081,7 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 7. 周铁三角协作标杆榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    # 7. 周铁三角协作标杆榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
     triangle_stmt = (
         select(
             User.name,
@@ -1082,7 +1100,12 @@ async def get_dashboard_overview(
         triangle_stmt = triangle_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         triangle_stmt = triangle_stmt.where(User.third_class_bar == third_class_bar)
-    triangle_stmt = triangle_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    triangle_stmt = (
+        triangle_stmt.group_by(User.id, User.name, Team.name)
+        .having(func.coalesce(func.sum(DailyReport.triangle_count), 0) > 0)
+        .order_by(order_direction)
+        .limit(15)
+    )
     
     triangle_query = await db.execute(triangle_stmt)
     triangle_rows = triangle_query.all()
@@ -1100,7 +1123,7 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 7.5. 周线索先锋奖榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    # 7.5. 周线索先锋奖榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
     leads_stmt = (
         select(
             User.name,
@@ -1119,7 +1142,12 @@ async def get_dashboard_overview(
         leads_stmt = leads_stmt.where(User.team_id == team_id)
     if third_class_bar is not None and third_class_bar != "":
         leads_stmt = leads_stmt.where(User.third_class_bar == third_class_bar)
-    leads_stmt = leads_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    leads_stmt = (
+        leads_stmt.group_by(User.id, User.name, Team.name)
+        .having(func.coalesce(func.sum(DailyReport.leads_count), 0) > 0)
+        .order_by(order_direction)
+        .limit(15)
+    )
     
     leads_query = await db.execute(leads_stmt)
     leads_rows = leads_query.all()

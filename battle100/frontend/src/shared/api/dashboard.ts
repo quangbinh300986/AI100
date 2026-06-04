@@ -5,7 +5,7 @@ import { get } from './client'
 import type { DashboardData, RankingItem, MyStatsResponse } from '@shared/types'
 
 /** 获取大屏全部数据 */
-export function getDashboardData(params?: { team_id?: number; third_class_bar?: string }) {
+export function getDashboardData(params?: { team_id?: number; third_class_bar?: string; is_lying_flat?: boolean }) {
   return get<DashboardData>('/dashboard/overview', { params })
 }
 

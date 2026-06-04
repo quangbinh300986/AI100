@@ -355,6 +355,7 @@ const Dashboard: React.FC = () => {
   // 周战将排行榜的战队与三级巴筛选状态，所有注释必须使用中文
   const [rankFilterTeamId, setRankFilterTeamId] = useState<number | undefined>(undefined)
   const [rankFilterThirdClassBar, setRankFilterThirdClassBar] = useState<string | undefined>(undefined)
+  const [rankFilterLyingFlat, setRankFilterLyingFlat] = useState<boolean>(false)
 
   // 定时轮播：每 8 秒自动轮播一次，所有注释必须使用中文
   useEffect(() => {
@@ -950,7 +951,8 @@ const Dashboard: React.FC = () => {
       // 1. 获取全盘大屏概览数据，带上周战将排行榜专有筛选条件
       const res = await getDashboardData({
         team_id: rankFilterTeamId,
-        third_class_bar: rankFilterThirdClassBar
+        third_class_bar: rankFilterThirdClassBar,
+        is_lying_flat: rankFilterLyingFlat
       })
       if (res) {
         setData(res as any)
@@ -1042,7 +1044,7 @@ const Dashboard: React.FC = () => {
   // 监听排行榜专属过滤状态变化，自动重载概览数据，所有注释必须使用中文
   useEffect(() => {
     loadData()
-  }, [rankFilterTeamId, rankFilterThirdClassBar])
+  }, [rankFilterTeamId, rankFilterThirdClassBar, rankFilterLyingFlat])
 
   useEffect(() => {
     loadUsersList()
@@ -1680,37 +1682,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} lg={7}>
           <Card 
             title={<span>{getRankListDetails().title}</span>}
-            extra={
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Select
-                  placeholder="按战队"
-                  allowClear
-                  size="small"
-                  style={{ width: 90 }}
-                  value={rankFilterTeamId}
-                  onChange={(val) => setRankFilterTeamId(val)}
-                  dropdownMatchSelectWidth={false}
-                >
-                  {(data as any)?.teams?.map((t: any) => (
-                    <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                  ))}
-                </Select>
-                <Select
-                  placeholder="按三级巴"
-                  allowClear
-                  size="small"
-                  style={{ width: 90 }}
-                  value={rankFilterThirdClassBar}
-                  onChange={(val) => setRankFilterThirdClassBar(val)}
-                  dropdownMatchSelectWidth={false}
-                >
-                  {(data as any)?.thirdClassBars?.map((b: string) => (
-                    <Select.Option key={b} value={b}>{b}</Select.Option>
-                  ))}
-                </Select>
-                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal', whiteSpace: 'nowrap' }}>⏳ 8s</span>
-              </div>
-            }
+            extra={<span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal', whiteSpace: 'nowrap' }}>⏳ 8s 轮播</span>}
             bordered={false} 
             style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
           >
@@ -1753,6 +1725,45 @@ const Dashboard: React.FC = () => {
                   </Button>
                 )
               })}
+            </div>
+
+            {/* 排行榜过滤器操作栏（按战队、按三级巴筛选及躺平榜切换开关），所有注释必须使用中文 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, paddingBottom: 8, borderBottom: '1px dashed #f0f0f0' }}>
+              <Select
+                placeholder="按战队"
+                allowClear
+                size="small"
+                style={{ width: 100 }}
+                value={rankFilterTeamId}
+                onChange={(val) => setRankFilterTeamId(val)}
+                dropdownMatchSelectWidth={false}
+              >
+                {(data as any)?.teams?.map((t: any) => (
+                  <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                ))}
+              </Select>
+              <Select
+                placeholder="按三级巴"
+                allowClear
+                size="small"
+                style={{ width: 110 }}
+                value={rankFilterThirdClassBar}
+                onChange={(val) => setRankFilterThirdClassBar(val)}
+                dropdownMatchSelectWidth={false}
+              >
+                {(data as any)?.thirdClassBars?.map((b: string) => (
+                  <Select.Option key={b} value={b}>{b}</Select.Option>
+                ))}
+              </Select>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 12, color: rankFilterLyingFlat ? '#d4380d' : '#595959', fontWeight: rankFilterLyingFlat ? 'bold' : 'normal' }}>
+                  🛌 躺平榜
+                </span>
+                <Checkbox
+                  checked={rankFilterLyingFlat}
+                  onChange={(e) => setRankFilterLyingFlat(e.target.checked)}
+                />
+              </div>
             </div>
 
             {/* 英雄榜数据列表容器 */}
