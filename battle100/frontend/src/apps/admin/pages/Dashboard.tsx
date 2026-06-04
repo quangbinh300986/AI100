@@ -392,6 +392,7 @@ const Dashboard: React.FC = () => {
   const [detailData, setDetailData] = useState<any[]>([])
   const [detailCategory, setDetailCategory] = useState<string>('')
   const [detailUser, setDetailUser] = useState<string>('')
+  const [isDetailAll, setIsDetailAll] = useState<boolean>(false)
 
   // 周战将排行榜的战队与三级巴筛选状态，所有注释必须使用中文
   const [rankFilterTeamId, setRankFilterTeamId] = useState<number | undefined>(undefined)
@@ -469,6 +470,7 @@ const Dashboard: React.FC = () => {
   const handleViewPersonalDetail = (userName: string, category: string, isAll = false) => {
     setDetailUser(userName)
     setDetailCategory(category)
+    setIsDetailAll(isAll)
     setDetailData([])
     setDetailDrawerVisible(true)
     fetchPersonalWeeklyDetail(userName, category, isAll)
@@ -516,6 +518,8 @@ const Dashboard: React.FC = () => {
     switch (category) {
       case 'marketing_signing':
       case 'delivery_signing':
+      case 'contract_count':
+      case 'new_customer_count':
         return [
           ...baseColumns,
           {
@@ -534,6 +538,8 @@ const Dashboard: React.FC = () => {
           }
         ]
       case 'leads':
+      case 'leads_count':
+      case 'leads_conversion_rate':
         return [
           ...baseColumns,
           {
@@ -559,6 +565,8 @@ const Dashboard: React.FC = () => {
           }
         ]
       case 'happiness':
+      case 'happiness_action':
+      case 'happiness_story_count':
         return [
           ...baseColumns,
           {
@@ -584,6 +592,7 @@ const Dashboard: React.FC = () => {
           }
         ]
       case 'triangle':
+      case 'triangle_count':
         return [
           ...baseColumns,
           {
@@ -3559,12 +3568,13 @@ const Dashboard: React.FC = () => {
       <Drawer
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>⚡ 【{detailUser}】本周【{
+            <span>⚡ 【{detailUser}】{isDetailAll ? '累计' : '本周'}【{
               detailCategory === 'marketing_signing' ? '营销新签' :
               detailCategory === 'delivery_signing' ? '交付新签' :
-              detailCategory === 'leads' ? '有效线索' :
-              detailCategory === 'happiness' ? '客户幸福' :
-              detailCategory === 'triangle' ? '铁三角联动' : ''
+              ['leads', 'leads_count', 'leads_conversion_rate'].includes(detailCategory) ? '有效线索' :
+              ['happiness', 'happiness_action', 'happiness_story_count'].includes(detailCategory) ? '客户幸福' :
+              ['triangle', 'triangle_count'].includes(detailCategory) ? '铁三角联动' : 
+              ['contract_count', 'new_customer_count'].includes(detailCategory) ? '新签合同' : ''
             }】实绩明细</span>
           </div>
         }
@@ -3582,7 +3592,7 @@ const Dashboard: React.FC = () => {
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           size="middle"
           bordered
-          locale={{ emptyText: <span style={{ color: '#bfbfbf' }}>本周暂无该项实绩明细记录</span> }}
+          locale={{ emptyText: <span style={{ color: '#bfbfbf' }}>{isDetailAll ? '暂无该项累计实绩明细记录' : '本周暂无该项实绩明细记录'}</span> }}
         />
       </Drawer>
     </div>

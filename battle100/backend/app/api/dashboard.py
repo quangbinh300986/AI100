@@ -3389,6 +3389,14 @@ async def get_personal_weekly_detail(
         date_filters.append(DailyReport.report_date >= start_of_week)
         date_filters.append(DailyReport.report_date <= end_of_week)
     
+    # 类别兼容与映射，所有注释必须使用中文
+    if category in ["happiness_action", "happiness_story_count"]:
+        category = "happiness"
+    elif category == "triangle_count":
+        category = "triangle"
+    elif category in ["leads_count", "leads_conversion_rate"]:
+        category = "leads"
+
     # 根据类别进行差异化查询
     if category == "marketing_signing":
         # 营销新签明细：detail_type == CONTRACT，且描述包含 "营销新签分摊"
@@ -3581,6 +3589,35 @@ async def get_personal_weekly_detail(
                 "id": row.id,
                 "date": row.report_date.strftime("%Y-%m-%d"),
                 "customer_name": row.customer_name or "未关联客户",
+                "description": row.description or ""
+            })
+            
+    elif category in ["contract_count", "new_customer_count"]:
+        # 新签合同单数与新客户明细：全部 detail_type == CONTRACT，且不限分摊描述
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                *date_filters
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        for row in res.all():
+            details_list.append({
+                "id": row.id,
+                "date": row.report_date.strftime("%Y-%m-%d"),
+                "customer_name": row.customer_name or "未关联客户",
+                "amount": round(float(row.amount or 0.0), 2),
                 "description": row.description or ""
             })
             
