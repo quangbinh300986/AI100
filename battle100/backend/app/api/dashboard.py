@@ -613,9 +613,9 @@ async def get_dashboard_overview(
             z_m_target += t_m_tgt
             z_d_target += t_d_tgt
 
-        # 加权计算战区百分比
+        # 计算战区百分比
         if z_m_target > 0 and z_d_target > 0:
-            z_pct = round((z_m_actual / z_m_target * 50) + (z_d_actual / z_d_target * 50), 2)
+            z_pct = round(((z_m_actual + z_d_actual) / (z_m_target + z_d_target) * 100), 2)
         elif z_m_target <= 0 and z_d_target > 0:
             z_pct = round((z_d_actual / z_d_target * 100), 2)
         elif z_m_target > 0 and z_d_target <= 0:
@@ -666,11 +666,9 @@ async def get_dashboard_overview(
                 if d_target_total > 0:
                     t_d_target = round(d_target_total / 12, 2)
 
-            # 3. 加权计算综合完成百分比
+            # 3. 计算综合完成百分比
             if t_m_target > 0 and t_d_target > 0:
-                t_m_pct = (t_m_actual / t_m_target) * 50
-                t_d_pct = (t_d_actual / t_d_target) * 50
-                t_pct = round(t_m_pct + t_d_pct, 2)
+                t_pct = round(((t_m_actual + t_d_actual) / (t_m_target + t_d_target) * 100), 2)
             elif t_m_target <= 0 and t_d_target > 0:
                 t_pct = round((t_d_actual / t_d_target) * 100, 2)
             elif t_m_target > 0 and t_d_target <= 0:

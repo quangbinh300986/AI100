@@ -44,6 +44,7 @@ const Dashboard: React.FC = () => {
   const [crmProjects, setCrmProjects] = useState<any[]>([])
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmCustomers, setCrmCustomers] = useState<string[]>([])
+  const [crmProjectsSearch, setCrmProjectsSearch] = useState<string[]>([])
   
   const [teamMetricsModalVisible, setTeamMetricsModalVisible] = useState(false)
   const [selectedTeamMetrics, setSelectedTeamMetrics] = useState<any>(null)
@@ -653,7 +654,7 @@ const Dashboard: React.FC = () => {
         crmProjectId: undefined,
         customerName: '',
         amount: '',
-        projectName: '',
+        projectName: type === 'happiness' ? '未定' : '',
         contractName: '',
         budgetMoney: '',
         expectMoney: '',
@@ -664,6 +665,9 @@ const Dashboard: React.FC = () => {
         actionDescription: '',
         content: type ? '奋战一百天，亮剑破六千！今日' : ''
       })
+      if (type === 'happiness') {
+        loadCrmProjectsSearch()
+      }
       setFormVersion(v => v + 1)
       return
     }
@@ -781,7 +785,8 @@ const Dashboard: React.FC = () => {
       }
       case 'happiness': {
         const feedbackLine = happinessFeedback ? `\n客户反馈：${happinessFeedback}。` : '';
-        generated = `${prefix}我司【${employeeName || 'XX'}】做到客户幸福标准【${happinessScore ?? 0}分】动作，对象为【${customerName || 'XX'}】，动作描述：${actionDescription || 'XX'}。\n成果：${happinessResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${recommendAction || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
+        const projectPart = projectName ? `，关联项目【${projectName}】` : '，关联项目【未定】';
+        generated = `${prefix}我司【${employeeName || 'XX'}】做到客户幸福标准【${happinessScore ?? 0}分】动作，对象为【${customerName || 'XX'}】${projectPart}，动作描述：${actionDescription || 'XX'}。\n成果：${happinessResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${recommendAction || 'XX'}。\n为客户幸福而奋斗，赢战百日！`;
         break;
       }
       default:
@@ -849,9 +854,41 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  const projectSearchTimerRef = React.useRef<any>(null)
+
+  const handleProjectSearch = (val: string) => {
+    if (projectSearchTimerRef.current) {
+      clearTimeout(projectSearchTimerRef.current)
+    }
+    projectSearchTimerRef.current = setTimeout(() => {
+      loadCrmProjectsSearch(val)
+    }, 300)
+  }
+
+  // 异步获取 CRM 数据库中的项目名称列表，支持模糊搜索，限制返回条数，按创建时间倒序
+  const loadCrmProjectsSearch = async (keyword?: string) => {
+    try {
+      let url = '/broadcast/crm-projects-search'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setCrmProjectsSearch(data)
+      } else {
+        setCrmProjectsSearch([])
+      }
+    } catch (err) {
+      console.error('加载 CRM 项目列表失败', err)
+      setCrmProjectsSearch([])
+    }
+  }
+
   useEffect(() => {
     if (broadcastModalVisible) {
       loadCrmCustomers()
+      loadCrmProjectsSearch()
     }
   }, [broadcastModalVisible])
 
@@ -967,6 +1004,7 @@ const Dashboard: React.FC = () => {
         budget_money: values.budgetMoney ? parseFloat(values.budgetMoney) : undefined,
         expect_money: values.expectMoney ? parseFloat(values.expectMoney) : undefined,
         crm_opportunity_id: values.crmProjectId,
+        project_name: values.projectName || '未定',
         // 铁三角联动新增多选人员
         copartners: values.copartners,
         marketing_copartners: values.marketingCopartners,
@@ -2093,6 +2131,17 @@ const Dashboard: React.FC = () => {
                     ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
                   options={usersList.map(u => ({ value: u.name, label: u.name }))}
+                />
+              </Form.Item>
+              <Form.Item name="projectName" label="项目名称">
+                <Select
+                  showSearch
+                  placeholder="输入关键字检索并选择 CRM 项目（选填，默认为未定）"
+                  filterOption={false}
+                  onSearch={handleProjectSearch}
+                  options={crmProjectsSearch.map(p => ({ value: p, label: p }))}
+                  defaultActiveFirstOption={false}
+                  allowClear
                 />
               </Form.Item>
               <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}>

@@ -119,6 +119,9 @@ class ReportDetail(BaseModel):
     happiness_standard_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("happiness_standards.id"), nullable=True, comment="幸福标准ID"
     )
+    project_name: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, comment="项目名称"
+    )
     description: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="描述说明"
     )

@@ -225,7 +225,7 @@ const ZoneLeaderboard: React.FC<ZoneLeaderboardProps> = ({ theme = 'theme-gold',
         paddingLeft: '0.4rem',
         lineHeight: '1.2'
       }}>
-        * 注：<strong style={{ color: '#ffd700' }}>完成百分比 (%)</strong> = (营销新签实际/基础目标 × 50%) + (交付新签实际/基础目标 × 50%)。无营销目标的战队(如广州三战队)完成百分比 = 交付实际/基础目标 × 100%。
+        * 注：<strong style={{ color: '#ffd700' }}>完成百分比 (%)</strong> = (营销新签实际 + 交付新签实际) / (营销新签基础目标 + 交付新签基础目标) × 100%。无营销目标的战队(如广州三战队)完成百分比 = 交付实际/基础目标 × 100%。
       </div>
     </div>
   )

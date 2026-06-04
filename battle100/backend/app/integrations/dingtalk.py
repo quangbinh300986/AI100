@@ -316,32 +316,63 @@ class DingTalkClient:
         }
         type_name = event_type_names.get(event_type, "最新战报")
         
+        # 提取项目名称与客户名称
+        project_name_val = None
+        proj_match = re.search(r"关联项目【([^】]+)】", content)
+        if proj_match:
+            project_name_val = proj_match.group(1)
+        if not project_name_val:
+            proj_match = re.search(r"确定([^】]+)项目走完合同流程", content)
+            if proj_match:
+                project_name_val = proj_match.group(1)
+        if not project_name_val:
+            proj_match = re.search(r"确定([^】]+)项目中地承接", content)
+            if proj_match:
+                project_name_val = proj_match.group(1)
+
+        customer_name_val = None
+        cust_match = re.search(r"对象为【([^】]+)】", content)
+        if cust_match:
+            customer_name_val = cust_match.group(1)
+        if not customer_name_val:
+            cust_match = re.search(r"客户为\s*([^，!。]+)", content)
+            if cust_match:
+                customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
+        if not customer_name_val:
+            cust_match = re.search(r"业主单位：\s*([^，!。]+)", content)
+            if cust_match:
+                customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
+
         # 2. 格式化精美 Markdown 内容
         cleaned_content = content
         if "【战报播报】" in cleaned_content:
             cleaned_content = cleaned_content.replace("【战报播报】", "")
             
+        if event_type == "happiness":
+            cleaned_content = re.sub(r"今日我司【[^】]+】", "", cleaned_content)
+            cleaned_content = re.sub(r"，?对象为【[^】]+】", "", cleaned_content)
+            cleaned_content = re.sub(r"，?关联项目【[^】]+】", "", cleaned_content)
+            cleaned_content = cleaned_content.replace("，，", "，")
+
         markdown_text = f"### 🎉 战报播报 | 赢战百日\n\n"
         markdown_text += f"**恭喜战友，再传捷报！**\n\n"
         markdown_text += f"---\n"
         markdown_text += f"* **战报类型**：{type_name}\n"
         if user_name:
             markdown_text += f"* **推进战友**：{user_name}\n"
+        if project_name_val:
+            markdown_text += f"* **项目名称**：{project_name_val}\n"
+        if customer_name_val:
+            markdown_text += f"* **客户名称**：{customer_name_val}\n"
         if team_name:
             markdown_text += f"* **所属战队**：{team_name}\n"
             
-        # 提取金额与客户单位
+        # 提取金额
         amount_match = re.search(r"金额：\s*([0-9.]+)\s*万元", content)
         if not amount_match:
             amount_match = re.search(r"价值\s*([0-9.]+)\s*万元", content)
         if amount_match:
             markdown_text += f"* **战报金额**：**{amount_match.group(1)}** 万元 💰\n"
-            
-        customer_match = re.search(r"业主单位：\s*([^，!。]+)", content)
-        if not customer_match:
-            customer_match = re.search(r"客户为\s*([^，!。]+)", content)
-        if customer_match:
-            markdown_text += f"* **业主单位**：{customer_match.group(1)}\n"
             
         markdown_text += f"---\n"
         

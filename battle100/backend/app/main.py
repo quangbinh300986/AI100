@@ -37,9 +37,13 @@ from app.services.websocket import ws_manager
 
 async def init_db():
     """初始化数据库表并预置幸福度标准及默认角色权限"""
+    from sqlalchemy import text
     async with engine.begin() as conn:
         # 使用同步反射自动在PostgreSQL中创建表
         await conn.run_sync(Base.metadata.create_all)
+        # 自愈式升级：自动在 report_details 和 broadcast_events 中补充 project_name 字段列
+        await conn.execute(text("ALTER TABLE report_details ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
     logger.info("数据库表结构初始化成功")
 
     # 异步预置角色权限默认配置

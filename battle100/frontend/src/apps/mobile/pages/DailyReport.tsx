@@ -29,6 +29,8 @@ export default function DailyReport() {
   // 接口数据池
   const [users, setUsers] = useState<any[]>([])
   const [crmCustomers, setCrmCustomers] = useState<string[]>([])
+  const [crmProjectsSearch, setCrmProjectsSearch] = useState<string[]>([])
+  const [projectSearchKeyword, setProjectSearchKeyword] = useState('')
   const [crmProjects, setCrmProjects] = useState<any[]>([])
   const [crmLoading, setCrmLoading] = useState(false)
 
@@ -68,6 +70,7 @@ export default function DailyReport() {
   const [formData, setFormData] = useState({
     crmOpportunityId: '',
     customerName: '',
+    projectName: '',
     amount: 0.0,
     budgetMoney: 0.0,
     expectMoney: 0.0,
@@ -118,6 +121,33 @@ export default function DailyReport() {
     }
   }
 
+  const projectSearchTimerRef = useRef<any>(null)
+
+  const handleProjectSearch = (val: string) => {
+    if (projectSearchTimerRef.current) {
+      clearTimeout(projectSearchTimerRef.current)
+    }
+    projectSearchTimerRef.current = setTimeout(() => {
+      loadCrmProjectsSearch(val)
+    }, 300)
+  }
+
+  const loadCrmProjectsSearch = async (keyword?: string) => {
+    try {
+      let url = '/broadcast/crm-projects-search'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const pRes = await get<any>(url)
+      const pData = pRes?.data ? pRes.data : pRes
+      if (Array.isArray(pData)) {
+        setCrmProjectsSearch(pData)
+      }
+    } catch (err) {
+      console.error('加载 CRM 项目列表失败', err)
+    }
+  }
+
   // 挂载加载
   useEffect(() => {
     const initData = async () => {
@@ -129,6 +159,7 @@ export default function DailyReport() {
         }
         
         await loadCrmCustomers()
+        await loadCrmProjectsSearch()
       } catch (err) {
         console.error('初始化移动端基础数据失败', err)
       }
@@ -158,6 +189,7 @@ export default function DailyReport() {
     setFormData({
       crmOpportunityId: '',
       customerName: '',
+      projectName: val === 'happiness' ? '未定' : '',
       amount: 0.0,
       budgetMoney: 0.0,
       expectMoney: 0.0,
@@ -181,6 +213,8 @@ export default function DailyReport() {
       loadCrmProjects(75)
     } else if (val === 'lead_25') {
       loadCrmProjects(25)
+    } else if (val === 'happiness') {
+      loadCrmProjectsSearch()
     }
   }
 
@@ -311,6 +345,7 @@ export default function DailyReport() {
     score: number,
     desc: string,
     customer: string,
+    projName?: string,
     result?: string,
     feedback?: string,
     recommend?: string
@@ -319,12 +354,14 @@ export default function DailyReport() {
     const resolvedName = user?.realName || user?.name || user?.username || 'XX'
     
     // 如果未传入则回退至当前 formData 状态值
+    const activeProj = projName !== undefined ? projName : formData.projectName;
     const activeResult = result !== undefined ? result : formData.happinessResult;
     const activeFeedback = feedback !== undefined ? feedback : formData.happinessFeedback;
     const activeRecommend = recommend !== undefined ? recommend : formData.recommendAction;
 
     const feedbackLine = activeFeedback ? `\n客户反馈：${activeFeedback}。` : '';
-    const generated = `${prefix}我司【${resolvedName}】做到客户幸福标准【${score}分】动作，对象为【${customer || 'XX'}】，动作描述：${desc || 'XX'}。\n成果：${activeResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${activeRecommend || 'XX'}。\n为客户幸福而奋斗，赢战百日！`
+    const projectPart = activeProj ? `，关联项目【${activeProj}】` : '，关联项目【未定】';
+    const generated = `${prefix}我司【${resolvedName}】做到客户幸福标准【${score}分】动作，对象为【${customer || 'XX'}】${projectPart}，动作描述：${desc || 'XX'}。\n成果：${activeResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${activeRecommend || 'XX'}。\n为客户幸福而奋斗，赢战百日！`
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
@@ -481,6 +518,7 @@ export default function DailyReport() {
       customer_name: formData.customerName || formData.projectName || '',
       amount: formData.amount,
       crm_opportunity_id: formData.crmOpportunityId || null,
+      project_name: actionType === 'happiness' ? (formData.projectName || '未定') : null,
       happiness_score: actionType === 'happiness' ? formData.happinessScore : null,
       action_description: (actionType === 'happiness' || actionType === 'triangle') ? formData.actionDescription : null,
       delivery_allocations: actionType === 'contract' ? deliveryAllocations : null,
@@ -1087,6 +1125,50 @@ export default function DailyReport() {
               </span>
             </div>
 
+            {/* 项目选择部分 */}
+            <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>
+              项目名称（选填，默认为未定）：
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f0f0f0', borderRadius: 8, padding: '6px 12px', marginBottom: 12 }}>
+              <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+              <Input
+                placeholder="搜索选择 CRM 项目名称..."
+                value={projectSearchKeyword}
+                onChange={(val) => {
+                  setProjectSearchKeyword(val)
+                  setFormData(prev => ({ ...prev, projectName: val || '未定' }))
+                  updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, val || '未定')
+                  handleProjectSearch(val)
+                }}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+
+            {crmProjectsSearch.length > 0 && projectSearchKeyword && (
+              <div style={{ maxHeight: 150, overflowY: 'auto', marginBottom: 16, border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                {crmProjectsSearch.slice(0, 15).map((proj) => (
+                  <div
+                    key={proj}
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, projectName: proj }))
+                      updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, proj)
+                      setProjectSearchKeyword('')
+                    }}
+                    style={{
+                      padding: '10px 12px',
+                      borderBottom: '1px solid #f5f5f5',
+                      background: '#fff',
+                      fontSize: 13,
+                      color: '#333'
+                    }}
+                  >
+                    {proj}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>
               请搜索并选择实施了幸福关怀动作的客户单位：
             </div>
@@ -1132,6 +1214,36 @@ export default function DailyReport() {
             )}
 
             <Form layout="vertical">
+              <Form.Item label="选定的项目名称">
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Input
+                    value={formData.projectName}
+                    readOnly
+                    placeholder="默认为未定"
+                    style={{
+                      fontSize: 13,
+                      border: '1px solid #e8e8e8',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      background: '#f5f5f5',
+                      color: '#999',
+                      flex: 1
+                    }}
+                  />
+                  {formData.projectName && formData.projectName !== '未定' && (
+                    <Button
+                      size="mini"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, projectName: '未定' }))
+                        updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, '未定')
+                      }}
+                    >
+                      清除
+                    </Button>
+                  )}
+                </div>
+              </Form.Item>
+
               <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>选定的客户名称</span>}>
                 <Input
                   value={formData.customerName}

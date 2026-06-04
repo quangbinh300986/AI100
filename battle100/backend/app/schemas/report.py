@@ -17,6 +17,7 @@ class ReportDetailCreate(BaseModel):
     crm_opportunity_id: Optional[str] = Field(None, description="CRM商机ID")
     happiness_level: Optional[int] = Field(None, description="幸福等级")
     happiness_standard_id: Optional[int] = Field(None, description="幸福标准ID")
+    project_name: Optional[str] = Field(None, description="项目名称")
     description: Optional[str] = Field(None, description="描述说明")
     attachment_urls: Optional[list[str]] = Field(None, description="附件URL列表")
     partner_user_id: Optional[int] = Field(None, description="协同搭档用户ID")

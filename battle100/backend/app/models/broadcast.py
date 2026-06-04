@@ -77,6 +77,9 @@ class BroadcastEvent(BaseModel):
     crm_opportunity_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, comment="关联CRM商机ID"
     )
+    project_name: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, comment="项目名称"
+    )
 
     # ===== 关联关系 =====
     user = relationship("User")

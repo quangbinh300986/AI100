@@ -151,6 +151,7 @@ class BroadcastCreate(BaseModel):
     budget_money: Optional[float] = None
     expect_money: Optional[float] = None
     crm_opportunity_id: Optional[str] = None
+    project_name: Optional[str] = None
     
     # 新增分摊数据字段
     delivery_allocations: Optional[list[AllocationItem]] = None
@@ -173,6 +174,7 @@ class BroadcastResponse(BaseModel):
     created_at: datetime
     crm_opportunity_id: Optional[str] = None
     crm_opportunity_name: Optional[str] = None
+    project_name: Optional[str] = None
     user_name: Optional[str] = None
     team_name: Optional[str] = None
     delivery_allocations: Optional[list[AllocationItem]] = None
@@ -397,6 +399,7 @@ class BroadcastUpdate(BaseModel):
     happiness_score: Optional[int] = None
     action_description: Optional[str] = None
     employee_name: Optional[str] = None
+    project_name: Optional[str] = None
     copartners: Optional[list[str]] = None
     marketing_copartners: Optional[list[str]] = None
 
@@ -465,6 +468,62 @@ async def get_crm_customers(
         return []
 
 
+@router.get("/crm-projects-search", summary="直连 CRM 模糊搜索项目名称列表")
+async def search_crm_projects(
+    keyword: Optional[str] = Query(None, description="搜索关键字"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    直连 CRM 数据库获取所有活跃的项目名称列表（支持模糊搜索，限制返回条数，按创建时间倒序）
+    """
+    import pymysql
+    from app.config import settings
+
+    try:
+        conn = pymysql.connect(
+            host=settings.CRM_DB_HOST,
+            port=settings.CRM_DB_PORT,
+            user=settings.CRM_DB_USER,
+            password=settings.CRM_DB_PASSWORD,
+            database=settings.CRM_DB_NAME,
+            charset='utf8mb4',
+            connect_timeout=3
+        )
+        cur = conn.cursor()
+        
+        if keyword:
+            query = """
+                SELECT DISTINCT project_name 
+                FROM project 
+                WHERE status = '0'
+                  AND project_name LIKE %s
+                  AND project_name != ''
+                  AND project_name IS NOT NULL
+                ORDER BY create_date DESC
+                LIMIT 50
+            """
+            cur.execute(query, (f"%{keyword}%",))
+        else:
+            query = """
+                SELECT DISTINCT project_name 
+                FROM project 
+                WHERE status = '0'
+                  AND project_name != ''
+                  AND project_name IS NOT NULL
+                ORDER BY create_date DESC
+                LIMIT 50
+            """
+            cur.execute(query)
+            
+        rows = cur.fetchall()
+        projects = [r[0].strip() for r in rows if r[0]]
+        conn.close()
+        return projects
+    except Exception as e:
+        logger.error(f"直连 CRM 获取项目列表发生异常: {e}")
+        return []
+
 
 @router.get("", response_model=BroadcastListResponse, summary="获取播报列表")
 async def list_broadcasts(
@@ -493,6 +552,7 @@ async def list_broadcasts(
         BroadcastEvent.event_time,
         BroadcastEvent.created_at,
         BroadcastEvent.crm_opportunity_id,
+        BroadcastEvent.project_name,
         DbUser.name.label("user_name"),
         DbTeam.name.label("team_name")
     ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
@@ -633,6 +693,7 @@ async def list_broadcasts(
             created_at=row.created_at,
             crm_opportunity_id=row.crm_opportunity_id,
             crm_opportunity_name=opp_name,
+            project_name=row.project_name,
             user_name=row.user_name,
             team_name=row.team_name,
             delivery_allocations=allocs["delivery"] if allocs else None,
@@ -697,6 +758,8 @@ async def update_broadcast(
         event.push_status = broadcast_in.push_status
     if broadcast_in.push_channel is not None:
         event.push_channel = broadcast_in.push_channel
+    if broadcast_in.project_name is not None:
+        event.project_name = broadcast_in.project_name
     
     # 前三种和 CRM 关联，后两种及自定义不关联
     if event.event_type in ["contract_signed", "lead_75", "lead_25"]:
@@ -822,6 +885,7 @@ async def update_broadcast(
                 report_id=rep.id,
                 detail_type=DetailType.HAPPINESS,
                 customer_name=c_name,
+                project_name=broadcast_in.project_name or event.project_name or "未定",
                 happiness_level=score_val,
                 description=f"{event.content}\n[broadcast_id:{event.id}]"
             )
@@ -1065,6 +1129,7 @@ async def create_broadcast(
         push_channel=broadcast_in.push_channel,
         event_time=datetime.now(timezone.utc),
         crm_opportunity_id=broadcast_in.crm_opportunity_id,
+        project_name=broadcast_in.project_name or "未定" if event_type == "happiness" else broadcast_in.project_name,
     )
     db.add(event)
     await db.flush()
@@ -1258,6 +1323,7 @@ async def create_broadcast(
                     report_id=report.id,
                     detail_type=DetailType.HAPPINESS,
                     customer_name=broadcast_in.customer_name or "客户幸福关怀单位",
+                    project_name=broadcast_in.project_name or "未定",
                     happiness_level=score_val,
                     description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
