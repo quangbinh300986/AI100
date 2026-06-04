@@ -2217,7 +2217,7 @@ const Dashboard: React.FC = () => {
                   {
                     item.type === 'contract' ? '合同新签' : 
                     item.type === 'achievement' ? '有效线索' : 
-                    item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '工作动态'
+                    item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
                   }
                 </Tag>
                 <Text>{item.content}</Text>
