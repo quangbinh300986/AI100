@@ -122,7 +122,10 @@ export default function Profile() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text)
         .then(() => {
-          Toast.show({ icon: 'success', content: '日报已复制到剪贴板！' })
+          Dialog.alert({
+            content: '日报已复制到剪贴板！可以直接粘贴发送！',
+            confirmText: '我知道了'
+          })
         })
         .catch(() => {
           fallbackCopyTextToClipboard(text)
@@ -151,12 +154,21 @@ export default function Profile() {
     try {
       const successful = document.execCommand('copy')
       if (successful) {
-        Toast.show({ icon: 'success', content: '日报已复制到剪贴板！' })
+        Dialog.alert({
+          content: '日报已复制到剪贴板！可以直接粘贴发送！',
+          confirmText: '我知道了'
+        })
       } else {
-        Toast.show({ icon: 'fail', content: '复制失败，请长按手动选择复制' })
+        Dialog.alert({
+          content: '复制失败，请长按文本域手动选择复制。',
+          confirmText: '我知道了'
+        })
       }
     } catch (err) {
-      Toast.show({ icon: 'fail', content: '复制失败，请长按手动选择复制' })
+      Dialog.alert({
+        content: '复制失败，请长按文本域手动选择复制。',
+        confirmText: '我知道了'
+      })
     }
     document.body.removeChild(textArea)
   }
