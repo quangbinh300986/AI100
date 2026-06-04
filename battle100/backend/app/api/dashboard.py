@@ -21,6 +21,7 @@ from app.schemas.dashboard import (
     LiveFeedItem,
     WeeklyTrendData,
     WeeklyTrend,
+    TeamOption,
 )
 
 import re
@@ -424,6 +425,8 @@ async def seed_mock_reports_if_needed(db: AsyncSession):
 @router.get("/overview", response_model=DashboardResponse, summary="获取大屏总览数据")
 async def get_dashboard_overview(
     target_date: date | None = Query(None, description="数据日期，默认今天"),
+    team_id: int | None = Query(None, description="过滤战队ID"),
+    third_class_bar: str | None = Query(None, description="过滤三级巴/三级部门"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -943,8 +946,8 @@ async def get_dashboard_overview(
             )
         )
 
-    # 5.1 营销新签周战将榜 TOP 10 (按当周营销新签金额降序，每周一清零)
-    marketing_hero_query = await db.execute(
+    # 5.1 营销新签周战将榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    marketing_hero_stmt = (
         select(
             User.name,
             Team.name.label("team_name"),
@@ -960,10 +963,14 @@ async def get_dashboard_overview(
             ReportDetail.detail_type == DetailType.CONTRACT,
             ReportDetail.description.contains("营销新签分摊")
         )
-        .group_by(User.id, User.name, Team.name)
-        .order_by(desc("score"))
-        .limit(15)
     )
+    if team_id is not None:
+        marketing_hero_stmt = marketing_hero_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        marketing_hero_stmt = marketing_hero_stmt.where(User.third_class_bar == third_class_bar)
+    marketing_hero_stmt = marketing_hero_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    
+    marketing_hero_query = await db.execute(marketing_hero_stmt)
     marketing_hero_rows = marketing_hero_query.all()
     
     marketing_hero_board = []
@@ -979,8 +986,8 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 5.2 交付新签周战将榜 TOP 10 (按当周交付新签金额降序，每周一清零)
-    delivery_hero_query = await db.execute(
+    # 5.2 交付新签周战将榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    delivery_hero_stmt = (
         select(
             User.name,
             Team.name.label("team_name"),
@@ -996,10 +1003,14 @@ async def get_dashboard_overview(
             ReportDetail.detail_type == DetailType.CONTRACT,
             ~ReportDetail.description.contains("营销新签分摊")
         )
-        .group_by(User.id, User.name, Team.name)
-        .order_by(desc("score"))
-        .limit(15)
     )
+    if team_id is not None:
+        delivery_hero_stmt = delivery_hero_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        delivery_hero_stmt = delivery_hero_stmt.where(User.third_class_bar == third_class_bar)
+    delivery_hero_stmt = delivery_hero_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    
+    delivery_hero_query = await db.execute(delivery_hero_stmt)
     delivery_hero_rows = delivery_hero_query.all()
     
     delivery_hero_board = []
@@ -1015,8 +1026,8 @@ async def get_dashboard_overview(
                 )
             )
         
-    # 6. 周客户幸福动作卷王榜 TOP 10 (按当周幸福动作次数降序，每周一清零)
-    happiness_query = await db.execute(
+    # 6. 周客户幸福动作卷王榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    happiness_stmt = (
         select(
             User.name,
             Team.name.label("team_name"),
@@ -1029,10 +1040,14 @@ async def get_dashboard_overview(
             DailyReport.report_date >= start_of_week,
             DailyReport.report_date <= end_of_week
         )
-        .group_by(User.id, User.name, Team.name)
-        .order_by(desc("score"))
-        .limit(15)
     )
+    if team_id is not None:
+        happiness_stmt = happiness_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        happiness_stmt = happiness_stmt.where(User.third_class_bar == third_class_bar)
+    happiness_stmt = happiness_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    
+    happiness_query = await db.execute(happiness_stmt)
     happiness_rows = happiness_query.all()
 
     happiness_board = []
@@ -1048,8 +1063,8 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 7. 周铁三角协作标杆榜 TOP 10 (按当周铁三角协作次数降序，每周一清零)
-    triangle_query = await db.execute(
+    # 7. 周铁三角协作标杆榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    triangle_stmt = (
         select(
             User.name,
             Team.name.label("team_name"),
@@ -1062,10 +1077,14 @@ async def get_dashboard_overview(
             DailyReport.report_date >= start_of_week,
             DailyReport.report_date <= end_of_week
         )
-        .group_by(User.id, User.name, Team.name)
-        .order_by(desc("score"))
-        .limit(15)
     )
+    if team_id is not None:
+        triangle_stmt = triangle_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        triangle_stmt = triangle_stmt.where(User.third_class_bar == third_class_bar)
+    triangle_stmt = triangle_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    
+    triangle_query = await db.execute(triangle_stmt)
     triangle_rows = triangle_query.all()
 
     triangle_board = []
@@ -1081,8 +1100,8 @@ async def get_dashboard_overview(
                 )
             )
 
-    # 7.5. 周线索先锋奖榜 TOP 10 (按当周新增有效线索数降序，每周一清零)
-    leads_query = await db.execute(
+    # 7.5. 周线索先锋奖榜 TOP 15 (支持按战队和三级巴筛选，全部注释使用中文)
+    leads_stmt = (
         select(
             User.name,
             Team.name.label("team_name"),
@@ -1095,10 +1114,14 @@ async def get_dashboard_overview(
             DailyReport.report_date >= start_of_week,
             DailyReport.report_date <= end_of_week
         )
-        .group_by(User.id, User.name, Team.name)
-        .order_by(desc("score"))
-        .limit(15)
     )
+    if team_id is not None:
+        leads_stmt = leads_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        leads_stmt = leads_stmt.where(User.third_class_bar == third_class_bar)
+    leads_stmt = leads_stmt.group_by(User.id, User.name, Team.name).order_by(desc("score")).limit(15)
+    
+    leads_query = await db.execute(leads_stmt)
     leads_rows = leads_query.all()
 
     leads_board = []
@@ -1349,6 +1372,20 @@ async def get_dashboard_overview(
     if not campaign_end_date:
         campaign_end_date = date(2026, 9, 8)
     
+    # 9. 查出全部战队与三级巴下拉选项，全部注释使用中文
+    teams_stmt = select(Team.id, Team.name).order_by(Team.name)
+    teams_res = await db.execute(teams_stmt)
+    db_teams = [TeamOption(id=row.id, name=row.name) for row in teams_res.all()]
+
+    third_class_stmt = (
+        select(User.third_class_bar)
+        .where(User.third_class_bar.isnot(None), User.third_class_bar != "")
+        .distinct()
+        .order_by(User.third_class_bar)
+    )
+    third_class_res = await db.execute(third_class_stmt)
+    db_third_class_bars = [row[0] for row in third_class_res.all()]
+
     countdown = max(0, (campaign_end_date - target_date).days + 1)
     return DashboardResponse(
         kpiSummary=kpi_summary,
@@ -1367,7 +1404,9 @@ async def get_dashboard_overview(
         importantProjects=important_projects,
         countdown=countdown,
         campaignName="中地顾问「百日奋战」经营冲刺大屏",
-        slogan="奋战一百天，亮剑破六千！"
+        slogan="奋战一百天，亮剑破六千！",
+        teams=db_teams,
+        thirdClassBars=db_third_class_bars
     )
 
 @router.get("/weekly-trend", response_model=list[WeeklyTrend], summary="获取周度趋势")

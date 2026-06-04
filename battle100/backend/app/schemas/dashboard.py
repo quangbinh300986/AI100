@@ -91,6 +91,12 @@ class ImportantProjectItem(BaseModel):
     progress: int = Field(default=0, description="当前进度百分比")
 
 
+class TeamOption(BaseModel):
+    """战队选择下拉项"""
+    id: int = Field(..., description="战队ID")
+    name: str = Field(..., description="战队名称")
+
+
 class DashboardResponse(BaseModel):
     """大屏看板完整响应 (即对齐前端 DashboardData)"""
     kpiSummary: KpiSummary = Field(..., description="四大指标汇总")
@@ -110,6 +116,8 @@ class DashboardResponse(BaseModel):
     countdown: int = Field(default=71, description="百日倒计时天数")
     campaignName: str = Field(default="中地顾问「百日奋战」经营冲刺大屏", description="战役名称")
     slogan: str = Field(default="奋战一百天，亮剑破六千！", description="战役口号")
+    teams: list[TeamOption] = Field(default_factory=list, description="所有战队选项列表")
+    thirdClassBars: list[str] = Field(default_factory=list, description="所有三级巴选项列表")
 
 
 class WeeklyTrend(BaseModel):

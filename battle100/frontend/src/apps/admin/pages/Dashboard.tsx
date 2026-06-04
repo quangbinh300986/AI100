@@ -352,6 +352,10 @@ const Dashboard: React.FC = () => {
   const [detailCategory, setDetailCategory] = useState<string>('')
   const [detailUser, setDetailUser] = useState<string>('')
 
+  // 周战将排行榜的战队与三级巴筛选状态，所有注释必须使用中文
+  const [rankFilterTeamId, setRankFilterTeamId] = useState<number | undefined>(undefined)
+  const [rankFilterThirdClassBar, setRankFilterThirdClassBar] = useState<string | undefined>(undefined)
+
   // 定时轮播：每 8 秒自动轮播一次，所有注释必须使用中文
   useEffect(() => {
     const timer = setInterval(() => {
@@ -943,8 +947,11 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     setLoading(true)
     try {
-      // 1. 获取全盘大屏概览数据
-      const res = await getDashboardData()
+      // 1. 获取全盘大屏概览数据，带上周战将排行榜专有筛选条件
+      const res = await getDashboardData({
+        team_id: rankFilterTeamId,
+        third_class_bar: rankFilterThirdClassBar
+      })
       if (res) {
         setData(res as any)
       }
@@ -1032,8 +1039,12 @@ const Dashboard: React.FC = () => {
     }
   }, [broadcastModalVisible])
 
+  // 监听排行榜专属过滤状态变化，自动重载概览数据，所有注释必须使用中文
   useEffect(() => {
     loadData()
+  }, [rankFilterTeamId, rankFilterThirdClassBar])
+
+  useEffect(() => {
     loadUsersList()
   }, [])
 
@@ -1668,10 +1679,36 @@ const Dashboard: React.FC = () => {
         {/* 个人英雄榜 */}
         <Col xs={24} lg={7}>
           <Card 
-            title={
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                <span>{getRankListDetails().title}</span>
-                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal' }}>⏳ 8s 轮播</span>
+            title={<span>{getRankListDetails().title}</span>}
+            extra={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <Select
+                  placeholder="按战队"
+                  allowClear
+                  size="small"
+                  style={{ width: 90 }}
+                  value={rankFilterTeamId}
+                  onChange={(val) => setRankFilterTeamId(val)}
+                  dropdownMatchSelectWidth={false}
+                >
+                  {(data as any)?.teams?.map((t: any) => (
+                    <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                  ))}
+                </Select>
+                <Select
+                  placeholder="按三级巴"
+                  allowClear
+                  size="small"
+                  style={{ width: 90 }}
+                  value={rankFilterThirdClassBar}
+                  onChange={(val) => setRankFilterThirdClassBar(val)}
+                  dropdownMatchSelectWidth={false}
+                >
+                  {(data as any)?.thirdClassBars?.map((b: string) => (
+                    <Select.Option key={b} value={b}>{b}</Select.Option>
+                  ))}
+                </Select>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal', whiteSpace: 'nowrap' }}>⏳ 8s</span>
               </div>
             }
             bordered={false} 
