@@ -3273,5 +3273,234 @@ async def generate_daily_report(
     }
 
 
+@router.get("/personal-weekly-detail", summary="获取员工周排行实绩明细")
+async def get_personal_weekly_detail(
+    user_name: str = Query(..., description="员工真实姓名"),
+    category: str = Query(..., description="实绩类别: marketing_signing, delivery_signing, leads, happiness, triangle"),
+    target_date: date | None = Query(None, description="数据日期"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    根据员工姓名和指标类别，拉取该员工当周（对应日期所在周的周一到周日）的已审核数据明细。
+    """
+    if target_date is None:
+        target_date = date.today()
+        
+    from datetime import timedelta
+    # 计算当前周区间
+    start_of_week = target_date - timedelta(days=target_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+    
+    # 查找用户
+    user_res = await db.execute(select(User).where(User.name == user_name))
+    user_obj = user_res.scalar_one_or_none()
+    if not user_obj:
+        raise HTTPException(status_code=404, detail="未找到对应的员工")
+        
+    details_list = []
+    
+    # 根据类别进行差异化查询
+    if category == "marketing_signing":
+        # 营销新签明细：detail_type == CONTRACT，且描述包含 "营销新签分摊"
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                DailyReport.report_date >= start_of_week,
+                DailyReport.report_date <= end_of_week,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                ReportDetail.description.contains("营销新签分摊")
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        for row in res.all():
+            details_list.append({
+                "id": row.id,
+                "date": row.report_date.strftime("%Y-%m-%d"),
+                "customer_name": row.customer_name or "未关联客户",
+                "amount": round(float(row.amount or 0.0), 2),
+                "description": row.description or ""
+            })
+            
+    elif category == "delivery_signing":
+        # 交付新签明细：detail_type == CONTRACT，且描述不包含 "营销新签分摊"
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                DailyReport.report_date >= start_of_week,
+                DailyReport.report_date <= end_of_week,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                ~ReportDetail.description.contains("营销新签分摊")
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        for row in res.all():
+            details_list.append({
+                "id": row.id,
+                "date": row.report_date.strftime("%Y-%m-%d"),
+                "customer_name": row.customer_name or "未关联客户",
+                "amount": round(float(row.amount or 0.0), 2),
+                "description": row.description or ""
+            })
+            
+    elif category == "leads":
+        # 有效线索明细：detail_type == LEAD，且 lead_progress == 25% (或包含25)
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.project_name,
+                ReportDetail.amount,
+                ReportDetail.crm_opportunity_id,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                DailyReport.report_date >= start_of_week,
+                DailyReport.report_date <= end_of_week,
+                ReportDetail.detail_type == DetailType.LEAD,
+                (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        all_leads = res.all()
+        
+        # 在 CRM 中做一次匹配状态过滤，剔除删除、暂缓、终止以及低于25%的线索
+        valid_lead_ids = []
+        for row in all_leads:
+            if row.crm_opportunity_id:
+                valid_lead_ids.append(row.crm_opportunity_id)
+                
+        crm_valid_set = set()
+        if valid_lead_ids:
+            try:
+                import pymysql
+                crm_conn = pymysql.connect(
+                    host=settings.CRM_DB_HOST,
+                    port=settings.CRM_DB_PORT,
+                    user=settings.CRM_DB_USER,
+                    password=settings.CRM_DB_PASSWORD,
+                    database=settings.CRM_DB_NAME,
+                    charset='utf8mb4',
+                    connect_timeout=3
+                )
+                crm_cur = crm_conn.cursor(pymysql.cursors.DictCursor)
+                placeholders = ", ".join([f"'{lid}'" for lid in valid_lead_ids])
+                crm_cur.execute(f"""
+                    SELECT id 
+                    FROM zdcrm_business_opportunity
+                    WHERE id IN ({placeholders})
+                      AND is_del = '0'
+                      AND progress IN (25, 50, 75, 90)
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                """)
+                crm_rows = crm_cur.fetchall()
+                crm_cur.close()
+                crm_conn.close()
+                
+                crm_valid_set = set(str(r["id"]) for r in crm_rows)
+            except Exception as crm_err:
+                logger.warning(f"获取线索详情直连 CRM 匹配失败: {crm_err}")
+                # 异常时兜底让其通过，以免阻断显示，返回原有效列表
+                crm_valid_set = set(valid_lead_ids)
+                
+        for row in all_leads:
+            if row.crm_opportunity_id and row.crm_opportunity_id in crm_valid_set:
+                details_list.append({
+                    "id": row.id,
+                    "date": row.report_date.strftime("%Y-%m-%d"),
+                    "customer_name": row.customer_name or "未关联客户",
+                    "project_name": row.project_name or "未定",
+                    "amount": round(float(row.amount or 0.0), 2),
+                    "crm_opportunity_id": row.crm_opportunity_id,
+                    "description": row.description or ""
+                })
+
+    elif category == "happiness":
+        # 客户幸福关怀动作：detail_type == HAPPINESS
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.project_name,
+                ReportDetail.happiness_level,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                DailyReport.report_date >= start_of_week,
+                DailyReport.report_date <= end_of_week,
+                ReportDetail.detail_type == DetailType.HAPPINESS
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        for row in res.all():
+            details_list.append({
+                "id": row.id,
+                "date": row.report_date.strftime("%Y-%m-%d"),
+                "customer_name": row.customer_name or "未定",
+                "project_name": row.project_name or "未定",
+                "happiness_score": row.happiness_level or 0,
+                "description": row.description or ""
+            })
+            
+    elif category == "triangle":
+        # 铁三角联动：detail_type == TRIANGLE
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                DailyReport.report_date >= start_of_week,
+                DailyReport.report_date <= end_of_week,
+                ReportDetail.detail_type == DetailType.TRIANGLE
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        for row in res.all():
+            details_list.append({
+                "id": row.id,
+                "date": row.report_date.strftime("%Y-%m-%d"),
+                "customer_name": row.customer_name or "未关联客户",
+                "description": row.description or ""
+            })
+            
+    return details_list
+
+
 
 

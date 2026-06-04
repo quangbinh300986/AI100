@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer } from 'antd'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -345,6 +345,13 @@ const Dashboard: React.FC = () => {
   // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
   const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'>('marketing_signing')
 
+  // 周英雄榜实绩个人明细抽屉状态，所有注释必须使用中文
+  const [detailDrawerVisible, setDetailDrawerVisible] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailData, setDetailData] = useState<any[]>([])
+  const [detailCategory, setDetailCategory] = useState<string>('')
+  const [detailUser, setDetailUser] = useState<string>('')
+
   // 定时轮播：每 8 秒自动轮播一次，所有注释必须使用中文
   useEffect(() => {
     const timer = setInterval(() => {
@@ -410,6 +417,139 @@ const Dashboard: React.FC = () => {
     setCompanyFilterReporter(undefined)
     setCompanyFilterKeyword('')
     setCompanyKpiDetailModalVisible(true)
+  }
+
+  // 点击排行榜中员工实绩查看明细触发方法，所有注释必须使用中文
+  const handleViewPersonalDetail = (userName: string, category: string) => {
+    setDetailUser(userName)
+    setDetailCategory(category)
+    setDetailData([])
+    setDetailDrawerVisible(true)
+    fetchPersonalWeeklyDetail(userName, category)
+  }
+
+  // 异步获取员工当周对应的指标详细数据列表，所有注释必须使用中文
+  const fetchPersonalWeeklyDetail = async (userName: string, category: string) => {
+    setDetailLoading(true)
+    try {
+      const res = await get<any>(`/dashboard/personal-weekly-detail?user_name=${encodeURIComponent(userName)}&category=${category}`)
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setDetailData(data)
+      } else {
+        setDetailData([])
+      }
+    } catch (err) {
+      console.error('拉取员工当周排行明细失败', err)
+      message.error('获取个人当周实绩明细失败')
+      setDetailData([])
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  // 渲染不同类别的明细表格列，全部注释必须使用中文
+  const getDetailColumns = (category: string) => {
+    const baseColumns = [
+      {
+        title: '日期',
+        dataIndex: 'date',
+        key: 'date',
+        width: 110,
+        align: 'center' as const
+      },
+      {
+        title: '客户名称',
+        dataIndex: 'customer_name',
+        key: 'customer_name',
+        width: 180,
+        ellipsis: true
+      }
+    ]
+
+    switch (category) {
+      case 'marketing_signing':
+      case 'delivery_signing':
+        return [
+          ...baseColumns,
+          {
+            title: '业绩分摊金额',
+            dataIndex: 'amount',
+            key: 'amount',
+            width: 130,
+            align: 'right' as const,
+            render: (val: number) => <strong style={{ color: '#ff4d4f' }}>{val} 万元</strong>
+          },
+          {
+            title: '描述',
+            dataIndex: 'description',
+            key: 'description',
+            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+          }
+        ]
+      case 'leads':
+        return [
+          ...baseColumns,
+          {
+            title: '项目名称',
+            dataIndex: 'project_name',
+            key: 'project_name',
+            width: 160,
+            ellipsis: true
+          },
+          {
+            title: '预计金额',
+            dataIndex: 'amount',
+            key: 'amount',
+            width: 120,
+            align: 'right' as const,
+            render: (val: number) => <strong style={{ color: '#722ed1' }}>{val} 万元</strong>
+          },
+          {
+            title: '播报描述',
+            dataIndex: 'description',
+            key: 'description',
+            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+          }
+        ]
+      case 'happiness':
+        return [
+          ...baseColumns,
+          {
+            title: '项目名称',
+            dataIndex: 'project_name',
+            key: 'project_name',
+            width: 160,
+            ellipsis: true
+          },
+          {
+            title: '关怀分值',
+            dataIndex: 'happiness_score',
+            key: 'happiness_score',
+            width: 110,
+            align: 'center' as const,
+            render: (val: number) => <Tag color="green">+{val} 分</Tag>
+          },
+          {
+            title: '关怀动作描述',
+            dataIndex: 'description',
+            key: 'description',
+            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+          }
+        ]
+      case 'triangle':
+        return [
+          ...baseColumns,
+          {
+            title: '联动描述',
+            dataIndex: 'description',
+            key: 'description',
+            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+          }
+        ]
+      default:
+        return baseColumns
+    }
   }
 
   // 监听筛选条件变动，防抖重新加载数据，所有注释必须使用中文
@@ -1615,9 +1755,27 @@ const Dashboard: React.FC = () => {
                         }
                       />
                       <div>
-                        <Text strong style={{ color: details.color, fontSize: 13 }}>
-                          {details.unit === '万元' ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)} {details.unit}
-                        </Text>
+                        <Tooltip title="点击查看本周实绩详情 🔍">
+                          <span 
+                            onClick={() => handleViewPersonalDetail(item.name, activeRankTab)}
+                            style={{ 
+                              color: details.color, 
+                              fontSize: 13, 
+                              cursor: 'pointer', 
+                              fontWeight: 'bold', 
+                              textDecoration: 'underline',
+                              transition: 'all 0.3s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.opacity = '0.7';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.opacity = '1';
+                            }}
+                          >
+                            {details.unit === '万元' ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)} {details.unit}
+                          </span>
+                        </Tooltip>
                       </div>
                     </List.Item>
                   )
@@ -3067,6 +3225,37 @@ const Dashboard: React.FC = () => {
           )}
         </Spin>
       </Modal>
+
+      {/* 周英雄榜实绩个人明细抽屉，所有注释必须使用中文 */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>⚡ 【{detailUser}】本周【{
+              detailCategory === 'marketing_signing' ? '营销新签' :
+              detailCategory === 'delivery_signing' ? '交付新签' :
+              detailCategory === 'leads' ? '有效线索' :
+              detailCategory === 'happiness' ? '客户幸福' :
+              detailCategory === 'triangle' ? '铁三角联动' : ''
+            }】实绩明细</span>
+          </div>
+        }
+        placement="right"
+        width={750}
+        onClose={() => setDetailDrawerVisible(false)}
+        open={detailDrawerVisible}
+        destroyOnClose
+      >
+        <Table
+          dataSource={detailData}
+          columns={getDetailColumns(detailCategory)}
+          rowKey="id"
+          loading={detailLoading}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          size="middle"
+          bordered
+          locale={{ emptyText: <span style={{ color: '#bfbfbf' }}>本周暂无该项实绩明细记录</span> }}
+        />
+      </Drawer>
     </div>
   )
 }
