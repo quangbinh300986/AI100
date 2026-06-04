@@ -3422,7 +3422,7 @@ async def generate_daily_report(
     if not team_id:
         # 系统管理员 (全公司大盘)
         text = (
-            f"攻坚一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
+            f"奋战一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
             f"新签合同：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
@@ -3442,7 +3442,7 @@ async def generate_daily_report(
         if role == "target_officer":
             # 目标官视角
             text = (
-                f"攻坚一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
+                f"奋战一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
                 f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
                 f"今日确定有效线索：{valid_leads_cnt} 条\n"
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
@@ -3463,7 +3463,7 @@ async def generate_daily_report(
         else:
             # 数字专员视角
             text = (
-                f"攻坚一百天，亮剑破六千！{t_name}，百日奋战【{campaign_day}】日战况播报{range_str}：\n"
+                f"奋战一百天，亮剑破六千！{t_name}，百日奋战【{campaign_day}】日战况播报{range_str}：\n"
                 f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
                 f"昨日确定有效线索：{valid_leads_cnt} 条\n"
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
