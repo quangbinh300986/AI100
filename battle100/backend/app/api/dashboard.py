@@ -3281,7 +3281,9 @@ async def generate_daily_report(
     signed_contracts_cnt = 0
     signed_contracts_amt = 0.0
     triangle_cnt = 0
+    triangle_cust_cnt = 0
     happiness_cnt = 0
+    happiness_cust_cnt = 0
 
     if report_ids:
         # 有效线索数量 (线索明细且进展为25%)
@@ -3361,6 +3363,15 @@ async def generate_daily_report(
         )
         triangle_cnt = int(await db.scalar(triangle_stmt) or 0)
 
+        # 售前铁三角去重服务客户数
+        triangle_cust_stmt = select(func.count(func.distinct(ReportDetail.customer_name))).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.TRIANGLE,
+            ReportDetail.customer_name.is_not(None),
+            ReportDetail.customer_name != ""
+        )
+        triangle_cust_cnt = int(await db.scalar(triangle_cust_stmt) or 0)
+
         # 客户幸福动作次数
         happiness_detail_stmt = select(func.count(ReportDetail.id)).where(
             ReportDetail.report_id.in_(report_ids),
@@ -3373,6 +3384,15 @@ async def generate_daily_report(
         )
         h_sum_val = int(await db.scalar(happiness_sum_stmt) or 0)
         happiness_cnt = max(h_detail_val, h_sum_val)
+
+        # 客户幸福去重服务客户数
+        happiness_cust_stmt = select(func.count(func.distinct(ReportDetail.customer_name))).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.HAPPINESS,
+            ReportDetail.customer_name.is_not(None),
+            ReportDetail.customer_name != ""
+        )
+        happiness_cust_cnt = int(await db.scalar(happiness_cust_stmt) or 0)
 
     # 尝试直连 CRM 补充此统计区间内新增有效线索 (与填报取最大)
     crm_user_ids = []
@@ -3427,8 +3447,8 @@ async def generate_daily_report(
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
-            f"昨日售前铁三角联动次数：{triangle_cnt} 次\n"
-            f"昨日客户幸福动作次数：{happiness_cnt} 次\n"
+            f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
+            f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
             f"赢战百日！"
         )
     else:
@@ -3447,8 +3467,8 @@ async def generate_daily_report(
                 f"今日确定有效线索：{valid_leads_cnt} 条\n"
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
-                f"今日售前铁三角联动次数：{triangle_cnt} 次\n"
-                f"今日客户幸福动作次数：{happiness_cnt} 次\n"
+                f"今日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
+                f"今日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"今日工作小结\n"
                 f"①\n"
                 f"②\n"
@@ -3468,8 +3488,8 @@ async def generate_daily_report(
                 f"昨日确定有效线索：{valid_leads_cnt} 条\n"
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
-                f"昨日售前铁三角联动次数：{triangle_cnt} 次\n"
-                f"昨日客户幸福动作次数：{happiness_cnt} 次\n"
+                f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
+                f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"赢战百日！"
             )
 
