@@ -271,8 +271,26 @@ const Goals: React.FC = () => {
     }
   }
 
+  const [thirdClassBarOptions, setThirdClassBarOptions] = useState<{ label: string; value: string }[]>([])
+
+  const loadThirdClassBars = async () => {
+    try {
+      const res = await get<string[]>('/users/third-class-bars')
+      if (res) {
+        const opts = [
+          { label: '全部三级巴', value: '' },
+          ...res.map((bar: string) => ({ label: bar, value: bar }))
+        ]
+        setThirdClassBarOptions(opts)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   useEffect(() => {
     loadAllUsersForSelect()
+    loadThirdClassBars()
   }, [])
 
 
@@ -291,6 +309,8 @@ const Goals: React.FC = () => {
   const [filterPositionType, setFilterPositionType] = useState('')
   const [filterTeamId, setFilterTeamId] = useState('')
   const [filterRole, setFilterRole] = useState('')
+  const [filterThirdClassBar, setFilterThirdClassBar] = useState('')
+
 
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState<UserItem | null>(null)
@@ -317,6 +337,7 @@ const Goals: React.FC = () => {
       if (searchKeyword) params.append('keyword', searchKeyword)
       if (filterPositionType) params.append('position_type', filterPositionType)
       if (filterRole) params.append('role', filterRole)
+      if (filterThirdClassBar) params.append('third_class_bar', filterThirdClassBar)
       if (filterTeamId === 'none') {
         params.append('team_id', '0')
       } else if (filterTeamId) {
@@ -334,7 +355,7 @@ const Goals: React.FC = () => {
     } finally {
       setUsersLoading(false)
     }
-  }, [usersPage, usersPageSize, searchKeyword, filterPositionType, filterTeamId, filterRole])
+  }, [usersPage, usersPageSize, searchKeyword, filterPositionType, filterTeamId, filterRole, filterThirdClassBar])
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -2038,6 +2059,15 @@ const Goals: React.FC = () => {
                   value={filterRole}
                   onChange={handleFilterChange(setFilterRole)}
                   options={ROLE_OPTIONS}
+                />
+              </Col>
+              <Col xs={12} sm={6} md={4}>
+                <Select
+                  style={{ width: '100%' }}
+                  value={filterThirdClassBar}
+                  onChange={handleFilterChange(setFilterThirdClassBar)}
+                  options={thirdClassBarOptions}
+                  placeholder="全部三级巴"
                 />
               </Col>
             </Row>

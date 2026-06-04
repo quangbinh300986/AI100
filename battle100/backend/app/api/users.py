@@ -61,6 +61,7 @@ async def list_users(
     team_id: int | None = Query(None, description="按战队筛选"),
     role: str | None = Query(None, description="按角色筛选"),
     position_type: str | None = Query(None, description="按岗位类别筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
     keyword: str | None = Query(None, description="搜索关键词（姓名/手机号）"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -79,6 +80,8 @@ async def list_users(
         conditions.append(User.role == role)
     if position_type is not None:
         conditions.append(User.position_type == position_type)
+    if third_class_bar is not None:
+        conditions.append(User.third_class_bar == third_class_bar)
     if keyword:
         conditions.append(
             (User.name.contains(keyword)) | (User.phone.contains(keyword))
@@ -101,7 +104,7 @@ async def list_users(
     result = await db.execute(query)
     rows = result.all()
 
-    # 将 team_name 动态附加到 User 对象上
+    # 将 team_name 动态附加 to User 对象上
     users = []
     for row in rows:
         user = row[0]
@@ -111,7 +114,30 @@ async def list_users(
     return UserListResponse(total=total, items=users)
 
 
+@router.get("/third-class-bars", response_model=list[str], summary="获取所有去重后的三级巴列表")
+async def list_third_class_bars(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取所有去重后的三级巴列表（仅返回激活且不为空的值）
+    """
+    result = await db.execute(
+        select(User.third_class_bar)
+        .where(
+            User.is_active == True,
+            User.third_class_bar.is_not(None),
+            User.third_class_bar != ""
+        )
+        .distinct()
+    )
+    bars = result.scalars().all()
+    # 过滤掉 None 或空字符串的健壮性处理
+    return [b for b in bars if b]
+
+
 from app.models.user import RolePermission
+
 from pydantic import BaseModel as PydanticBaseModel
 from typing import Dict, List
 
