@@ -3356,12 +3356,31 @@ async def generate_daily_report(
         
         signed_contracts_amt = round(signed_contracts_amt, 2)
 
-        # 铁三角联动次数
-        triangle_stmt = select(func.count(ReportDetail.id)).where(
+        # 铁三角联动明细列表
+        triangle_stmt = select(
+            ReportDetail.id,
+            ReportDetail.description
+        ).where(
             ReportDetail.report_id.in_(report_ids),
             ReportDetail.detail_type == DetailType.TRIANGLE
         )
-        triangle_cnt = int(await db.scalar(triangle_stmt) or 0)
+        triangle_res = await db.execute(triangle_stmt)
+        triangle_rows = triangle_res.all()
+        
+        # 内存中按照 broadcast_id 逻辑去重来计算铁三角次数
+        import re
+        broadcast_bids = set()
+        triangle_cnt = 0
+        for r_id, desc_text in triangle_rows:
+            desc_str = desc_text or ""
+            bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc_str)
+            if bid_match:
+                bid = int(bid_match.group(1))
+                if bid not in broadcast_bids:
+                    broadcast_bids.add(bid)
+                    triangle_cnt += 1
+            else:
+                triangle_cnt += 1
 
         # 售前铁三角去重服务客户数
         triangle_cust_stmt = select(func.count(func.distinct(ReportDetail.customer_name))).where(
