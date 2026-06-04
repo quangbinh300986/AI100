@@ -99,6 +99,7 @@ interface BroadcastItem {
   delivery_allocations?: any[]
   marketing_allocations?: any[]
   attachment_urls?: string[]
+  project_name?: string
 }
 
 
@@ -178,6 +179,43 @@ const Reports: React.FC = () => {
   const [createFileList, setCreateFileList] = useState<any[]>([])
   const [editFileList, setEditFileList] = useState<any[]>([])
 
+  const [crmProjectsSearch, setCrmProjectsSearch] = useState<string[]>([])
+  const projectSearchTimerRef = React.useRef<any>(null)
+
+  const handleProjectSearch = (val: string) => {
+    if (projectSearchTimerRef.current) {
+      clearTimeout(projectSearchTimerRef.current)
+    }
+    projectSearchTimerRef.current = setTimeout(() => {
+      loadCrmProjectsSearch(val)
+    }, 300)
+  }
+
+  const loadCrmProjectsSearch = async (keyword?: string) => {
+    try {
+      let url = '/broadcast/crm-projects-search'
+      if (keyword) {
+        url += `?keyword=${encodeURIComponent(keyword)}`
+      }
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && Array.isArray(data)) {
+        setCrmProjectsSearch(data)
+      } else {
+        setCrmProjectsSearch([])
+      }
+    } catch (err) {
+      console.error('加载 CRM 项目列表失败', err)
+      setCrmProjectsSearch([])
+    }
+  }
+
+  useEffect(() => {
+    if (createVisible || editVisible) {
+      loadCrmProjectsSearch()
+    }
+  }, [createVisible, editVisible])
+
   const customUpload = async (options: any) => {
     const { file, onSuccess, onError } = options
     const formData = new FormData()
@@ -249,9 +287,11 @@ const Reports: React.FC = () => {
       const result = allValues.happiness_result || ''
       const feedback = allValues.happiness_feedback || ''
       const recommend = allValues.recommend_action || ''
+      const projectName = allValues.project_name || '未定'
+      const projectPart = `，关联项目【${projectName}】`
 
       const feedbackLine = feedback ? `\n客户反馈：${feedback}。` : '';
-      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
+      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】${projectPart}，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
       createForm.setFieldsValue({ content: generated })
     } else if (withIndicator && actionType === 'triangle') {
       const prefix = '奋战一百天，亮剑破六千！今日'
@@ -309,9 +349,11 @@ const Reports: React.FC = () => {
       const result = allValues.happiness_result || ''
       const feedback = allValues.happiness_feedback || ''
       const recommend = allValues.recommend_action || ''
+      const projectName = allValues.project_name || '未定'
+      const projectPart = `，关联项目【${projectName}】`
 
       const feedbackLine = feedback ? `\n客户反馈：${feedback}。` : '';
-      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
+      const generated = `${prefix}我司【${employeeName}】做到客户幸福标准【${score}分】动作，对象为【${customer}】${projectPart}，动作描述：${desc}。\n成果：${result}。${feedbackLine}\n内部可推广复制的做法：${recommend}。\n为客户幸福而奋斗，赢战百日！`
       editForm.setFieldsValue({ content: generated })
     } else if (editEventType === 'triangle') {
       const prefix = '奋战一百天，亮剑破六千！今日'
@@ -539,7 +581,8 @@ const Reports: React.FC = () => {
       expect_money: 0,
       budget_money: 0,
       delivery_allocations: [],
-      marketing_allocations: []
+      marketing_allocations: [],
+      project_name: type === 'happiness' ? '未定' : undefined
     })
 
     if (type === 'contract') {
@@ -746,6 +789,7 @@ const Reports: React.FC = () => {
         delivery_allocations: withIndicator ? values.delivery_allocations : null,
         marketing_allocations: withIndicator ? values.marketing_allocations : null,
         happiness_score: withIndicator && values.action_type === 'happiness' ? values.happiness_score : null,
+        project_name: withIndicator && values.action_type === 'happiness' ? (values.project_name || '未定') : null,
         action_description: withIndicator ? values.action_description : null,
         // 铁三角联动新增字段
         employee_name: withIndicator ? values.employee_name : null,
@@ -827,6 +871,7 @@ const Reports: React.FC = () => {
       }
       if (editEventType === 'happiness') {
         payload.happiness_score = values.happiness_score
+        payload.project_name = values.project_name || '未定'
       }
 
       if (['contract_signed', 'happiness', 'triangle'].includes(editEventType)) {
@@ -1075,6 +1120,7 @@ const Reports: React.FC = () => {
                 triangle_result: matchTriangleResult,
                 customer_feedback: matchCustomerFeedback,
                 // 幸福动作回填
+                project_name: record.project_name || '未定',
                 happiness_score: matchHappinessScore,
                 selected_standards: initialSelectedStandards,
                 happiness_result: matchTriangleResult,
@@ -1422,6 +1468,25 @@ const Reports: React.FC = () => {
 
               {/* 业主单位与合同价格 */}
               <Row gutter={16}>
+                {actionType === 'happiness' && (
+                  <Col span={12}>
+                    <Form.Item
+                      name="project_name"
+                      label="项目名称"
+                    >
+                      <Select
+                        showSearch
+                        placeholder="输入关键字检索并选择 CRM 项目（选填，默认为未定）"
+                        filterOption={false}
+                        onSearch={handleProjectSearch}
+                        options={crmProjectsSearch.map(p => ({ label: p, value: p }))}
+                        defaultActiveFirstOption={false}
+                        allowClear
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+
                 <Col span={12}>
                   <Form.Item
                     name="customer_name"
@@ -1862,6 +1927,23 @@ const Reports: React.FC = () => {
           {editEventType === 'contract_signed' && (
             <Form.Item name="customer_name" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
               <Input disabled placeholder="选择项目后自动回填业主单位" />
+            </Form.Item>
+          )}
+
+          {editEventType === 'happiness' && (
+            <Form.Item
+              name="project_name"
+              label="项目名称"
+            >
+              <Select
+                showSearch
+                placeholder="输入关键字检索并选择 CRM 项目（选填，默认为未定）"
+                filterOption={false}
+                onSearch={handleProjectSearch}
+                options={crmProjectsSearch.map(p => ({ label: p, value: p }))}
+                defaultActiveFirstOption={false}
+                allowClear
+              />
             </Form.Item>
           )}
 
