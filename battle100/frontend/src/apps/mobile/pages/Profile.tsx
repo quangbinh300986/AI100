@@ -119,23 +119,14 @@ export default function Profile() {
 
   // 高兼容性复制剪切板文本函数，支持 HTTP、WebView 及安全域回退
   const copyToClipboard = (text: string) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text)
-        .then(() => {
-          Dialog.alert({
-            content: '日报已复制到剪贴板！可以直接粘贴发送！',
-            confirmText: '我知道了'
-          })
-        })
-        .catch(() => {
-          fallbackCopyTextToClipboard(text)
-        })
-    } else {
-      fallbackCopyTextToClipboard(text)
+    if (!text) {
+      Dialog.alert({
+        content: '无可复制的日报文本，请稍后再试。',
+        confirmText: '我知道了'
+      })
+      return
     }
-  }
 
-  const fallbackCopyTextToClipboard = (text: string) => {
     const textArea = document.createElement('textarea')
     textArea.value = text
     textArea.style.position = 'fixed'
@@ -148,29 +139,52 @@ export default function Profile() {
     textArea.style.outline = 'none'
     textArea.style.boxShadow = 'none'
     textArea.style.background = 'transparent'
+    textArea.setAttribute('readonly', '')
+
     document.body.appendChild(textArea)
     textArea.focus()
     textArea.select()
+    
+    // 兼容 iOS 设备选区
+    textArea.setSelectionRange(0, 99999)
+
+    let success = false
     try {
-      const successful = document.execCommand('copy')
-      if (successful) {
-        Dialog.alert({
-          content: '日报已复制到剪贴板！可以直接粘贴发送！',
-          confirmText: '我知道了'
-        })
+      success = document.execCommand('copy')
+    } catch (err) {
+      console.error('复制命令执行异常:', err)
+    }
+
+    document.body.removeChild(textArea)
+
+    if (success) {
+      Dialog.alert({
+        content: '日报已成功复制到剪贴板！可以直接粘贴发送！',
+        confirmText: '我知道了'
+      })
+    } else {
+      // 同步复制失败后使用 navigator.clipboard 兜底
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            Dialog.alert({
+              content: '日报已复制到剪贴板！可以直接粘贴发送！',
+              confirmText: '我知道了'
+            })
+          })
+          .catch(() => {
+            Dialog.alert({
+              content: '复制失败，请长按文本框手动选择复制。',
+              confirmText: '我知道了'
+            })
+          })
       } else {
         Dialog.alert({
-          content: '复制失败，请长按文本域手动选择复制。',
+          content: '复制失败，请长按文本框手动选择复制。',
           confirmText: '我知道了'
         })
       }
-    } catch (err) {
-      Dialog.alert({
-        content: '复制失败，请长按文本域手动选择复制。',
-        confirmText: '我知道了'
-      })
     }
-    document.body.removeChild(textArea)
   }
 
   // 挂载数据获取逻辑，所有注释均为中文
@@ -768,13 +782,7 @@ export default function Profile() {
             关闭
           </button>
           <button
-            onClick={() => {
-              if (!dailyReportText) {
-                Toast.show({ icon: 'fail', content: '无可复制的日报文本' })
-                return
-              }
-              copyToClipboard(dailyReportText)
-            }}
+            onClick={() => copyToClipboard(dailyReportText)}
             style={{
               flex: 2,
               padding: '10px 0',
