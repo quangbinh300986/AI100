@@ -2207,22 +2207,44 @@ const Dashboard: React.FC = () => {
           loading={loading}
           dataSource={data?.liveFeed}
           renderItem={(item) => (
-            <List.Item>
-              <Space>
-                <Tag color={
-                  item.type === 'contract' ? 'error' : 
-                  item.type === 'achievement' ? 'success' : 
-                  item.type === 'milestone' ? 'warning' : 'processing'
-                }>
-                  {
-                    item.type === 'contract' ? '合同新签' : 
-                    item.type === 'achievement' ? '有效线索' : 
-                    item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
-                  }
-                </Tag>
-                <Text>{item.content}</Text>
-              </Space>
-              <Text type="secondary">{item.time}</Text>
+            <List.Item style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '12px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                {/* 固定 75px 的标签容器，实现左侧标签垂直整齐对齐 */}
+                <div style={{ width: 75, flexShrink: 0, marginRight: 16, display: 'flex', justifyContent: 'center' }}>
+                  <Tag 
+                    color={
+                      item.type === 'contract' ? 'error' : 
+                      item.type === 'achievement' ? 'success' : 
+                      item.type === 'milestone' ? 'warning' : 'processing'
+                    }
+                    style={{ 
+                      whiteSpace: 'normal', 
+                      wordBreak: 'break-all', 
+                      height: 'auto', 
+                      lineHeight: '1.3', 
+                      padding: '4px 6px',
+                      textAlign: 'center',
+                      marginRight: 0,
+                      width: '100%',
+                      fontSize: 12
+                    }}
+                  >
+                    {
+                      item.type === 'contract' ? '合同新签' : 
+                      item.type === 'achievement' ? '有效线索' : 
+                      item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
+                    }
+                  </Tag>
+                </div>
+                {/* 正文文本，支持长文字自动折行 */}
+                <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                  <Text style={{ fontSize: 13, wordBreak: 'break-all', lineHeight: '1.5' }}>{item.content}</Text>
+                </div>
+              </div>
+              {/* 右侧时间，确保绝对不折行 */}
+              <div style={{ flexShrink: 0, marginLeft: 16, whiteSpace: 'nowrap', color: '#8c8c8c', fontSize: 12, paddingTop: 4 }}>
+                {item.time}
+              </div>
             </List.Item>
           )}
         />
