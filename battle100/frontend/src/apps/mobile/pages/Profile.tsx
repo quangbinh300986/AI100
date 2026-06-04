@@ -258,22 +258,23 @@ export default function Profile() {
         <List style={{ '--border-top': 'none', '--border-bottom': 'none' }}>
           <List.Item
             prefix={<UserOutline style={{ fontSize: 20, color: '#1677ff' }} />}
-            extra={<RightOutline />}
+            arrow
             onClick={() => setPersonalInfoVisible(true)}
           >
             个人信息
           </List.Item>
           <List.Item
             prefix={<ExclamationCircleOutline style={{ fontSize: 20, color: '#52c41a' }} />}
-            extra={<span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#8c8c8c', fontSize: 13 }}>{reportsTotal} 篇 <RightOutline /></span>}
+            extra={<span style={{ color: '#8c8c8c', fontSize: 13 }}>{reportsTotal} 篇</span>}
+            arrow
             onClick={() => setReportsVisible(true)}
           >
-            我的填报记录
+            填报记录
           </List.Item>
           {['admin', 'digital_specialist', 'target_officer'].includes(user?.role || '') && (
             <List.Item
               prefix={<FileOutline style={{ fontSize: 20, color: '#9f22c6' }} />}
-              extra={<RightOutline />}
+              arrow
               onClick={handleOpenDailyReportModal}
             >
               生成今日日报
@@ -281,7 +282,7 @@ export default function Profile() {
           )}
           <List.Item
             prefix={<SetOutline style={{ fontSize: 20, color: '#faad14' }} />}
-            extra={<RightOutline />}
+            arrow
             onClick={() => {
               Toast.show({ content: '修改密码功能请在管理端设置页面进行' })
             }}
