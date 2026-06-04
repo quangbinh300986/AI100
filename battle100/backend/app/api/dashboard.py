@@ -3585,5 +3585,261 @@ async def get_personal_weekly_detail(
     return details_list
 
 
+@router.get("/personal-goals", summary="获取所有个人奋斗目标大盘透视数据")
+async def get_personal_goals_dashboard(
+    keyword: str | None = Query(None, description="搜索用户名或手机号"),
+    team_id: int | None = Query(None, description="归属战队ID"),
+    third_class_bar: str | None = Query(None, description="三级巴"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    专门为作战大盘的矩阵大盘设计的个人奋斗目标透视接口。
+    普通用户即可访问，不需要管理员权限。
+    实现：
+    1. 按关键字、战队、三级巴联动筛选活跃且配置了个人奋斗目标的用户。
+    2. 新签合同额目标及实际值拆分为营销新签、交付新签。
+    3. 支持其它7项多维目标的展示。
+    """
+    from app.models.goal import PersonalGoal, GoalType
+    from sqlalchemy import exists, or_
+
+    # 1. 筛选出配有奋斗目标的用户
+    user_stmt = select(User).where(User.is_active == True)
+    user_stmt = user_stmt.where(exists().where(PersonalGoal.user_id == User.id))
+
+    if keyword:
+        keyword_filter = or_(User.name.contains(keyword), User.phone.contains(keyword))
+        user_stmt = user_stmt.where(keyword_filter)
+    if team_id:
+        user_stmt = user_stmt.where(User.team_id == team_id)
+    if third_class_bar:
+        user_stmt = user_stmt.where(User.third_class_bar == third_class_bar)
+
+    # 排序以使列表稳定
+    user_stmt = user_stmt.order_by(User.id.asc())
+
+    user_res = await db.execute(user_stmt)
+    users = user_res.scalars().all()
+
+    if not users:
+        return {"items": []}
+
+    user_ids = [u.id for u in users]
+
+    # 2. 查询出这批用户的所有 PersonalGoal
+    goals_stmt = select(PersonalGoal).where(PersonalGoal.user_id.in_(user_ids))
+    goals_res = await db.execute(goals_stmt)
+    
+    # 建立 user_id -> goal_type -> goal 映射
+    goals_by_user = {}
+    for g in goals_res.scalars().all():
+        uid = g.user_id
+        if uid not in goals_by_user:
+            goals_by_user[uid] = {}
+        g_type = g.goal_type.value if hasattr(g.goal_type, 'value') else g.goal_type
+        goals_by_user[uid][g_type] = g
+
+    # 3. 聚合实际完成值
+    # 3.1. 聚合幸福行动、铁三角联动、线索数量、合同单数
+    stmt_reports = select(
+        DailyReport.user_id,
+        func.sum(DailyReport.happiness_actions).label("happiness_actions"),
+        func.sum(DailyReport.triangle_count).label("triangle_count"),
+        func.sum(DailyReport.leads_count).label("leads_count"),
+        func.sum(DailyReport.contract_count).label("contract_count")
+    ).where(
+        DailyReport.user_id.in_(user_ids),
+        DailyReport.status == ReportStatus.REVIEWED
+    ).group_by(DailyReport.user_id)
+    
+    res_reports = await db.execute(stmt_reports)
+    reports_map = {row.user_id: row for row in res_reports.all()}
+
+    # 3.2. 聚合新签/续签合同额，按描述是否含 "营销新签分摊" 拆分为营销和交付实际额
+    stmt_details = select(
+        DailyReport.user_id.label("creator_id"),
+        ReportDetail.partner_user_id,
+        ReportDetail.amount,
+        ReportDetail.description
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        (DailyReport.user_id.in_(user_ids) | ReportDetail.partner_user_id.in_(user_ids))
+    )
+    
+    res_details = await db.execute(stmt_details)
+    marketing_actuals = {uid: 0.0 for uid in user_ids}
+    delivery_actuals = {uid: 0.0 for uid in user_ids}
+    
+    for row in res_details.all():
+        creator = row.creator_id
+        partner = row.partner_user_id
+        amount = float(row.amount or 0.0)
+        desc = row.description or ""
+        
+        is_marketing = "营销新签分摊" in desc
+        
+        if is_marketing:
+            if creator in marketing_actuals:
+                marketing_actuals[creator] += amount
+            if partner and partner in marketing_actuals:
+                marketing_actuals[partner] += amount
+        else:
+            if creator in delivery_actuals:
+                delivery_actuals[creator] += amount
+            if partner and partner in delivery_actuals:
+                delivery_actuals[partner] += amount
+
+    # 3.3. 聚合新客户数
+    stmt_customers = select(
+        DailyReport.user_id,
+        ReportDetail.customer_name
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.CONTRACT,
+        DailyReport.user_id.in_(user_ids)
+    ).distinct()
+    
+    res_customers = await db.execute(stmt_customers)
+    user_customers = {uid: set() for uid in user_ids}
+    for row in res_customers.all():
+        uid = row.user_id
+        if uid in user_customers and row.customer_name:
+            user_customers[uid].add(row.customer_name)
+    new_customer_actuals = {uid: float(len(cust_set)) for uid, cust_set in user_customers.items()}
+
+    # 3.4. 聚合幸福故事数
+    stmt_stories = select(
+        DailyReport.user_id,
+        func.count(ReportDetail.id).label("story_count")
+    ).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.HAPPINESS,
+        ReportDetail.description != None,
+        ReportDetail.description != '',
+        DailyReport.user_id.in_(user_ids)
+    ).group_by(DailyReport.user_id)
+    
+    res_stories = await db.execute(stmt_stories)
+    story_actuals = {row.user_id: float(row.story_count or 0.0) for row in res_stories.all()}
+
+    # 4. 获取战队名映射
+    team_res = await db.execute(select(Team))
+    team_map = {t.id: t.name for t in team_res.scalars().all()}
+
+    # 5. 拼装大盘透视行
+    items = []
+    for u in users:
+        uid = u.id
+        u_goals = goals_by_user.get(uid, {})
+        
+        # 幸福行动、铁三角、线索数、合同单数实际完成值
+        rep_row = reports_map.get(uid)
+        hap_act_sys = float(rep_row.happiness_actions or 0.0) if rep_row else 0.0
+        tri_cnt_sys = float(rep_row.triangle_count or 0.0) if rep_row else 0.0
+        leads_cnt_sys = float(rep_row.leads_count or 0.0) if rep_row else 0.0
+        cont_cnt_sys = float(rep_row.contract_count or 0.0) if rep_row else 0.0
+        
+        # 新客户数与故事数
+        new_cust_sys = new_customer_actuals.get(uid, 0.0)
+        story_sys = story_actuals.get(uid, 0.0)
+        
+        # 线索转化率 (合同单数 / 线索数量 * 100)
+        leads_conv_sys = round((cont_cnt_sys / leads_cnt_sys * 100), 2) if leads_cnt_sys > 0 else 0.0
+
+        # 新签合同额拆分为营销与交付
+        m_signing_sys = marketing_actuals.get(uid, 0.0)
+        d_signing_sys = delivery_actuals.get(uid, 0.0)
+
+        # 5.1. 特殊判定合同额目标划分 bias
+        goal_contract = u_goals.get("contract_amount")
+        m_signing_goal = {"is_configured": False, "base_target": 0.0, "challenge_target": 0.0, "actual": 0.0}
+        d_signing_goal = {"is_configured": False, "base_target": 0.0, "challenge_target": 0.0, "actual": 0.0}
+
+        if goal_contract:
+            # 判定偏向非此即彼
+            bias = 'delivery'
+            if m_signing_sys > d_signing_sys:
+                bias = 'marketing'
+            elif d_signing_sys > m_signing_sys:
+                bias = 'delivery'
+            else:
+                pos = (u.position or "").lower()
+                pos_type = (u.position_type or "").lower()
+                if pos_type == 'marketing' or any(kw in pos for kw in ['营销', '销售', '业务', '总经理', '分公司总经理', '总裁', '总监']):
+                    bias = 'marketing'
+                else:
+                    bias = 'delivery'
+
+            # 填充实际值 (若手动覆盖则赋值给偏向方，另一方取系统原值)
+            if bias == 'marketing':
+                m_signing_goal = {
+                    "is_configured": True,
+                    "base_target": goal_contract.base_target,
+                    "challenge_target": goal_contract.challenge_target,
+                    "actual": goal_contract.actual_value if goal_contract.actual_value is not None else m_signing_sys
+                }
+                d_signing_goal = {
+                    "is_configured": True,
+                    "base_target": 0.0,
+                    "challenge_target": 0.0,
+                    "actual": d_signing_sys
+                }
+            else:
+                d_signing_goal = {
+                    "is_configured": True,
+                    "base_target": goal_contract.base_target,
+                    "challenge_target": goal_contract.challenge_target,
+                    "actual": goal_contract.actual_value if goal_contract.actual_value is not None else d_signing_sys
+                }
+                m_signing_goal = {
+                    "is_configured": True,
+                    "base_target": 0.0,
+                    "challenge_target": 0.0,
+                    "actual": m_signing_sys
+                }
+
+        # 5.2. 构建其它目标的统一拼装函数
+        def make_goal_dict(g_type: str, sys_val: float) -> dict:
+            g = u_goals.get(g_type)
+            if not g:
+                return {
+                    "is_configured": False,
+                    "base_target": 0.0,
+                    "challenge_target": 0.0,
+                    "actual": sys_val
+                }
+            return {
+                "is_configured": True,
+                "base_target": g.base_target,
+                "challenge_target": g.challenge_target,
+                "actual": g.actual_value if g.actual_value is not None else sys_val
+            }
+
+        items.append({
+            "key": uid,
+            "user_id": uid,
+            "user_name": u.name,
+            "team_name": team_map.get(u.team_id, "未分配") if u.team_id else "未分配",
+            "team_id": u.team_id,
+            "third_class_bar": u.third_class_bar or "—",
+            "goals": {
+                "marketing_signing": m_signing_goal,
+                "delivery_signing": d_signing_goal,
+                "happiness_action": make_goal_dict("happiness_action", hap_act_sys),
+                "triangle_count": make_goal_dict("triangle_count", tri_cnt_sys),
+                "leads_count": make_goal_dict("leads_count", leads_cnt_sys),
+                "leads_conversion_rate": make_goal_dict("leads_conversion_rate", leads_conv_sys),
+                "new_customer_count": make_goal_dict("new_customer_count", new_cust_sys),
+                "happiness_story_count": make_goal_dict("happiness_story_count", story_sys),
+                "contract_count": make_goal_dict("contract_count", cont_cnt_sys)
+            }
+        })
+
+    return {"items": items}
+
+
+
 
 

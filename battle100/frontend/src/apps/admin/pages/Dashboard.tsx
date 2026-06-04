@@ -13,7 +13,9 @@ import {
   UserOutlined,
   FileTextOutlined,
   PlusOutlined,
-  TrophyOutlined
+  TrophyOutlined,
+  SearchOutlined,
+  TeamOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
@@ -23,8 +25,47 @@ import type { DashboardData, MyStatsResponse, RankingItem } from '@shared/types'
 
 const { Title, Text } = Typography
 
+const MATRIX_KPI_CONFIG = [
+  { key: 'marketing_signing', label: '营销新签实际/目标', unit: '万元', headerBg: '#e6f7ff', titleColor: '#096dd9' },
+  { key: 'delivery_signing', label: '交付新签实际/目标', unit: '万元', headerBg: '#e6fffb', titleColor: '#08979c' },
+  { key: 'happiness_action', label: '客户幸福动作完成数', unit: '次', headerBg: '#feffe6', titleColor: '#ad8b00' },
+  { key: 'triangle_count', label: '售前铁三角联动次数', unit: '次', headerBg: '#f6ffed', titleColor: '#389e0d' },
+  { key: 'leads_count', label: '有效线索数', unit: '条', headerBg: '#fff2e8', titleColor: '#d4380d' },
+  { key: 'leads_conversion_rate', label: '线索转化率', unit: '%', headerBg: '#f9f0ff', titleColor: '#531dab' },
+  { key: 'new_customer_count', label: '新客户数', unit: '个', headerBg: '#fcffe6', titleColor: '#5b8c00' },
+  { key: 'happiness_story_count', label: '幸福故事数', unit: '个', headerBg: '#fff0f6', titleColor: '#c41d7f' },
+  { key: 'contract_count', label: '新签合同单数', unit: '个', headerBg: '#e6fffb', titleColor: '#08979c' }
+]
+
 const Dashboard: React.FC = () => {
   const { user } = useAuthStore()
+
+  // 个人奋斗目标矩阵大盘状态变量，所有注释均采用中文
+  const [matrixData, setMatrixData] = useState<any[]>([])
+  const [matrixLoading, setMatrixLoading] = useState(false)
+  const [matrixKeyword, setMatrixKeyword] = useState('')
+  const [matrixTeamId, setMatrixTeamId] = useState<number | undefined>(undefined)
+  const [matrixThirdClassBar, setMatrixThirdClassBar] = useState<string | undefined>(undefined)
+
+  const fetchMatrixData = React.useCallback(async () => {
+    setMatrixLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (matrixKeyword) params.append('keyword', matrixKeyword)
+      if (matrixTeamId) params.append('team_id', String(matrixTeamId))
+      if (matrixThirdClassBar) params.append('third_class_bar', matrixThirdClassBar)
+      
+      const res: any = await get(`/dashboard/personal-goals?${params.toString()}`)
+      if (res && res.items) {
+        setMatrixData(res.items)
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('加载矩阵大盘数据失败')
+    } finally {
+      setMatrixLoading(false)
+    }
+  }, [matrixKeyword, matrixTeamId, matrixThirdClassBar])
   
   // 统一权限判定函数，超级管理员默认拥有所有权限，无 permissions 字段时兜底为 true
   const hasPerm = (p: string) => {
@@ -1046,6 +1087,11 @@ const Dashboard: React.FC = () => {
     loadData()
   }, [rankFilterTeamId, rankFilterThirdClassBar, rankFilterLyingFlat])
 
+  // 监听矩阵大盘过滤状态变化，自动重载矩阵大盘数据，所有注释必须使用中文
+  useEffect(() => {
+    fetchMatrixData()
+  }, [fetchMatrixData])
+
   useEffect(() => {
     loadUsersList()
   }, [])
@@ -1912,6 +1958,221 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* 📊 个人奋斗目标实际完成矩阵大盘，所有注释均采用中文 */}
+      {(() => {
+        // 个人奋斗目标矩阵大盘 Table 列定义
+        const matrixColumns = [
+          {
+            title: '基本信息',
+            fixed: 'left' as const,
+            children: [
+              { 
+                title: '姓名', 
+                dataIndex: 'user_name', 
+                key: 'user_name', 
+                width: 95, 
+                fixed: 'left' as const, 
+                render: (val: string) => <strong>{val}</strong> 
+              },
+              { 
+                title: '归属战队', 
+                dataIndex: 'team_name', 
+                key: 'team_name', 
+                width: 125, 
+                fixed: 'left' as const 
+              }
+            ]
+          },
+          ...MATRIX_KPI_CONFIG.map(kpi => {
+            return {
+              title: (
+                <div style={{ 
+                  background: kpi.headerBg, 
+                  color: kpi.titleColor,
+                  padding: '12px 8px', 
+                  margin: '-16px -8px', 
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                  borderBottom: '1px solid #f0f0f0',
+                  borderRadius: '4px 4px 0 0'
+                }}>
+                  {kpi.label} ({kpi.unit})
+                </div>
+              ),
+              key: kpi.key,
+              width: 145,
+              align: 'center' as const,
+              render: (_: any, record: any) => {
+                const goal = record.goals[kpi.key]
+                if (!goal || !goal.is_configured) {
+                  return <span style={{ color: '#ccc' }}>—</span>
+                }
+                
+                const val = goal.actual !== null && goal.actual !== undefined ? goal.actual : 0.0
+                const baseTarget = goal.base_target !== null && goal.base_target !== undefined ? goal.base_target : 0.0
+
+                let formattedVal = typeof val === 'number' ? val.toFixed(2).replace('.00', '') : val
+                let formattedTarget = typeof baseTarget === 'number' ? baseTarget.toFixed(2).replace('.00', '') : baseTarget
+
+                if (kpi.key === 'marketing_signing' || kpi.key === 'delivery_signing') {
+                  formattedVal = typeof val === 'number' ? val.toFixed(1).replace('.0', '') : val
+                  formattedTarget = typeof baseTarget === 'number' ? baseTarget.toFixed(1).replace('.0', '') : baseTarget
+                } else if (kpi.key === 'leads_conversion_rate') {
+                  formattedVal = typeof val === 'number' ? val.toFixed(1).replace('.0', '') : val
+                  formattedTarget = typeof baseTarget === 'number' ? baseTarget.toFixed(1).replace('.0', '') : baseTarget
+                } else if (kpi.key === 'happiness_action' || kpi.key === 'triangle_count' || kpi.key === 'leads_count' || kpi.key === 'new_customer_count' || kpi.key === 'happiness_story_count' || kpi.key === 'contract_count') {
+                  formattedVal = Math.round(val)
+                  formattedTarget = Math.round(baseTarget)
+                }
+
+                const isAchieved = baseTarget > 0 && val >= baseTarget;
+                const showColor = baseTarget > 0;
+                
+                return (
+                  <div>
+                    <span style={{ fontWeight: 'bold', color: showColor ? (isAchieved ? '#52c41a' : '#ff4d4f') : 'inherit' }}>
+                      {formattedVal}
+                    </span>
+                    <span style={{ color: '#8c8c8c', marginLeft: 4 }} title="奋斗目标">/ {formattedTarget}</span>
+                  </div>
+                )
+              }
+            }
+          })
+        ]
+
+        // 个人奋斗目标矩阵大盘汇总行渲染，仅对实际值累加，目标值不加总
+        const renderSummary = (pageData: any[]) => {
+          let totalMarketingActual = 0
+          let totalDeliveryActual = 0
+          let totalHappinessActionActual = 0
+          let totalTriangleActual = 0
+          let totalLeadsActual = 0
+          let totalNewCustomerActual = 0
+          let totalStoryActual = 0
+          let totalContractCountActual = 0
+
+          pageData.forEach(row => {
+            const goals = row.goals || {}
+            totalMarketingActual += goals.marketing_signing?.actual || 0
+            totalDeliveryActual += goals.delivery_signing?.actual || 0
+            totalHappinessActionActual += goals.happiness_action?.actual || 0
+            totalTriangleActual += goals.triangle_count?.actual || 0
+            totalLeadsActual += goals.leads_count?.actual || 0
+            totalNewCustomerActual += goals.new_customer_count?.actual || 0
+            totalStoryActual += goals.happiness_story_count?.actual || 0
+            totalContractCountActual += goals.contract_count?.actual || 0
+          })
+
+          const totalLeadsConversionActual = totalLeadsActual > 0 
+            ? ((totalContractCountActual / totalLeadsActual) * 100).toFixed(1).replace('.0', '')
+            : '0'
+
+          return (
+            <Table.Summary.Row style={{ background: '#fafafa', fontWeight: 'bold' }}>
+              <Table.Summary.Cell index={0} fixed="left">
+                <strong>汇总</strong>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={1} fixed="left">
+                <span>—</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={2} align="center">
+                <span style={{ color: '#096dd9' }}>{totalMarketingActual.toFixed(1).replace('.0', '')} 万元</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={3} align="center">
+                <span style={{ color: '#08979c' }}>{totalDeliveryActual.toFixed(1).replace('.0', '')} 万元</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={4} align="center">
+                <span style={{ color: '#ad8b00' }}>{Math.round(totalHappinessActionActual)} 次</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={5} align="center">
+                <span style={{ color: '#389e0d' }}>{Math.round(totalTriangleActual)} 次</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={6} align="center">
+                <span style={{ color: '#d4380d' }}>{Math.round(totalLeadsActual)} 条</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={7} align="center">
+                <span style={{ color: '#531dab' }}>{totalLeadsConversionActual} %</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={8} align="center">
+                <span style={{ color: '#5b8c00' }}>{Math.round(totalNewCustomerActual)} 个</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={9} align="center">
+                <span style={{ color: '#c41d7f' }}>{Math.round(totalStoryActual)} 个</span>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={10} align="center">
+                <span style={{ color: '#08979c' }}>{Math.round(totalContractCountActual)} 个</span>
+              </Table.Summary.Cell>
+            </Table.Summary.Row>
+          )
+        }
+
+        return (
+          <Card 
+            title={<span><TeamOutlined style={{ marginRight: 8 }} />📊 个人奋斗目标实际完成矩阵大盘</span>} 
+            bordered={false} 
+            style={{ marginTop: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+          >
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="middle">
+              <Col xs={24} sm={8} md={6}>
+                <Input.Search
+                  placeholder="搜索姓名或手机号"
+                  allowClear
+                  value={matrixKeyword}
+                  onChange={(e) => setMatrixKeyword(e.target.value)}
+                  onSearch={fetchMatrixData}
+                  enterButton={<SearchOutlined />}
+                />
+              </Col>
+              <Col xs={12} sm={6} md={5}>
+                <Select
+                  style={{ width: '100%' }}
+                  value={matrixTeamId}
+                  placeholder="筛选战队"
+                  allowClear
+                  onChange={(val) => setMatrixTeamId(val)}
+                  dropdownMatchSelectWidth={false}
+                >
+                  {(data as any)?.teams?.map((t: any) => (
+                    <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+              <Col xs={12} sm={6} md={5}>
+                <Select
+                  style={{ width: '100%' }}
+                  value={matrixThirdClassBar}
+                  placeholder="筛选三级巴"
+                  allowClear
+                  onChange={(val) => setMatrixThirdClassBar(val)}
+                  dropdownMatchSelectWidth={false}
+                >
+                  {(data as any)?.thirdClassBars?.map((b: string) => (
+                    <Select.Option key={b} value={b}>{b}</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+            </Row>
+
+            <Table
+              dataSource={matrixData}
+              columns={matrixColumns}
+              rowKey="user_id"
+              loading={matrixLoading}
+              pagination={{
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 人已配目标`,
+                defaultPageSize: 10,
+                pageSizeOptions: ['10', '20', '50', '100']
+              }}
+              scroll={{ x: 'max-content' }}
+              bordered
+              summary={renderSummary}
+            />
+          </Card>
+        )
+      })()}
 
       {/* 实时动态战报 */}
       <Card title="🔔 战役实时攻坚播报" bordered={false} style={{ marginTop: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
