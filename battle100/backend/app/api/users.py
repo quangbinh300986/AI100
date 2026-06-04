@@ -19,6 +19,7 @@ from app.schemas.user import (
     BatchAssignTeamRequest,
     BatchAssignRoleRequest,
     BatchAssignPositionTypeRequest,
+    BatchAssignThirdClassBarRequest,
 )
 from app.services.auth_service import hash_password
 from fastapi import Request
@@ -510,3 +511,43 @@ async def batch_assign_position_type(
     )
 
     return {"message": f"成功批量修改 {len(users)} 个用户的岗位类别"}
+
+
+@router.put("/batch/third-class-bar", summary="批量分配三级巴")
+async def batch_assign_third_class_bar(
+    req: BatchAssignThirdClassBarRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """
+    批量分配用户三级巴（仅管理员可用，输入为空白则清空三级巴）
+    """
+    if not req.user_ids:
+        return {"message": "未选择任何用户"}
+        
+    result = await db.execute(select(User).where(User.id.in_(req.user_ids)))
+    users = result.scalars().all()
+
+    before_state = {str(u.id): to_dict(u) for u in users}
+    
+    # 如果去除前后空白后是空字符串，则设为 None
+    target_bar = req.third_class_bar.strip() if req.third_class_bar and req.third_class_bar.strip() else None
+    
+    for u in users:
+        u.third_class_bar = target_bar
+        db.add(u)
+        
+    await db.flush()
+
+    after_state = {str(u.id): to_dict(u) for u in users}
+
+    bar_desc = target_bar if target_bar else "清空"
+    await log_action(
+        db, current_user, "UPDATE", "user", ",".join(map(str, req.user_ids)),
+        f"批量修改了 {len(users)} 个用户的三级巴为 {bar_desc}",
+        before_state=before_state,
+        after_state=after_state
+    )
+
+    return {"message": f"成功批量修改 {len(users)} 个用户的三级巴"}
+

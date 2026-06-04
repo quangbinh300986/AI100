@@ -76,3 +76,9 @@ class BatchAssignRoleRequest(BaseModel):
 class BatchAssignPositionTypeRequest(BaseModel):
     user_ids: list[int] = Field(..., description="需要分配的用户ID列表")
     position_type: str = Field(..., description="目标岗位类别")
+
+
+class BatchAssignThirdClassBarRequest(BaseModel):
+    user_ids: list[int] = Field(..., description="需要分配的用户ID列表")
+    third_class_bar: Optional[str] = Field(None, description="目标三级巴名称，传null或空字符串则清空归属")
+

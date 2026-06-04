@@ -328,6 +328,10 @@ const Goals: React.FC = () => {
   const [assignPosTypeModalVisible, setAssignPosTypeModalVisible] = useState(false)
   const [selectedPosType, setSelectedPosType] = useState('')
 
+  const [assignThirdClassBarModalVisible, setAssignThirdClassBarModalVisible] = useState(false)
+  const [selectedThirdClassBar, setSelectedThirdClassBar] = useState('')
+
+
   const loadUsers = useCallback(async () => {
     setUsersLoading(true)
     try {
@@ -569,6 +573,24 @@ const Goals: React.FC = () => {
       message.error(err?.response?.data?.detail || '批量修改岗位类别失败')
     }
   }
+
+  const handleBatchAssignThirdClassBar = async () => {
+    try {
+      await put('/users/batch/third-class-bar', {
+        user_ids: selectedUserRowKeys,
+        third_class_bar: selectedThirdClassBar
+      })
+      message.success('批量分配三级巴成功')
+      setAssignThirdClassBarModalVisible(false)
+      setSelectedUserRowKeys([])
+      setSelectedThirdClassBar('')
+      loadUsers()
+      loadThirdClassBars()
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '批量分配三级巴失败')
+    }
+  }
+
 
   // ==========================================
   // 标签页2：个人多维奋斗目标 状态与方法
@@ -2015,6 +2037,9 @@ const Goals: React.FC = () => {
                     <Button type="primary" icon={<TeamOutlined />} onClick={() => setAssignTeamModalVisible(true)}>
                       批量分配战队 ({selectedUserRowKeys.length})
                     </Button>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setAssignThirdClassBarModalVisible(true)}>
+                      批量分配三级巴 ({selectedUserRowKeys.length})
+                    </Button>
                     <Button danger icon={<DeleteOutlined />} onClick={handleBatchDeleteUsers}>
                       批量删除 ({selectedUserRowKeys.length})
                     </Button>
@@ -2361,6 +2386,30 @@ const Goals: React.FC = () => {
           />
         </div>
       </Modal>
+
+      <Modal
+        title="批量分配三级巴"
+        open={assignThirdClassBarModalVisible}
+        onOk={handleBatchAssignThirdClassBar}
+        onCancel={() => {
+          setAssignThirdClassBarModalVisible(false)
+          setSelectedThirdClassBar('')
+        }}
+        okText="确认修改"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <div style={{ padding: '24px 0' }}>
+          <p>已选择 {selectedUserRowKeys.length} 位员工，请输入你要分配的三级巴名称（如果输入为空白或不输入，将会清空选中员工的三级巴归属）：</p>
+          <Input
+            placeholder="请输入三级巴名称，例如：清远技术3巴"
+            value={selectedThirdClassBar}
+            onChange={(e) => setSelectedThirdClassBar(e.target.value)}
+            allowClear
+          />
+        </div>
+      </Modal>
+
 
       {/* 编辑员工 Modal */}
       <Modal
