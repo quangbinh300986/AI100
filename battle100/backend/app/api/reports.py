@@ -1036,6 +1036,50 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         blocker_list.append(f"  {b_idx}) 预设立预警：项目【{pp['project_name']}】已立项执行超过一个月，但目前仍未签订正式合同（立项时间：{c_date_str}）")
                         b_idx += 1
                 
+                # 8.2 已到交付节点还未开发票的项目
+                unbilled_node_sql = text("""
+                    SELECT DISTINCT p.project_name, p.project_progress, np.project_progress_trigger, cm.installment_money
+                    FROM project p
+                    INNER JOIN contract_money_urge_notify_project np ON p.id = np.project_id
+                    INNER JOIN contract_money cm ON np.contract_money_id = cm.id
+                    WHERE p.project_manager = :real_name
+                      AND p.project_progress >= np.project_progress_trigger
+                      AND (cm.invoic_status IS NULL OR cm.invoic_status = '' OR cm.invoic_status = '0')
+                      AND (p.project_status IS NULL OR (p.project_status != '已归档' AND p.project_status != '已结项'))
+                """)
+                unbilled_projects = conn.execute(unbilled_node_sql, {"real_name": real_name}).mappings().all()
+                if unbilled_projects:
+                    for up in unbilled_projects:
+                        money_str = f"{float(up['installment_money']):,.2f}" if up['installment_money'] is not None else "—"
+                        blocker_list.append(
+                            f"  {b_idx}) 交付卡点：项目【{up['project_name']}】进度已达 {float(up['project_progress'] or 0):.1f}%"
+                            f"（已达收付款触发节点 {float(up['project_progress_trigger'] or 0):.1f}%），"
+                            f"但尚未开发票（本阶段合同款项：{money_str}元）"
+                        )
+                        b_idx += 1
+
+                # 8.3 已开发票还未到账的项目
+                unreceived_bill_sql = text("""
+                    SELECT DISTINCT p.project_name, br.bill_money, br.un_account_money, br.bill_create_date
+                    FROM contract_un_receive_bill_not_receive br
+                    INNER JOIN contract_project cp ON br.contract_id = cp.contract_id
+                    INNER JOIN project p ON cp.project_id = p.id
+                    WHERE p.project_manager = :real_name
+                      AND br.un_account_money > 0
+                      AND (p.project_status IS NULL OR (p.project_status != '已归档' AND p.project_status != '已结项'))
+                """)
+                unreceived_projects = conn.execute(unreceived_bill_sql, {"real_name": real_name}).mappings().all()
+                if unreceived_projects:
+                    for urp in unreceived_projects:
+                        bill_money_str = f"{float(urp['bill_money']):,.2f}" if urp['bill_money'] is not None else "—"
+                        un_money_str = f"{float(urp['un_account_money']):,.2f}" if urp['un_account_money'] is not None else "—"
+                        b_date_str = urp['bill_create_date'].strftime('%Y-%m-%d') if urp['bill_create_date'] else '—'
+                        blocker_list.append(
+                            f"  {b_idx}) 收欠款预警：项目【{urp['project_name']}】已开发票但尚未回款到账"
+                            f"（开票日期：{b_date_str}，开票金额：{bill_money_str}元，未到账金额：{un_money_str}元）"
+                        )
+                        b_idx += 1
+                
                 result["delivery_highlights"] = "\n".join(highlight_list) if highlight_list else "1. 交付工作处于正常开发推进中，开发交付无积压。"
                 result["delivery_blockers"] = "\n".join(blocker_list) if blocker_list else "1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。"
                 result["sales_highlights"] = ""
