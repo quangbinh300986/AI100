@@ -4,6 +4,8 @@
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import create_engine
+from contextlib import contextmanager
 from app.config import settings
 
 # 创建异步数据库引擎
@@ -37,3 +39,25 @@ async def get_db() -> AsyncSession:
             raise
         finally:
             await session.close()
+
+
+# 创建同步 CRM 数据库引擎 (MySQL)
+crm_engine = create_engine(
+    f"mysql+pymysql://{settings.CRM_DB_USER}:{settings.CRM_DB_PASSWORD}@{settings.CRM_DB_HOST}:{settings.CRM_DB_PORT}/{settings.CRM_DB_NAME}",
+    pool_recycle=3600,
+    pool_size=10,
+    max_overflow=5,
+    pool_pre_ping=True
+)
+
+
+@contextmanager
+def get_crm_db():
+    """
+    同步 CRM 数据库连接上下文管理器
+    """
+    connection = crm_engine.connect()
+    try:
+        yield connection
+    finally:
+        connection.close()

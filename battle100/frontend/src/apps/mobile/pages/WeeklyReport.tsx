@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, TextArea, Input, Button, Toast, Card, NavBar } from 'antd-mobile'
 import { LeftOutline, RightOutline, StarOutline, CalendarOutline, FileOutline } from 'antd-mobile-icons'
-import { getMyWeeklyReport, saveWeeklyReport, extractWeeklyBroadcasts } from '@shared/api/report'
+import { getMyWeeklyReport, saveWeeklyReport, extractWeeklyBroadcasts, extractWeeklyCrmData } from '@shared/api/report'
 import { useAuthStore } from '@shared/stores/authStore'
 import type { WeeklyReport as WeeklyReportType } from '@shared/types'
 
@@ -26,9 +26,43 @@ function getMonday(d: Date): Date {
   return new Date(date.setDate(diff))
 }
 
+const DEFAULT_TEMPLATES: Record<string, string> = {
+  delivery_plan: "项目交付工作：（需要做什么项目、什么内容，到什么节点）\n1. \n2. \n3. ",
+  sales_plan: "销售：（新签、回款、营销动作，新签动作包括：新签合同跟进、报价、合同入系统、营销线索等；回款动作包括：对接业主请款、申请开票、定期问询请款情况等；营销动作：获取营销线索、潜在项目分析、拜访客户等）\n1. \n2. \n3. ",
+  delivery_actual: "项目交付工作：（做了什么项目，什么内容，到什么节点，幸福动作等）\n1. \n2. \n3. ",
+  sales_actual: "销售：（已签约、中标、铁三角现场联动、拜访等）\n1. \n2. \n3. ",
+  delivery_highlights: "【项目】\n1. \n2. ",
+  sales_highlights: "【销售】\n1. \n2. ",
+  delivery_blockers: "【项目难点】\n1. \n2. ",
+  sales_blockers: "【销售难点】\n1. \n2. ",
+  delivery_support: "项目侧：",
+  sales_support: "销售侧：",
+  next_delivery_plan: "项目交付工作：（做了什么项目，什么内容，到什么节点）\n1. \n2. \n3. ",
+  next_sales_plan: "销售：（新签、回款、营销动作等）\n1. \n2. \n3. "
+}
+
+// 判定是否为播报无数据的兜底文本
+const isDummyBroadcast = (text: string) => {
+  if (!text) return true
+  const clean = text.trim()
+  return clean === '1. 无相关播报数据' || clean === ''
+}
+
+// 判定是否为 CRM 无数据的兜底文本
+const isDummyCrmActual = (text: string, isMarketing: boolean) => {
+  if (!text) return true
+  const clean = text.trim()
+  if (isMarketing) {
+    return clean === '1. 本周暂无相关的合同新签、到账回款与客户拜访登记。' || clean === ''
+  } else {
+    return clean === '1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
+  }
+}
+
 export default function WeeklyReport() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const isMarketing = user?.position_type === 'marketing' || ['target_officer', 'marketing_staff', 'tech_marketing'].includes(user?.role || '');
   
   // 维护当前周一的日期实例，默认当前日期所在周一
   const [monday, setMonday] = useState<Date>(() => getMonday(new Date()))
@@ -71,56 +105,51 @@ export default function WeeklyReport() {
     const monStr = formatDate(monDate)
     const sunStr = formatDate(new Date(new Date(monDate).setDate(monDate.getDate() + 6)))
     
+    let data: any = null
     try {
       const res = await getMyWeeklyReport(monStr)
       if (res && res.data) {
-        setReport(res.data)
-      } else {
-        // 重置为空白模板
-        setReport({
-          start_date: monStr,
-          end_date: sunStr,
-          delivery_plan: '',
-          sales_plan: '',
-          delivery_actual: '',
-          sales_actual: '',
-          delivery_rate: '',
-          sales_rate: '',
-          delivery_highlights: '',
-          sales_highlights: '',
-          delivery_blockers: '',
-          sales_blockers: '',
-          delivery_support: '',
-          sales_support: '',
-          next_delivery_plan: '',
-          next_sales_plan: '',
-          status: 'draft'
-        })
+        data = res.data
       }
     } catch (err) {
-      // 404 表明无记录，重置为空白周报
-      setReport({
-        start_date: monStr,
-        end_date: sunStr,
-        delivery_plan: '',
-        sales_plan: '',
-        delivery_actual: '',
-        sales_actual: '',
-        delivery_rate: '',
-        sales_rate: '',
-        delivery_highlights: '',
-        sales_highlights: '',
-        delivery_blockers: '',
-        sales_blockers: '',
-        delivery_support: '',
-        sales_support: '',
-        next_delivery_plan: '',
-        next_sales_plan: '',
-        status: 'draft'
-      })
-    } finally {
-      setLoading(false)
+      console.log('尚未填写周报，将预填模版说明')
     }
+    
+    const fields = [
+      'delivery_plan', 'sales_plan',
+      'delivery_actual', 'sales_actual',
+      'delivery_rate', 'sales_rate',
+      'delivery_highlights', 'sales_highlights',
+      'delivery_blockers', 'sales_blockers',
+      'delivery_support', 'sales_support',
+      'next_delivery_plan', 'next_sales_plan'
+    ]
+    
+    const newReport: any = {
+      start_date: monStr,
+      end_date: sunStr,
+      status: data?.status || 'draft'
+    }
+    
+    fields.forEach(field => {
+      const val = data ? data[field] : null
+      if (val !== null && val !== undefined && val !== '') {
+        newReport[field] = val
+      } else {
+        const isSalesField = field.startsWith('sales_') || field.startsWith('next_sales_')
+        const isDeliveryField = field.startsWith('delivery_') || field.startsWith('next_delivery_')
+        if (isMarketing && isSalesField) {
+          newReport[field] = DEFAULT_TEMPLATES[field] || ''
+        } else if (!isMarketing && isDeliveryField) {
+          newReport[field] = DEFAULT_TEMPLATES[field] || ''
+        } else {
+          newReport[field] = ''
+        }
+      }
+    })
+    
+    setReport(newReport)
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -141,26 +170,84 @@ export default function WeeklyReport() {
     setMonday(next)
   }
 
-  // 一键自动从播报系统提取数据
+  // 一键自动拉取当周实际完成（联动播报系统与 CRM 系统，直接静默覆盖）
   const handleAutoExtract = async () => {
     setExtracting(true)
     try {
-      const res = await extractWeeklyBroadcasts(mondayStr)
-      if (res && res.data) {
-        setReport(prev => ({
-          ...prev,
-          delivery_actual: res.data.delivery_actual,
-          sales_actual: res.data.sales_actual
-        }))
-        Toast.show({
-          icon: 'success',
-          content: '已成功提取并回填当周播报数据！'
-        })
-      }
+      const [resBroadcast, resCrm] = await Promise.all([
+        extractWeeklyBroadcasts(mondayStr),
+        extractWeeklyCrmData(mondayStr)
+      ])
+      
+      const broadcastData = resBroadcast?.data ? resBroadcast.data : resBroadcast
+      const crmData = resCrm?.data ? resCrm.data : resCrm
+      
+      setReport(prev => {
+        const nextReport = { ...prev }
+        
+        // 1. 实际完成数据：拼装播报数据与 CRM 实际完成数据
+        if (!isMarketing) {
+          const bActual = broadcastData?.delivery_actual || ''
+          const cActual = crmData?.delivery_actual || ''
+          
+          const bDummy = isDummyBroadcast(bActual)
+          const cDummy = isDummyCrmActual(cActual, false)
+          
+          let combinedActual = ''
+          if (!bDummy && !cDummy) {
+            combinedActual = `${bActual}\n\n${cActual}`
+          } else if (!bDummy) {
+            combinedActual = bActual
+          } else if (!cDummy) {
+            combinedActual = cActual
+          } else {
+            combinedActual = cActual || bActual
+          }
+          nextReport.delivery_actual = combinedActual
+        } else {
+          const bActual = broadcastData?.sales_actual || ''
+          const cActual = crmData?.sales_actual || ''
+          
+          const bDummy = isDummyBroadcast(bActual)
+          const cDummy = isDummyCrmActual(cActual, true)
+          
+          let combinedActual = ''
+          if (!bDummy && !cDummy) {
+            combinedActual = `${bActual}\n\n${cActual}`
+          } else if (!bDummy) {
+            combinedActual = bActual
+          } else if (!cDummy) {
+            combinedActual = cActual
+          } else {
+            combinedActual = cActual || bActual
+          }
+          nextReport.sales_actual = combinedActual
+        }
+        
+        // 2. 静默覆盖 CRM 数据中特有的其他字段 (包括达成率、亮点、卡点)
+        if (crmData) {
+          Object.keys(crmData).forEach(key => {
+            if (key === 'delivery_actual' || key === 'sales_actual') {
+              return
+            }
+            if (crmData[key] !== undefined && crmData[key] !== null && crmData[key] !== '') {
+              nextReport[key as keyof WeeklyReportType] = crmData[key]
+            }
+          })
+        }
+        
+        return nextReport
+      })
+
+      Toast.show({
+        icon: 'success',
+        content: '已成功静默拉取并覆盖您的 CRM 业绩与进度数据！'
+      })
     } catch (err) {
+      console.error(err)
       Toast.show({
         icon: 'fail',
-        content: '数据提取失败，请重试'
+        content: '数据智能拉取失败，请重试'
       })
     } finally {
       setExtracting(false)
@@ -184,12 +271,32 @@ export default function WeeklyReport() {
     }
 
     try {
-      const payload = {
+      const payload: any = {
         ...report,
         start_date: mondayStr,
         end_date: sundayStr,
         status: submitStatus
       }
+      
+      // 过滤与当前用户岗位不符的另一侧模板数据，避免空模板脏数据提交落库
+      const fields = [
+        'delivery_plan', 'sales_plan',
+        'delivery_actual', 'sales_actual',
+        'delivery_rate', 'sales_rate',
+        'delivery_highlights', 'sales_highlights',
+        'delivery_blockers', 'sales_blockers',
+        'delivery_support', 'sales_support',
+        'next_delivery_plan', 'next_sales_plan'
+      ]
+      fields.forEach(field => {
+        const isSalesField = field.startsWith('sales_') || field.startsWith('next_sales_')
+        if (isMarketing && !isSalesField) {
+          payload[field] = ''
+        } else if (!isMarketing && isSalesField) {
+          payload[field] = ''
+        }
+      })
+      
       const res = await saveWeeklyReport(payload)
       if (res && res.data) {
         setReport(res.data)
@@ -256,179 +363,216 @@ export default function WeeklyReport() {
                 block
                 loading={extracting}
                 onClick={handleAutoExtract}
+                disabled={report.status === 'submitted'}
                 style={{
-                  background: 'linear-gradient(135deg, #722ed1, #3f1a68)',
+                  background: report.status === 'submitted' ? '#ccc' : 'linear-gradient(135deg, #722ed1, #3f1a68)',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '12px',
                   height: '46px',
                   fontWeight: 'bold',
-                  boxShadow: '0 4px 10px rgba(114,46,209,0.3)',
+                  boxShadow: report.status === 'submitted' ? 'none' : '0 4px 10px rgba(114,46,209,0.3)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
               >
-                ✨ 依据附件2 自动拉取当周播报完成
+                ✨ 一键自动拉取当周实际完成
               </Button>
             </div>
 
             {/* 模块一：本周目标计划 */}
             <Card title={<div style={{ display: 'flex', alignItems: 'center', color: '#1677ff', gap: 6 }}><CalendarOutline /> 1. 本周目标计划</div>} style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <Form.Item label='项目交付工作：（计划需要做什么项目，什么内容，到什么节点）'>
-                <TextArea
-                  placeholder='请输入项目交付计划...'
-                  autoSize={{ minRows: 2, maxRows: 6 }}
-                  value={report.delivery_plan || ''}
-                  onChange={val => setReport(prev => ({ ...prev, delivery_plan: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='销售：（计划完成新签、回款、营销动作目标）'>
-                <TextArea
-                  placeholder='请输入销售目标计划...'
-                  autoSize={{ minRows: 2, maxRows: 6 }}
-                  value={report.sales_plan || ''}
-                  onChange={val => setReport(prev => ({ ...prev, sales_plan: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='项目交付工作：（计划需要做什么项目，什么内容，到什么节点）'>
+                  <TextArea
+                    placeholder='请输入项目交付计划...'
+                    autoSize={{ minRows: 2, maxRows: 6 }}
+                    value={report.delivery_plan || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_plan: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='销售：（计划完成新签、回款、营销动作目标）'>
+                  <TextArea
+                    placeholder='请输入销售目标计划...'
+                    autoSize={{ minRows: 2, maxRows: 6 }}
+                    value={report.sales_plan || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_plan: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块二：本周实际完成 */}
             <Card title={<div style={{ display: 'flex', alignItems: 'center', color: '#52c41a', gap: 6 }}><StarOutline /> 2. 本周实际完成</div>} style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <Form.Item label='项目交付工作：（做了什么项目，什么内容，到什么节点，幸福动作等）'>
-                <TextArea
-                  placeholder='请输入本周项目交付实际完成情况...'
-                  autoSize={{ minRows: 3, maxRows: 8 }}
-                  value={report.delivery_actual || ''}
-                  onChange={val => setReport(prev => ({ ...prev, delivery_actual: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='销售：（已签约、中标、铁三角现场联动、拜访等）'>
-                <TextArea
-                  placeholder='请输入本周销售实际完成情况...'
-                  autoSize={{ minRows: 3, maxRows: 8 }}
-                  value={report.sales_actual || ''}
-                  onChange={val => setReport(prev => ({ ...prev, sales_actual: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='项目交付工作：（做了什么项目，什么内容，到什么节点，幸福动作等）'>
+                  <TextArea
+                    placeholder='请输入本周项目交付实际完成情况...'
+                    autoSize={{ minRows: 3, maxRows: 8 }}
+                    value={report.delivery_actual || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_actual: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='销售：（已签约、中标、铁三角现场联动、拜访等）'>
+                  <TextArea
+                    placeholder='请输入本周销售实际完成情况...'
+                    autoSize={{ minRows: 3, maxRows: 8 }}
+                    value={report.sales_actual || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_actual: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块三：达成情况 */}
             <Card title={<div style={{ display: 'flex', alignItems: 'center', color: '#13c2c2', gap: 6 }}><FileOutline /> 3. 指标达成率</div>} style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <Form.Item label='项目达成率 (%)'>
-                    <Input
-                      placeholder='例如 100%'
-                      value={report.delivery_rate || ''}
-                      onChange={val => setReport(prev => ({ ...prev, delivery_rate: val }))}
-                      style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                    />
-                  </Form.Item>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <Form.Item label='销售达成率 (%)'>
-                    <Input
-                      placeholder='例如 85%'
-                      value={report.sales_rate || ''}
-                      onChange={val => setReport(prev => ({ ...prev, sales_rate: val }))}
-                      style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                    />
-                  </Form.Item>
-                </div>
-              </div>
+              {!isMarketing && (
+                <Form.Item label='项目达成率 (%)'>
+                  <Input
+                    placeholder='例如 100%'
+                    value={report.delivery_rate || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_rate: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='销售达成率 (%)'>
+                  <Input
+                    placeholder='例如 85%'
+                    value={report.sales_rate || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_rate: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块四：本周亮点 */}
             <Card title='🏆 4. 本周亮点' style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <Form.Item label='【项目亮点】'>
-                <TextArea
-                  placeholder='请输入项目交付方面突出的工作成果与正反馈...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.delivery_highlights || ''}
-                  onChange={val => setReport(prev => ({ ...prev, delivery_highlights: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='【销售亮点】'>
-                <TextArea
-                  placeholder='请输入新签、回款、客户突破方面的亮点...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.sales_highlights || ''}
-                  onChange={val => setReport(prev => ({ ...prev, sales_highlights: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='【项目亮点】'>
+                  <TextArea
+                    placeholder='请输入项目交付方面突出的工作成果与正反馈...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.delivery_highlights || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_highlights: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='【销售亮点】'>
+                  <TextArea
+                    placeholder='请输入新签、回款、客户突破方面的亮点...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.sales_highlights || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_highlights: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块五：本周卡点 */}
             <Card title='⚠️ 5. 本周卡点' style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <Form.Item label='【项目难点】'>
-                <TextArea
-                  placeholder='请输入项目推进卡点或技术堵点...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.delivery_blockers || ''}
-                  onChange={val => setReport(prev => ({ ...prev, delivery_blockers: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='【销售难点】'>
-                <TextArea
-                  placeholder='请输入客情推进、合同流转或回款被拒等销售难点...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.sales_blockers || ''}
-                  onChange={val => setReport(prev => ({ ...prev, sales_blockers: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='【项目难点】'>
+                  <TextArea
+                    placeholder='请输入项目推进卡点或技术堵点...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.delivery_blockers || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_blockers: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='【销售难点】'>
+                  <TextArea
+                    placeholder='请输入客情推进、合同流转或回款被拒等销售难点...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.sales_blockers || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_blockers: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块六：是否需要上级支持 */}
             <Card title='🤝 6. 是否需要上级支持' style={{ borderRadius: '12px', marginBottom: 12 }}>
-              <Form.Item label='【项目侧支持需求】'>
-                <TextArea
-                  placeholder='请输入您需要的专家资源、技术援助等项目支持...'
-                  autoSize={{ minRows: 2, maxRows: 4 }}
-                  value={report.delivery_support || ''}
-                  onChange={val => setReport(prev => ({ ...prev, delivery_support: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='【销售侧支持需求】'>
-                <TextArea
-                  placeholder='请输入您需要的公司高管公关、商务条件放宽等销售支持...'
-                  autoSize={{ minRows: 2, maxRows: 4 }}
-                  value={report.sales_support || ''}
-                  onChange={val => setReport(prev => ({ ...prev, sales_support: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='【项目侧支持需求】'>
+                  <TextArea
+                    placeholder='请输入您需要的专家资源、技术援助等项目支持...'
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    value={report.delivery_support || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, delivery_support: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='【销售侧支持需求】'>
+                  <TextArea
+                    placeholder='请输入您需要的公司高管公关、商务条件放宽等销售支持...'
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    value={report.sales_support || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, sales_support: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 模块七：下周目标 */}
             <Card title='🚀 7. 下周目标' style={{ borderRadius: '12px', marginBottom: 16 }}>
-              <Form.Item label='项目交付工作：（做了什么项目，什么内容，到什么节点）'>
-                <TextArea
-                  placeholder='请输入下周项目交付计划...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.next_delivery_plan || ''}
-                  onChange={val => setReport(prev => ({ ...prev, next_delivery_plan: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
-              <Form.Item label='销售：（新签、回款、营销动作等）'>
-                <TextArea
-                  placeholder='请输入下周销售目标计划...'
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  value={report.next_sales_plan || ''}
-                  onChange={val => setReport(prev => ({ ...prev, next_sales_plan: val }))}
-                  style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
-                />
-              </Form.Item>
+              {!isMarketing && (
+                <Form.Item label='项目交付工作：（做了什么项目，什么内容，到什么节点）'>
+                  <TextArea
+                    placeholder='请输入下周项目交付计划...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.next_delivery_plan || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, next_delivery_plan: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
+              {isMarketing && (
+                <Form.Item label='销售：（新签、回款、营销动作等）'>
+                  <TextArea
+                    placeholder='请输入下周销售目标计划...'
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    value={report.next_sales_plan || ''}
+                    disabled={report.status === 'submitted'}
+                    onChange={val => setReport(prev => ({ ...prev, next_sales_plan: val }))}
+                    style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
+                  />
+                </Form.Item>
+              )}
             </Card>
 
             {/* 状态标识和操作按钮 */}

@@ -5,6 +5,7 @@ import zhCN from 'antd/locale/zh_CN'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Reports from './pages/Reports'
+import WeeklyReports from './pages/WeeklyReports'
 import Goals from './pages/Goals'
 import Settings from './pages/Settings'
 import AdminLayout from './layouts/AdminLayout'
@@ -37,6 +38,7 @@ const App: React.FC = () => {
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="weekly-reports" element={<WeeklyReports />} />
             <Route path="goals" element={<Goals />} />
             <Route path="settings" element={<Settings />} />
           </Route>

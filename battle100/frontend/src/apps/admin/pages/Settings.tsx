@@ -47,8 +47,13 @@ const PERMISSIONS = [
   { key: 'approve_report', group: '📢 播报管理', label: '手动创建与编辑战报', desc: '允许手动新建战报（并伴随录入业绩指标）或编辑修改已有战报项目关联' },
   { key: 'reject_report', group: '📢 播报管理', label: '删除与级联清退战报', desc: '允许删除或批量删除战报，此操作将级联清退回滚相关业绩与日报完成额' },
 
+  // 周复盘汇总
+  { key: 'view_weekly_reports', group: '📊 周复盘汇总', label: '访问个人周复盘汇总页面', desc: '允许进入小组个人周复盘汇总页面，查看各小组成员的周复盘填报数据（非管理员限本战队）' },
+  { key: 'edit_weekly_report', group: '📊 周复盘汇总', label: '编辑他人周复盘数据', desc: '允许编辑或修改他人已提交的周复盘数据' },
+  { key: 'delete_weekly_report', group: '📊 周复盘汇总', label: '删除与批量删除周复盘数据', desc: '允许删除或批量删除他人的周复盘汇总数据' },
+
   // 目标管理
-  { key: 'view_goals', group: '🎯 目标导入与管理', label: '访问目标管理页面', desc: '允许进入目标管理模块，查看四大指标的设定和周目标分解列表' },
+  { key: 'view_goals', group: '🎯 目标导入与管理', label: '访问目标管理页面', desc: '允许进入目标管理模块，查看四大指标的设定 and 周目标分解列表' },
   { key: 'manage_base_targets', group: '🎯 目标导入与管理', label: '设定/修改保底与奋斗目标', desc: '允许直接在线修改和保存各个战队的营销新签与交付新签目标' },
   { key: 'import_weekly_targets', group: '🎯 目标导入与管理', label: '导入周目标 Excel', desc: '允许通过上传分解文件批量覆盖并灌入周度分解目标' },
   { key: 'clear_targets', group: '🎯 目标导入与管理', label: '一键清空目标数据', desc: '允许清空战队周分解目标以进行重新导入' },
@@ -477,7 +482,7 @@ const Settings: React.FC = () => {
             <Divider style={{ margin: '12px 0' }} />
 
             {/* 分组渲染细粒度权限 */}
-            {['📊 作战仪表盘', '📢 播报管理', '🎯 目标导入与管理', '⚙️ 系统设置'].map((group) => {
+            {['📊 作战仪表盘', '📢 播报管理', '📊 周复盘汇总', '🎯 目标导入与管理', '⚙️ 系统设置'].map((group) => {
               const groupPerms = PERMISSIONS.filter(p => p.group === group)
               return (
                 <Card

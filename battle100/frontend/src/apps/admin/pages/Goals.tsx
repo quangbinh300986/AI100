@@ -466,7 +466,7 @@ const Goals: React.FC = () => {
     setCreateUserModalVisible(true)
     createForm.resetFields()
     createForm.setFieldsValue({
-      password: '123456',
+      password: 'gdzd_!!!+++',
       role: 'staff'
     })
   }
@@ -2491,7 +2491,7 @@ const Goals: React.FC = () => {
             { required: true, message: '请输入初始登录密码' },
             { min: 6, message: '密码长度不能少于6位' }
           ]}>
-            <Input.Password placeholder="请输入初始密码（默认预填：123456）" />
+            <Input.Password placeholder="请输入初始密码（默认预填：gdzd_!!!+++）" />
           </Form.Item>
           <Form.Item name="position" label="岗位">
             <Input placeholder="请输入岗位描述" />

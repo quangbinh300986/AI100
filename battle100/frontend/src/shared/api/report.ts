@@ -54,7 +54,26 @@ export function extractWeeklyBroadcasts(startDate: string) {
   return get<{ delivery_actual: string; sales_actual: string }>(`/reports/weekly/auto-extract`, { params: { start_date: startDate } })
 }
 
+/** 自动从 CRM 系统提取该周的业绩、进度和达成情况推荐文本 */
+export function extractWeeklyCrmData(startDate: string) {
+  return get<{
+    delivery_actual: string;
+    sales_actual: string;
+    delivery_rate: string;
+    sales_rate: string;
+    delivery_highlights: string;
+    sales_highlights: string;
+    delivery_blockers: string;
+    sales_blockers: string;
+    delivery_support: string;
+    sales_support: string;
+    next_delivery_plan: string;
+    next_sales_plan: string;
+  }>(`/reports/weekly/auto-extract-crm`, { params: { start_date: startDate } })
+}
+
 /** 获取所有人的周复盘汇总列表 (管理端) */
 export function getWeeklyReportsSummary(startDate: string, teamId?: number) {
   return get<WeeklyReport[]>(`/reports/weekly/summary`, { params: { start_date: startDate, team_id: teamId } })
 }
+

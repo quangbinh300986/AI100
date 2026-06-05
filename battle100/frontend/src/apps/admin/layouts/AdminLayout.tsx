@@ -9,6 +9,7 @@ import {
   LogoutOutlined,
   UserOutlined,
   SettingOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -81,7 +82,8 @@ const AdminLayout: React.FC = () => {
     const menuDefaultRoles: Record<string, string[]> = {
       '2': ['admin', 'team_leader'],
       '3': ['admin', 'target_officer', 'digital_specialist'],
-      '4': ['admin']
+      '4': ['admin'],
+      '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing']
     }
     
     const checkPermission = (menuKey: string, permName: string) => {
@@ -98,7 +100,10 @@ const AdminLayout: React.FC = () => {
       return userPerms.includes(permName)
     }
     
-    if (path.includes('/admin/reports') && !checkPermission('2', 'view_reports')) {
+    if (path.includes('/admin/weekly-reports') && !checkPermission('5', 'view_weekly_reports')) {
+      message.warning('无权访问周复盘汇总页面')
+      navigate('/admin/dashboard')
+    } else if (path.includes('/admin/reports') && !checkPermission('2', 'view_reports')) {
       message.warning('无权访问播报管理页面')
       navigate('/admin/dashboard')
     } else if (path.includes('/admin/goals') && !checkPermission('3', 'view_goals')) {
@@ -140,6 +145,7 @@ const AdminLayout: React.FC = () => {
   const getSelectedKey = () => {
     const path = location.pathname
     if (path.includes('/admin/dashboard')) return '1'
+    if (path.includes('/admin/weekly-reports')) return '5'
     if (path.includes('/admin/reports')) return '2'
     if (path.includes('/admin/goals')) return '3'
     if (path.includes('/admin/settings')) return '4'
@@ -161,6 +167,9 @@ const AdminLayout: React.FC = () => {
       case '4':
         navigate('/admin/settings')
         break
+      case '5':
+        navigate('/admin/weekly-reports')
+        break
     }
   }
 
@@ -178,7 +187,8 @@ const AdminLayout: React.FC = () => {
     '1': ['admin', 'target_officer', 'digital_specialist', 'team_leader'],
     '2': ['admin', 'team_leader'],
     '3': ['admin', 'target_officer', 'digital_specialist'],
-    '4': ['admin']
+    '4': ['admin'],
+    '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing']
   }
 
   // 映射菜单 key 到动态权限标识
@@ -186,7 +196,8 @@ const AdminLayout: React.FC = () => {
     '1': 'view_dashboard',
     '2': 'view_reports',
     '3': 'view_goals',
-    '4': 'view_settings'
+    '4': 'view_settings',
+    '5': 'view_weekly_reports'
   }
 
   // 基于动态权限与默认角色双轨兜底渲染菜单项
@@ -200,6 +211,11 @@ const AdminLayout: React.FC = () => {
       key: '2',
       icon: <CheckSquareOutlined />,
       label: '播报管理',
+    },
+    {
+      key: '5',
+      icon: <CalendarOutlined />,
+      label: '个人周复盘汇总',
     },
     {
       key: '3',

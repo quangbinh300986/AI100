@@ -194,7 +194,8 @@ async def update_role_permissions(
         "view_dashboard", "drilldown_leads",
         "view_reports", "approve_report", "reject_report",
         "view_goals", "manage_base_targets", "import_weekly_targets", "clear_targets",
-        "view_settings", "manage_role_permissions", "manage_user_roles"
+        "view_settings", "manage_role_permissions", "manage_user_roles",
+        "view_weekly_reports", "edit_weekly_report", "delete_weekly_report"
     ]
     
     for role, menu_keys in payload.permissions.items():

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker, Descriptions } from 'antd'
 import dayjs from 'dayjs'
 import {
   DollarOutlined,
@@ -17,7 +17,8 @@ import {
   TrophyOutlined,
   SearchOutlined,
   TeamOutlined,
-  ExportOutlined
+  ExportOutlined,
+  SyncOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
@@ -39,8 +40,42 @@ const MATRIX_KPI_CONFIG = [
   { key: 'contract_count', label: '新签合同单数', unit: '个', headerBg: '#e6fffb', titleColor: '#08979c', width: 85 }
 ]
 
+const DEFAULT_TEMPLATES: Record<string, string> = {
+  delivery_plan: "项目交付工作：（需要做什么项目、什么内容，到什么节点）\n1. \n2. \n3. ",
+  sales_plan: "销售：（新签、回款、营销动作，新签动作包括：新签合同跟进、报价、合同入系统、营销线索等；回款动作包括：对接业主请款、申请开票、定期问询请款情况等；营销动作：获取营销线索、潜在项目分析、拜访客户等）\n1. \n2. \n3. ",
+  delivery_actual: "项目交付工作：（做了什么项目，什么内容，到什么节点，幸福动作等）\n1. \n2. \n3. ",
+  sales_actual: "销售：（已签约、中标、铁三角现场联动、拜访等）\n1. \n2. \n3. ",
+  delivery_highlights: "【项目】\n1. \n2. ",
+  sales_highlights: "【销售】\n1. \n2. ",
+  delivery_blockers: "【项目难点】\n1. \n2. ",
+  sales_blockers: "【销售难点】\n1. \n2. ",
+  delivery_support: "项目侧：",
+  sales_support: "销售侧：",
+  next_delivery_plan: "项目交付工作：（做了什么项目，什么内容，到什么节点）\n1. \n2. \n3. ",
+  next_sales_plan: "销售：（新签、回款、营销动作等）\n1. \n2. \n3. "
+}
+
+// 判定是否为播报无数据的兜底文本
+const isDummyBroadcast = (text: string) => {
+  if (!text) return true
+  const clean = text.trim()
+  return clean === '1. 无相关播报数据' || clean === ''
+}
+
+// 判定是否为 CRM 无数据的兜底文本
+const isDummyCrmActual = (text: string, isMarketing: boolean) => {
+  if (!text) return true
+  const clean = text.trim()
+  if (isMarketing) {
+    return clean === '1. 本周暂无相关的合同新签、到账回款与客户拜访登记。' || clean === ''
+  } else {
+    return clean === '1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
+  }
+}
+
 const Dashboard: React.FC = () => {
   const { user } = useAuthStore()
+  const isMarketing = user?.position_type === 'marketing' || ['target_officer', 'marketing_staff', 'tech_marketing'].includes(user?.role || '');
 
   // 周复盘个人填写相关状态和函数
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
@@ -50,6 +85,17 @@ const Dashboard: React.FC = () => {
   const [weeklySubmitLoading, setWeeklySubmitLoading] = useState(false)
   const [weeklyStatusToSubmit, setWeeklyStatusToSubmit] = useState<'draft' | 'submitted'>('draft')
   const [weeklyForm] = Form.useForm()
+
+  // ⚡ 智能拉取 CRM 业绩与进度预览弹窗状态
+  const [crmPreviewVisible, setCrmPreviewVisible] = useState(false)
+  const [crmPreviewData, setCrmPreviewData] = useState<any>(null)
+  const [crmSelectedKeys, setCrmSelectedKeys] = useState<Record<string, boolean>>({
+    actual: true,
+    rate: true,
+    highlights: true,
+    blockers: true
+  })
+  const [weeklyCrmExtractLoading, setWeeklyCrmExtractLoading] = useState(false)
 
   const getMondayAndSunday = (dateVal: dayjs.Dayjs) => {
     const day = dateVal.day()
@@ -81,6 +127,121 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  // ⚡ 智能拉取 CRM 业绩与进度数据
+  const handleAutoExtractCrmWeekly = async () => {
+    setWeeklyCrmExtractLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      const res = await get<any>(`/reports/weekly/auto-extract-crm?start_date=${startDateStr}`)
+      const data = res?.data ? res.data : res
+      if (data) {
+        setCrmPreviewData(data)
+        // 根据获取到的数据是否为空，智能初始化勾选状态
+        const actualVal = isMarketing ? data.sales_actual : data.delivery_actual
+        const rateVal = isMarketing ? data.sales_rate : data.delivery_rate
+        const highlightsVal = isMarketing ? data.sales_highlights : data.delivery_highlights
+        const blockersVal = isMarketing ? data.sales_blockers : data.delivery_blockers
+
+        setCrmSelectedKeys({
+          actual: !!actualVal && !isDummyCrmActual(actualVal, isMarketing),
+          rate: !!rateVal && rateVal !== '月度新签与回款指标正在统计中' && rateVal !== '月度指标正在统计中' && rateVal.trim() !== '',
+          highlights: !!highlightsVal && highlightsVal !== '1. 本周销售签约及商务拓展平稳推进。' && highlightsVal !== '1. 交付工作处于正常开发推进中，开发交付无积压。' && highlightsVal.trim() !== '',
+          blockers: !!blockersVal && blockersVal !== '1. 目前名下意向商机及收款合同暂无重大异常阻碍。' && blockersVal !== '1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。' && blockersVal.trim() !== ''
+        })
+        setCrmPreviewVisible(true)
+      } else {
+        message.warning('未拉取到任何有效的 CRM 数据')
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || '智能拉取 CRM 数据失败')
+    } finally {
+      setWeeklyCrmExtractLoading(false)
+    }
+  }
+
+  // 确认从预览中导入选中的 CRM 数据
+  const handleConfirmImportCrm = () => {
+    if (!crmPreviewData) return
+
+    const currentValues = weeklyForm.getFieldsValue()
+    const updateValues: Record<string, any> = {}
+
+    // 1. 处理实际完成 (actual)
+    if (crmSelectedKeys.actual) {
+      if (!isMarketing) {
+        const currentActual = currentValues.delivery_actual || ''
+        const crmActual = crmPreviewData.delivery_actual || ''
+        
+        const isCurrentDummy = isDummyBroadcast(currentActual) || currentActual === (DEFAULT_TEMPLATES.delivery_actual || '')
+        const isCrmDummy = isDummyCrmActual(crmActual, false)
+
+        let combinedActual = ''
+        if (!isCurrentDummy && !isCrmDummy) {
+          combinedActual = `${currentActual}\n\n${crmActual}`
+        } else if (!isCurrentDummy) {
+          combinedActual = currentActual
+        } else if (!isCrmDummy) {
+          combinedActual = crmActual
+        } else {
+          combinedActual = crmActual || currentActual
+        }
+        if (combinedActual) {
+          updateValues.delivery_actual = combinedActual
+        }
+      } else {
+        const currentActual = currentValues.sales_actual || ''
+        const crmActual = crmPreviewData.sales_actual || ''
+        
+        const isCurrentDummy = isDummyBroadcast(currentActual) || currentActual === (DEFAULT_TEMPLATES.sales_actual || '')
+        const isCrmDummy = isDummyCrmActual(crmActual, true)
+
+        let combinedActual = ''
+        if (!isCurrentDummy && !isCrmDummy) {
+          combinedActual = `${currentActual}\n\n${crmActual}`
+        } else if (!isCurrentDummy) {
+          combinedActual = currentActual
+        } else if (!isCrmDummy) {
+          combinedActual = crmActual
+        } else {
+          combinedActual = crmActual || currentActual
+        }
+        if (combinedActual) {
+          updateValues.sales_actual = combinedActual
+        }
+      }
+    }
+
+    // 2. 处理计划达成率说明 (rate)
+    if (crmSelectedKeys.rate) {
+      const key = isMarketing ? 'sales_rate' : 'delivery_rate'
+      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
+        updateValues[key] = crmPreviewData[key]
+      }
+    }
+
+    // 3. 处理工作亮点 (highlights)
+    if (crmSelectedKeys.highlights) {
+      const key = isMarketing ? 'sales_highlights' : 'delivery_highlights'
+      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
+        updateValues[key] = crmPreviewData[key]
+      }
+    }
+
+    // 4. 处理工作卡点/难点 (blockers)
+    if (crmSelectedKeys.blockers) {
+      const key = isMarketing ? 'sales_blockers' : 'delivery_blockers'
+      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
+        updateValues[key] = crmPreviewData[key]
+      }
+    }
+
+    weeklyForm.setFieldsValue(updateValues)
+    message.success('已成功将选中的 CRM 业绩与进度数据填入您的周报！')
+    setCrmPreviewVisible(false)
+  }
+
   const loadWeeklyReportData = async (dateVal: dayjs.Dayjs) => {
     setWeeklyWriteLoading(true)
     try {
@@ -88,32 +249,38 @@ const Dashboard: React.FC = () => {
       const startDateStr = mon.format('YYYY-MM-DD')
       weeklyForm.resetFields()
       
-      const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
-      const data = res?.data ? res.data : res
-      if (data) {
-        weeklyForm.setFieldsValue({
-          delivery_plan: data.delivery_plan,
-          sales_plan: data.sales_plan,
-          delivery_actual: data.delivery_actual,
-          sales_actual: data.sales_actual,
-          delivery_rate: data.delivery_rate,
-          sales_rate: data.sales_rate,
-          delivery_highlights: data.delivery_highlights,
-          sales_highlights: data.sales_highlights,
-          delivery_blockers: data.delivery_blockers,
-          sales_blockers: data.sales_blockers,
-          delivery_support: data.delivery_support,
-          sales_support: data.sales_support,
-          next_delivery_plan: data.next_delivery_plan,
-          next_sales_plan: data.next_sales_plan
-        })
+      let data: any = null
+      try {
+        const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
+        data = res?.data ? res.data : res
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          console.log('该周尚未填写周报')
+        } else {
+          message.error('拉取历史周报失败')
+        }
       }
-    } catch (err: any) {
-      if (err?.response?.status === 404) {
-        console.log('该周尚未填写周报')
-      } else {
-        message.error('拉取历史周报失败')
-      }
+      
+      const formValues: Record<string, any> = {}
+      const fields = [
+        'delivery_plan', 'sales_plan',
+        'delivery_actual', 'sales_actual',
+        'delivery_rate', 'sales_rate',
+        'delivery_highlights', 'sales_highlights',
+        'delivery_blockers', 'sales_blockers',
+        'delivery_support', 'sales_support',
+        'next_delivery_plan', 'next_sales_plan'
+      ]
+      
+      fields.forEach(field => {
+        const val = data ? data[field] : null
+        if (val !== null && val !== undefined && val !== '') {
+          formValues[field] = val
+        } else {
+          formValues[field] = DEFAULT_TEMPLATES[field] || ''
+        }
+      })
+      weeklyForm.setFieldsValue(formValues)
     } finally {
       setWeeklyWriteLoading(false)
     }
@@ -3837,13 +4004,13 @@ const Dashboard: React.FC = () => {
         destroyOnClose
       >
         <div style={{ margin: '12px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <Space>
-              <span><strong>选择填报周：</strong></span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12 }}>
+            <Space style={{ flexWrap: 'nowrap' }}>
+              <span style={{ whiteSpace: 'nowrap' }}><strong>选择填报周：</strong></span>
               <DatePicker
                 picker="week"
                 placeholder="选择填报周"
-                style={{ width: '200px' }}
+                style={{ width: '130px' }}
                 value={weeklyDate}
                 onChange={(val) => {
                   if (val) {
@@ -3853,19 +4020,32 @@ const Dashboard: React.FC = () => {
                 }}
                 allowClear={false}
               />
-              <span style={{ fontSize: 13, color: '#8c8c8c', marginLeft: 8 }}>
+              <span style={{ fontSize: 13, color: '#8c8c8c', marginLeft: 4, whiteSpace: 'nowrap' }}>
                 （当前周范围：<strong>{getMondayAndSunday(weeklyDate)[0].format('YYYY-MM-DD')} ~ {getMondayAndSunday(weeklyDate)[1].format('YYYY-MM-DD')}</strong>）
               </span>
             </Space>
-            <Button
-              type="primary"
-              ghost
-              icon={<RiseOutlined />}
-              loading={weeklyExtractLoading}
-              onClick={handleAutoExtractWeekly}
-            >
-              一键导入当周播报数据
-            </Button>
+            <Space>
+              <Button
+                type="primary"
+                ghost
+                icon={<RiseOutlined />}
+                loading={weeklyExtractLoading}
+                onClick={handleAutoExtractWeekly}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                一键导入当周播报数据
+              </Button>
+              <Button
+                type="primary"
+                danger
+                icon={<SyncOutlined />}
+                loading={weeklyCrmExtractLoading}
+                onClick={handleAutoExtractCrmWeekly}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                ⚡ 智能拉取 CRM 业绩与进度
+              </Button>
+            </Space>
           </div>
           
           <Form
@@ -3874,105 +4054,224 @@ const Dashboard: React.FC = () => {
             onFinish={handleWeeklySubmit}
             loading={weeklyWriteLoading}
           >
-            <Divider orientation="left" style={{ margin: '0 0 12px 0' }}>🎯 本周目标计划</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_plan" label="本周项目交付计划">
-                  <Input.TextArea rows={3} placeholder="请输入本周的项目交付工作计划..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_plan" label="本周销售计划">
-                  <Input.TextArea rows={3} placeholder="请输入本周的销售工作计划..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '0 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🎯 本周目标计划</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_plan" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={3} placeholder="请输入本周的项目交付工作计划..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_plan" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={3} placeholder="请输入本周的销售工作计划..." />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>🔥 本周实际完成 (支持一键导入推荐内容)</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_actual" label="本周项目交付实际完成">
-                  <Input.TextArea rows={4} placeholder="请输入本周项目交付的实际完成情况..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_actual" label="本周销售实际完成">
-                  <Input.TextArea rows={4} placeholder="请输入本周销售的实际完成情况..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🔥 本周实际完成 (支持一键导入推荐内容)</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_actual" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={4} placeholder="请输入本周项目交付的实际完成情况..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_actual" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={4} placeholder="请输入本周销售的实际完成情况..." />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>📊 计划达成率说明</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_rate" label="项目交付计划达成率（% 或文字说明）">
-                  <Input placeholder="例如：90% 或 基本达成" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_rate" label="销售计划达成率（% 或文字说明）">
-                  <Input placeholder="例如：80% 或 新签达成100%" />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>📊 计划达成率说明</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_rate" style={{ marginBottom: 0 }}>
+                <Input placeholder="例如：90% 或 基本达成" />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_rate" style={{ marginBottom: 0 }}>
+                <Input placeholder="例如：80% 或 新签达成100%" />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>🏆 本周工作亮点</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_highlights" label="项目交付亮点">
-                  <Input.TextArea rows={2} placeholder="请输入项目交付侧的亮点..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_highlights" label="销售侧亮点">
-                  <Input.TextArea rows={2} placeholder="请输入销售侧的工作亮点..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🏆 本周工作亮点</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_highlights" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="请输入项目交付侧的亮点..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_highlights" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="请输入销售侧的工作亮点..." />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>🚧 本周工作卡点/难点</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_blockers" label="项目交付卡点">
-                  <Input.TextArea rows={2} placeholder="请输入项目交付侧遇到的困难阻碍..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_blockers" label="销售侧卡点">
-                  <Input.TextArea rows={2} placeholder="请输入销售侧遇到的困难阻碍..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🚧 本周工作卡点/难点</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_blockers" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="请输入项目交付侧遇到的困难阻碍..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_blockers" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="请输入销售侧遇到的困难阻碍..." />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>🤝 需要上级支持协调</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="delivery_support" label="交付侧需支持">
-                  <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sales_support" label="销售侧需支持">
-                  <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要上级支持协调</div>
+            {!isMarketing && (
+              <Form.Item name="delivery_support" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="sales_support" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
+              </Form.Item>
+            )}
 
-            <Divider orientation="left" style={{ margin: '12px 0' }}>🚀 下周工作目标</Divider>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="next_delivery_plan" label="下周项目交付目标">
-                  <Input.TextArea rows={3} placeholder="请输入下周的项目交付目标计划..." />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="next_sales_plan" label="下周销售目标">
-                  <Input.TextArea rows={3} placeholder="请输入下周的销售目标计划..." />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🚀 下周工作目标</div>
+            {!isMarketing && (
+              <Form.Item name="next_delivery_plan" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={3} placeholder="请输入下周的项目交付目标计划..." />
+              </Form.Item>
+            )}
+            {isMarketing && (
+              <Form.Item name="next_sales_plan" style={{ marginBottom: 0 }}>
+                <Input.TextArea rows={3} placeholder="请输入下周的销售目标计划..." />
+              </Form.Item>
+            )}
           </Form>
         </div>
+      </Modal>
+
+      {/* ⚡ 智能拉取 CRM 业绩与进度预览 Modal */}
+      <Modal
+        title={
+          <Space>
+            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1677ff' }}>⚡ 智能拉取 CRM 数据预览与选择导入</span>
+          </Space>
+        }
+        open={crmPreviewVisible}
+        onOk={handleConfirmImportCrm}
+        onCancel={() => setCrmPreviewVisible(false)}
+        okText="确认填入选中的数据"
+        cancelText="取消"
+        width={800}
+        bodyStyle={{ maxHeight: '600px', overflowY: 'auto', padding: '16px' }}
+      >
+        {/* 1. 分析环境描述卡片 */}
+        <Card 
+          size="small" 
+          style={{ 
+            marginBottom: '16px', 
+            background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', 
+            border: '1px solid #d9d9d9',
+            borderRadius: '8px' 
+          }}
+        >
+          <Descriptions title="🔍 CRM 关联分析诊断概要" size="small" column={2}>
+            <Descriptions.Item label="当前分析对象">
+              <Text strong style={{ color: '#102a4c' }}>{user?.name}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="分析周期">
+              <Text strong>
+                {getMondayAndSunday(weeklyDate)[0].format('YYYY-MM-DD')} ~ {getMondayAndSunday(weeklyDate)[1].format('YYYY-MM-DD')}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="匹配分析岗位">
+              <Tag color={isMarketing ? 'blue' : 'green'}>
+                {isMarketing ? '营销与销售线 (分析商机/合同/回款/拜访)' : '交付与技术线 (分析在研项目/子任务/里程碑)'}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="数据库来源">
+              <Text type="secondary">gzzdpm 只读实例</Text>
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+
+        <div style={{ marginBottom: '12px' }}>
+          <Text type="secondary">
+            说明：系统已智能分析只读 CRM 数据库中的关联信息。请勾选您需要填入周报的板块（带蓝色边框的条目为当前选中的推荐项）：
+          </Text>
+        </div>
+
+        {/* 2. 各维度展示卡片 */}
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          
+          {/* 实际完成 */}
+          <Card
+            size="small"
+            title={
+              <Checkbox 
+                checked={crmSelectedKeys.actual} 
+                onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, actual: e.target.checked })}
+              >
+                <span style={{ fontWeight: 'bold' }}>📅 当周实际完成 ({isMarketing ? '销售签约与拜访' : '项目推进与交付'})</span>
+              </Checkbox>
+            }
+            style={{ border: crmSelectedKeys.actual ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+            bodyStyle={{ backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' }}
+          >
+            <div style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+              {isMarketing ? crmPreviewData?.sales_actual : crmPreviewData?.delivery_actual}
+            </div>
+          </Card>
+
+          {/* 指标达成率 */}
+          <Card
+            size="small"
+            title={
+              <Checkbox 
+                checked={crmSelectedKeys.rate} 
+                onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, rate: e.target.checked })}
+              >
+                <span style={{ fontWeight: 'bold' }}>📈 本月计划达成率指标</span>
+              </Checkbox>
+            }
+            style={{ border: crmSelectedKeys.rate ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+            bodyStyle={{ backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' }}
+          >
+            <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+              {isMarketing ? crmPreviewData?.sales_rate : crmPreviewData?.delivery_rate}
+            </div>
+          </Card>
+
+          {/* 工作亮点 */}
+          <Card
+            size="small"
+            title={
+              <Checkbox 
+                checked={crmSelectedKeys.highlights} 
+                onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, highlights: e.target.checked })}
+              >
+                <span style={{ fontWeight: 'bold' }}>✨ 当周工作亮点 (自动诊断建议)</span>
+              </Checkbox>
+            }
+            style={{ border: crmSelectedKeys.highlights ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+            bodyStyle={{ backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' }}
+          >
+            <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+              {isMarketing ? crmPreviewData?.sales_highlights : crmPreviewData?.delivery_highlights}
+            </div>
+          </Card>
+
+          {/* 工作卡点 */}
+          <Card
+            size="small"
+            title={
+              <Checkbox 
+                checked={crmSelectedKeys.blockers} 
+                onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, blockers: e.target.checked })}
+              >
+                <span style={{ fontWeight: 'bold' }}>⚠️ 当周工作卡点与异常难点 (包括预设立超期警示)</span>
+              </Checkbox>
+            }
+            style={{ border: crmSelectedKeys.blockers ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+            bodyStyle={{ backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' }}
+          >
+            <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+              {isMarketing ? crmPreviewData?.sales_blockers : crmPreviewData?.delivery_blockers}
+            </div>
+          </Card>
+
+        </Space>
       </Modal>
     </div>
   )

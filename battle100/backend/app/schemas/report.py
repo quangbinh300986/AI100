@@ -164,5 +164,14 @@ class WeeklyReportResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     user_name: Optional[str] = None
+    user_position_type: Optional[str] = None
+    user_role: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class WeeklyReportListResponse(BaseModel):
+    """周报列表分页返回Schema"""
+    total: int
+    items: list[WeeklyReportResponse]
+
