@@ -354,3 +354,45 @@ export interface MyStatsResponse {
     report_rate: string
   }
 }
+
+/** 周复盘填报记录 */
+export interface WeeklyReport {
+  id: number
+  user_id: number
+  user_name?: string
+  start_date: string
+  end_date: string
+  
+  // 本周目标计划
+  delivery_plan?: string
+  sales_plan?: string
+  
+  // 本周实际完成
+  delivery_actual?: string
+  sales_actual?: string
+  
+  // 达成情况
+  delivery_rate?: string
+  sales_rate?: string
+  
+  // 本周亮点
+  delivery_highlights?: string
+  sales_highlights?: string
+  
+  // 本周卡点
+  delivery_blockers?: string
+  sales_blockers?: string
+  
+  // 是否需要上级支持
+  delivery_support?: string
+  sales_support?: string
+  
+  // 下周目标
+  next_delivery_plan?: string
+  next_sales_plan?: string
+  
+  status: 'draft' | 'submitted'
+  submitted_at?: string
+  created_at: string
+  updated_at?: string
+}

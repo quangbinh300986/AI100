@@ -139,3 +139,90 @@ class ReportDetail(BaseModel):
 
     def __repr__(self) -> str:
         return f"<ReportDetail(id={self.id}, report_id={self.report_id}, type={self.detail_type})>"
+
+
+class WeeklyReport(BaseModel):
+    """周复盘填报表ORM模型"""
+    __tablename__ = "weekly_reports"
+    __table_args__ = (
+        UniqueConstraint("user_id", "start_date", "end_date", name="uq_weekly_report_user_date_range"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, comment="用户ID"
+    )
+    start_date: Mapped[date] = mapped_column(
+        Date, nullable=False, comment="周开始日期"
+    )
+    end_date: Mapped[date] = mapped_column(
+        Date, nullable=False, comment="周结束日期"
+    )
+    
+    # 本周目标计划
+    delivery_plan: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="本周项目交付计划"
+    )
+    sales_plan: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="本周销售计划"
+    )
+    
+    # 本周实际完成
+    delivery_actual: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="本周项目交付实际完成"
+    )
+    sales_actual: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="本周销售实际完成"
+    )
+    
+    # 达成情况
+    delivery_rate: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="项目达成率"
+    )
+    sales_rate: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="销售达成率"
+    )
+    
+    # 本周亮点
+    delivery_highlights: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="项目亮点"
+    )
+    sales_highlights: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="销售亮点"
+    )
+    
+    # 本周卡点
+    delivery_blockers: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="项目难点"
+    )
+    sales_blockers: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="销售难点"
+    )
+    
+    # 是否需要上级支持
+    delivery_support: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="项目侧需要支持"
+    )
+    sales_support: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="销售侧需要支持"
+    )
+    
+    # 下周目标
+    next_delivery_plan: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="下周项目交付计划"
+    )
+    next_sales_plan: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="下周销售计划"
+    )
+    
+    status: Mapped[str] = mapped_column(
+        Enum(ReportStatus), default=ReportStatus.DRAFT, nullable=False, comment="填报状态"
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="提交时间"
+    )
+
+    # ===== 关联关系 =====
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self) -> str:
+        return f"<WeeklyReport(id={self.id}, user_id={self.user_id}, range={self.start_date}~{self.end_date})>"

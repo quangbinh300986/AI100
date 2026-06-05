@@ -14,13 +14,16 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.report import DailyReport, ReportDetail, ReportStatus
+from app.models.report import DailyReport, ReportDetail, ReportStatus, WeeklyReport
 from app.schemas.report import (
     DailyReportCreate,
     DailyReportUpdate,
     DailyReportResponse,
     ReportReviewRequest,
     ReportListResponse,
+    WeeklyReportCreate,
+    WeeklyReportUpdate,
+    WeeklyReportResponse,
 )
 from fastapi import Request
 from app.api.deps import get_current_user, require_permission
@@ -497,3 +500,308 @@ async def review_report(
             logging.getLogger("battle100").error(f"大屏 WebSocket 广播失败: {e}")
 
     return {"message": f"填报已{review.action}"}
+
+
+# ==========================================
+#              周复盘填报相关 API
+# ==========================================
+
+@router.get("/weekly/mine", response_model=WeeklyReportResponse, summary="获取我的周复盘填报")
+async def get_my_weekly_report(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """根据开始日期查询当前登录用户的周复盘数据"""
+    stmt = select(WeeklyReport).where(
+        WeeklyReport.user_id == current_user.id,
+        WeeklyReport.start_date == start_date
+    )
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="未找到该周的周报")
+        
+    # 补全用户名
+    report.user_name = current_user.name
+    return report
+
+
+@router.post("/weekly", response_model=WeeklyReportResponse, summary="保存或提交周复盘填报")
+async def save_weekly_report(
+    report_in: WeeklyReportCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """创建或更新周复盘填报（支持保存草稿或直接提交）"""
+    # 检查是否已存在记录
+    stmt = select(WeeklyReport).where(
+        WeeklyReport.user_id == current_user.id,
+        WeeklyReport.start_date == report_in.start_date
+    )
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    
+    status_val = report_in.status if report_in.status else "draft"
+    submitted_at_val = datetime.now(timezone.utc) if status_val == "submitted" else None
+    
+    if report:
+        # 更新现有记录
+        report.delivery_plan = report_in.delivery_plan
+        report.sales_plan = report_in.sales_plan
+        report.delivery_actual = report_in.delivery_actual
+        report.sales_actual = report_in.sales_actual
+        report.delivery_rate = report_in.delivery_rate
+        report.sales_rate = report_in.sales_rate
+        report.delivery_highlights = report_in.delivery_highlights
+        report.sales_highlights = report_in.sales_highlights
+        report.delivery_blockers = report_in.delivery_blockers
+        report.sales_blockers = report_in.sales_blockers
+        report.delivery_support = report_in.delivery_support
+        report.sales_support = report_in.sales_support
+        report.next_delivery_plan = report_in.next_delivery_plan
+        report.next_sales_plan = report_in.next_sales_plan
+        report.status = status_val
+        if submitted_at_val:
+            report.submitted_at = submitted_at_val
+    else:
+        # 创建新记录
+        report = WeeklyReport(
+            user_id=current_user.id,
+            start_date=report_in.start_date,
+            end_date=report_in.end_date,
+            delivery_plan=report_in.delivery_plan,
+            sales_plan=report_in.sales_plan,
+            delivery_actual=report_in.delivery_actual,
+            sales_actual=report_in.sales_actual,
+            delivery_rate=report_in.delivery_rate,
+            sales_rate=report_in.sales_rate,
+            delivery_highlights=report_in.delivery_highlights,
+            sales_highlights=report_in.sales_highlights,
+            delivery_blockers=report_in.delivery_blockers,
+            sales_blockers=report_in.sales_blockers,
+            delivery_support=report_in.delivery_support,
+            sales_support=report_in.sales_support,
+            next_delivery_plan=report_in.next_delivery_plan,
+            next_sales_plan=report_in.next_sales_plan,
+            status=status_val,
+            submitted_at=submitted_at_val
+        )
+        db.add(report)
+        
+    await db.flush()
+    await db.commit()
+    await db.refresh(report)
+    
+    # 补充用户名并记录日志
+    report.user_name = current_user.name
+    
+    action_type_str = "SUBMIT" if status_val == "submitted" else "SAVE_DRAFT"
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type=action_type_str,
+        target_module="weekly_report",
+        target_id=report.id,
+        description=f"{'提交' if status_val == 'submitted' else '暂存'}周复盘，范围：{report.start_date} ~ {report.end_date}",
+        before_state=None,
+        after_state=to_dict(report)
+    )
+    
+    return report
+
+
+@router.get("/weekly/auto-extract", summary="自动从播报系统提取周报实际完成内容")
+async def extract_weekly_broadcasts(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    根据 Excel 附件 2 的要求，自动检索并提取该用户在对应周内自己填报的，
+    以及该用户是联动人（提报明细或文字正则匹配）的五种核心动作播报信息。
+    最后整理成排版优美的实际完成文本，直接提供给前端快速回填。
+    """
+    from datetime import timedelta, time
+    import re
+    from app.models.broadcast import BroadcastEvent
+    from app.models.report import ReportDetail, DailyReport
+    
+    end_date = start_date + timedelta(days=6)
+    
+    # 转换为当周 UTC 时间边界
+    start_dt = datetime.combine(start_date, time.min).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
+    
+    # 1. 检索当前用户自己直接创建的播报
+    stmt_self = select(BroadcastEvent).where(
+        BroadcastEvent.user_id == current_user.id,
+        BroadcastEvent.event_time >= start_dt,
+        BroadcastEvent.event_time <= end_dt,
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+    )
+    res_self = await db.execute(stmt_self)
+    broadcasts_self = res_self.scalars().all()
+    
+    # 2. 检索该用户在日报明细中作为联动搭档关联的播报事件
+    stmt_linked = select(BroadcastEvent).join(
+        ReportDetail,
+        ReportDetail.description.like(func.concat('%[broadcast_id:', BroadcastEvent.id, ']%'))
+    ).join(
+        DailyReport,
+        DailyReport.id == ReportDetail.report_id
+    ).where(
+        DailyReport.user_id == current_user.id,
+        BroadcastEvent.event_time >= start_dt,
+        BroadcastEvent.event_time <= end_dt,
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+    )
+    res_linked = await db.execute(stmt_linked)
+    broadcasts_linked = res_linked.scalars().all()
+    
+    # 3. 正则兜底：查找包含“与联动人(姓名)”或“营销人员(姓名)”并包含当前用户的当周所有播报
+    stmt_all = select(BroadcastEvent).where(
+        BroadcastEvent.event_time >= start_dt,
+        BroadcastEvent.event_time <= end_dt,
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+    )
+    res_all = await db.execute(stmt_all)
+    broadcasts_all = res_all.scalars().all()
+    
+    broadcasts_regex = []
+    user_name = current_user.name
+    for ev in broadcasts_all:
+        content = ev.content or ""
+        m1 = re.search(r"与联动人\((.*?)\)", content)
+        m2 = re.search(r"营销人员\((.*?)\)", content)
+        
+        is_partner = False
+        if m1:
+            partners = [n.strip() for n in re.split(r'[，,、\s]', m1.group(1)) if n.strip()]
+            if user_name in partners:
+                is_partner = True
+        if m2:
+            partners = [n.strip() for n in re.split(r'[，,、\s]', m2.group(1)) if n.strip()]
+            if user_name in partners:
+                is_partner = True
+                
+        if is_partner:
+            broadcasts_regex.append(ev)
+            
+    # 4. 合并去重并按发生时间升序排序
+    event_dict = {}
+    for ev in broadcasts_self + broadcasts_linked + broadcasts_regex:
+        event_dict[ev.id] = ev
+        
+    all_events = list(event_dict.values())
+    all_events.sort(key=lambda x: x.event_time if x.event_time else x.created_at)
+    
+    # 5. 分门别类排版为交付与销售文本
+    delivery_list = []
+    sales_list = []
+    
+    delivery_count = 0
+    sales_count = 0
+    
+    for ev in all_events:
+        content_clean = ev.content or ""
+        # 清除类似 [broadcast_id:123] 标记
+        content_clean = re.sub(r"\s*\[broadcast_id:\d+\]", "", content_clean).strip()
+        
+        if ev.event_type == "happiness":
+            delivery_count += 1
+            delivery_list.append(f"{delivery_count}. {content_clean}")
+        else:
+            sales_count += 1
+            prefix = ""
+            if ev.event_type == "lead_75":
+                prefix = "【中标】"
+            elif ev.event_type == "lead_25":
+                prefix = "【有效线索】"
+            elif ev.event_type == "contract_signed":
+                prefix = "【合同签订】"
+            elif ev.event_type == "triangle":
+                prefix = "【铁三角联动】"
+            sales_list.append(f"{sales_count}. {prefix}{content_clean}")
+            
+    return {
+        "delivery_actual": "\n".join(delivery_list) if delivery_list else "1. 无相关客户幸福动作播报",
+        "sales_actual": "\n".join(sales_list) if sales_list else "1. 无相关销售播报（新签/中标/合同/铁三角联动）"
+    }
+
+
+@router.get("/weekly/summary", response_model=list[WeeklyReportResponse], summary="获取小组成员周复盘汇总表")
+async def get_weekly_reports_summary(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取选定周时间段内，小组成员提交的周复盘数据大表（PC端汇总使用）"""
+    from app.models.user import User as DbUser
+    
+    query = select(
+        WeeklyReport.id,
+        WeeklyReport.user_id,
+        WeeklyReport.start_date,
+        WeeklyReport.end_date,
+        WeeklyReport.delivery_plan,
+        WeeklyReport.sales_plan,
+        WeeklyReport.delivery_actual,
+        WeeklyReport.sales_actual,
+        WeeklyReport.delivery_rate,
+        WeeklyReport.sales_rate,
+        WeeklyReport.delivery_highlights,
+        WeeklyReport.sales_highlights,
+        WeeklyReport.delivery_blockers,
+        WeeklyReport.sales_blockers,
+        WeeklyReport.delivery_support,
+        WeeklyReport.sales_support,
+        WeeklyReport.next_delivery_plan,
+        WeeklyReport.next_sales_plan,
+        WeeklyReport.status,
+        WeeklyReport.submitted_at,
+        WeeklyReport.created_at,
+        WeeklyReport.updated_at,
+        DbUser.name.label("user_name")
+    ).join(DbUser, WeeklyReport.user_id == DbUser.id)
+    
+    if team_id:
+        query = query.where(DbUser.team_id == team_id)
+        
+    query = query.where(WeeklyReport.start_date == start_date)
+    query = query.order_by(DbUser.name.asc())
+    
+    res = await db.execute(query)
+    rows = res.all()
+    
+    items = []
+    for row in rows:
+        items.append(WeeklyReportResponse(
+            id=row.id,
+            user_id=row.user_id,
+            start_date=row.start_date,
+            end_date=row.end_date,
+            delivery_plan=row.delivery_plan,
+            sales_plan=row.sales_plan,
+            delivery_actual=row.delivery_actual,
+            sales_actual=row.sales_actual,
+            delivery_rate=row.delivery_rate,
+            sales_rate=row.sales_rate,
+            delivery_highlights=row.delivery_highlights,
+            sales_highlights=row.sales_highlights,
+            delivery_blockers=row.delivery_blockers,
+            sales_blockers=row.sales_blockers,
+            delivery_support=row.delivery_support,
+            sales_support=row.sales_support,
+            next_delivery_plan=row.next_delivery_plan,
+            next_sales_plan=row.next_sales_plan,
+            status=row.status,
+            submitted_at=row.submitted_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            user_name=row.user_name
+        ))
+        
+    return items

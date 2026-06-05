@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker } from 'antd'
+import dayjs from 'dayjs'
 import {
   DollarOutlined,
   HeartOutlined,
@@ -39,6 +40,113 @@ const MATRIX_KPI_CONFIG = [
 
 const Dashboard: React.FC = () => {
   const { user } = useAuthStore()
+
+  // 周复盘个人填写相关状态和函数
+  const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
+  const [weeklyWriteVisible, setWeeklyWriteVisible] = useState(false)
+  const [weeklyWriteLoading, setWeeklyWriteLoading] = useState(false)
+  const [weeklyExtractLoading, setWeeklyExtractLoading] = useState(false)
+  const [weeklySubmitLoading, setWeeklySubmitLoading] = useState(false)
+  const [weeklyStatusToSubmit, setWeeklyStatusToSubmit] = useState<'draft' | 'submitted'>('draft')
+  const [weeklyForm] = Form.useForm()
+
+  const getMondayAndSunday = (dateVal: dayjs.Dayjs) => {
+    const day = dateVal.day()
+    const diffToMonday = day === 0 ? -6 : 1 - day
+    const mon = dateVal.add(diffToMonday, 'day')
+    const sun = mon.add(6, 'day')
+    return [mon, sun]
+  }
+
+  const handleAutoExtractWeekly = async () => {
+    setWeeklyExtractLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      const res = await get<any>(`/reports/weekly/auto-extract?start_date=${startDateStr}`)
+      const data = res?.data ? res.data : res
+      if (data) {
+        weeklyForm.setFieldsValue({
+          delivery_actual: data.delivery_actual,
+          sales_actual: data.sales_actual
+        })
+        message.success('已自动提取本周您的交付及销售实际数据！')
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('自动提取当周播报数据失败')
+    } finally {
+      setWeeklyExtractLoading(false)
+    }
+  }
+
+  const loadWeeklyReportData = async (dateVal: dayjs.Dayjs) => {
+    setWeeklyWriteLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(dateVal)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      weeklyForm.resetFields()
+      
+      const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
+      const data = res?.data ? res.data : res
+      if (data) {
+        weeklyForm.setFieldsValue({
+          delivery_plan: data.delivery_plan,
+          sales_plan: data.sales_plan,
+          delivery_actual: data.delivery_actual,
+          sales_actual: data.sales_actual,
+          delivery_rate: data.delivery_rate,
+          sales_rate: data.sales_rate,
+          delivery_highlights: data.delivery_highlights,
+          sales_highlights: data.sales_highlights,
+          delivery_blockers: data.delivery_blockers,
+          sales_blockers: data.sales_blockers,
+          delivery_support: data.delivery_support,
+          sales_support: data.sales_support,
+          next_delivery_plan: data.next_delivery_plan,
+          next_sales_plan: data.next_sales_plan
+        })
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        console.log('该周尚未填写周报')
+      } else {
+        message.error('拉取历史周报失败')
+      }
+    } finally {
+      setWeeklyWriteLoading(false)
+    }
+  }
+
+  const openWeeklyWriteModal = () => {
+    setWeeklyWriteVisible(true)
+    const today = dayjs()
+    setWeeklyDate(today)
+    loadWeeklyReportData(today)
+  }
+
+  const handleWeeklySubmit = async (values: any) => {
+    setWeeklySubmitLoading(true)
+    try {
+      const [mon, sun] = getMondayAndSunday(weeklyDate)
+      const payload = {
+        ...values,
+        start_date: mon.format('YYYY-MM-DD'),
+        end_date: sun.format('YYYY-MM-DD'),
+        status: weeklyStatusToSubmit
+      }
+      const res = await post<any>('/reports/weekly', payload)
+      if (res) {
+        message.success(weeklyStatusToSubmit === 'draft' ? '周复盘草稿已暂存' : '周复盘已正式提交')
+        setWeeklyWriteVisible(false)
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || '保存周报失败')
+    } finally {
+      setWeeklySubmitLoading(false)
+    }
+  }
 
   // 个人奋斗目标矩阵大盘状态变量，所有注释均采用中文
   const [matrixData, setMatrixData] = useState<any[]>([])
@@ -1494,6 +1602,14 @@ const Dashboard: React.FC = () => {
                 生成今日日报
               </Button>
             )}
+            <Button
+              type="primary"
+              ghost
+              icon={<FileTextOutlined />}
+              onClick={openWeeklyWriteModal}
+            >
+              填写我的周报
+            </Button>
             <Button icon={<FireOutlined />} onClick={loadData} loading={loading}>刷新看板</Button>
             <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
               setCurrentActionType('')
@@ -3617,6 +3733,179 @@ const Dashboard: React.FC = () => {
           locale={{ emptyText: <span style={{ color: '#bfbfbf' }}>{isDetailAll ? '暂无该项累计实绩明细记录' : '本周暂无该项实绩明细记录'}</span> }}
         />
       </Drawer>
+
+      {/* 周报填写Modal弹窗 */}
+      <Modal
+        title={<strong>📅 填写我的个人周复盘周报</strong>}
+        open={weeklyWriteVisible}
+        onCancel={() => setWeeklyWriteVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setWeeklyWriteVisible(false)}>
+            取消
+          </Button>,
+          <Button
+            key="draft"
+            onClick={() => {
+              setWeeklyStatusToSubmit('draft')
+              weeklyForm.submit()
+            }}
+            loading={weeklySubmitLoading}
+          >
+            暂存草稿
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            onClick={() => {
+              setWeeklyStatusToSubmit('submitted')
+              weeklyForm.submit()
+            }}
+            loading={weeklySubmitLoading}
+          >
+            正式提交
+          </Button>
+        ]}
+        width={800}
+        destroyOnClose
+      >
+        <div style={{ margin: '12px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Space>
+              <span><strong>选择填报周：</strong></span>
+              <DatePicker
+                picker="week"
+                placeholder="选择填报周"
+                style={{ width: '200px' }}
+                value={weeklyDate}
+                onChange={(val) => {
+                  if (val) {
+                    setWeeklyDate(val)
+                    loadWeeklyReportData(val)
+                  }
+                }}
+                allowClear={false}
+              />
+              <span style={{ fontSize: 13, color: '#8c8c8c', marginLeft: 8 }}>
+                （当前周范围：<strong>{getMondayAndSunday(weeklyDate)[0].format('YYYY-MM-DD')} ~ {getMondayAndSunday(weeklyDate)[1].format('YYYY-MM-DD')}</strong>）
+              </span>
+            </Space>
+            <Button
+              type="primary"
+              ghost
+              icon={<RiseOutlined />}
+              loading={weeklyExtractLoading}
+              onClick={handleAutoExtractWeekly}
+            >
+              一键导入当周播报数据
+            </Button>
+          </div>
+          
+          <Form
+            form={weeklyForm}
+            layout="vertical"
+            onFinish={handleWeeklySubmit}
+            loading={weeklyWriteLoading}
+          >
+            <Divider orientation="left" style={{ margin: '0 0 12px 0' }}>🎯 本周目标计划</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_plan" label="本周项目交付计划">
+                  <Input.TextArea rows={3} placeholder="请输入本周的项目交付工作计划..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_plan" label="本周销售计划">
+                  <Input.TextArea rows={3} placeholder="请输入本周的销售工作计划..." />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>🔥 本周实际完成 (支持一键导入推荐内容)</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_actual" label="本周项目交付实际完成">
+                  <Input.TextArea rows={4} placeholder="请输入本周项目交付的实际完成情况..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_actual" label="本周销售实际完成">
+                  <Input.TextArea rows={4} placeholder="请输入本周销售的实际完成情况..." />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>📊 计划达成率说明</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_rate" label="项目交付计划达成率（% 或文字说明）">
+                  <Input placeholder="例如：90% 或 基本达成" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_rate" label="销售计划达成率（% 或文字说明）">
+                  <Input placeholder="例如：80% 或 新签达成100%" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>🏆 本周工作亮点</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_highlights" label="项目交付亮点">
+                  <Input.TextArea rows={2} placeholder="请输入项目交付侧的亮点..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_highlights" label="销售侧亮点">
+                  <Input.TextArea rows={2} placeholder="请输入销售侧的工作亮点..." />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>🚧 本周工作卡点/难点</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_blockers" label="项目交付卡点">
+                  <Input.TextArea rows={2} placeholder="请输入项目交付侧遇到的困难阻碍..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_blockers" label="销售侧卡点">
+                  <Input.TextArea rows={2} placeholder="请输入销售侧遇到的困难阻碍..." />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>🤝 需要上级支持协调</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="delivery_support" label="交付侧需支持">
+                  <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sales_support" label="销售侧需支持">
+                  <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider orientation="left" style={{ margin: '12px 0' }}>🚀 下周工作目标</Divider>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="next_delivery_plan" label="下周项目交付目标">
+                  <Input.TextArea rows={3} placeholder="请输入下周的项目交付目标计划..." />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="next_sales_plan" label="下周销售目标">
+                  <Input.TextArea rows={3} placeholder="请输入下周的销售目标计划..." />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </div>
+      </Modal>
     </div>
   )
 }

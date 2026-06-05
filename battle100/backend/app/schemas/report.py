@@ -97,3 +97,72 @@ class ReportListResponse(BaseModel):
     """填报列表响应"""
     total: int = Field(..., description="总数")
     items: list[DailyReportResponse] = Field(..., description="填报列表")
+
+
+class WeeklyReportCreate(BaseModel):
+    """创建周报Schema"""
+    start_date: date = Field(..., description="周开始日期")
+    end_date: date = Field(..., description="周结束日期")
+    delivery_plan: Optional[str] = Field(None, description="项目交付计划")
+    sales_plan: Optional[str] = Field(None, description="销售计划")
+    delivery_actual: Optional[str] = Field(None, description="项目交付实际")
+    sales_actual: Optional[str] = Field(None, description="销售实际")
+    delivery_rate: Optional[str] = Field(None, description="项目达成率")
+    sales_rate: Optional[str] = Field(None, description="销售达成率")
+    delivery_highlights: Optional[str] = Field(None, description="项目亮点")
+    sales_highlights: Optional[str] = Field(None, description="销售亮点")
+    delivery_blockers: Optional[str] = Field(None, description="项目难点")
+    sales_blockers: Optional[str] = Field(None, description="销售难点")
+    delivery_support: Optional[str] = Field(None, description="项目侧上级支持")
+    sales_support: Optional[str] = Field(None, description="销售侧上级支持")
+    next_delivery_plan: Optional[str] = Field(None, description="下周项目交付目标")
+    next_sales_plan: Optional[str] = Field(None, description="下周销售目标")
+    status: Optional[str] = Field("draft", description="状态 draft/submitted")
+
+
+class WeeklyReportUpdate(BaseModel):
+    """更新周报Schema"""
+    delivery_plan: Optional[str] = None
+    sales_plan: Optional[str] = None
+    delivery_actual: Optional[str] = None
+    sales_actual: Optional[str] = None
+    delivery_rate: Optional[str] = None
+    sales_rate: Optional[str] = None
+    delivery_highlights: Optional[str] = None
+    sales_highlights: Optional[str] = None
+    delivery_blockers: Optional[str] = None
+    sales_blockers: Optional[str] = None
+    delivery_support: Optional[str] = None
+    sales_support: Optional[str] = None
+    next_delivery_plan: Optional[str] = None
+    next_sales_plan: Optional[str] = None
+    status: Optional[str] = None
+
+
+class WeeklyReportResponse(BaseModel):
+    """周报响应Schema"""
+    id: int
+    user_id: int
+    start_date: date
+    end_date: date
+    delivery_plan: Optional[str] = None
+    sales_plan: Optional[str] = None
+    delivery_actual: Optional[str] = None
+    sales_actual: Optional[str] = None
+    delivery_rate: Optional[str] = None
+    sales_rate: Optional[str] = None
+    delivery_highlights: Optional[str] = None
+    sales_highlights: Optional[str] = None
+    delivery_blockers: Optional[str] = None
+    sales_blockers: Optional[str] = None
+    delivery_support: Optional[str] = None
+    sales_support: Optional[str] = None
+    next_delivery_plan: Optional[str] = None
+    next_sales_plan: Optional[str] = None
+    status: str
+    submitted_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    user_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}

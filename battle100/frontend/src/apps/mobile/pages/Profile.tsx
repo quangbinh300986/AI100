@@ -9,6 +9,7 @@ import {
   ExclamationCircleOutline,
   RightOutline,
   FileOutline,
+  CalendarOutline,
 } from 'antd-mobile-icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@shared/hooks/useAuth'
@@ -325,6 +326,13 @@ export default function Profile() {
             onClick={() => setReportsVisible(true)}
           >
             填报记录
+          </List.Item>
+          <List.Item
+            prefix={<CalendarOutline style={{ fontSize: 20, color: '#722ed1' }} />}
+            arrow
+            onClick={() => navigate('/m/weekly-report')}
+          >
+            个人周复盘填报
           </List.Item>
           {['admin', 'digital_specialist', 'target_officer'].includes(user?.role || '') && (
             <List.Item

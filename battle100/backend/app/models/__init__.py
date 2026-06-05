@@ -7,7 +7,7 @@ from app.models.base import Base, BaseModel
 from app.models.user import User, UserRole, PositionType, RolePermission
 from app.models.organization import Zone, Team
 from app.models.goal import PersonalGoal, TeamGoal, WeeklyTarget, GoalType, TeamGoalCategory
-from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
+from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType, WeeklyReport
 from app.models.happiness import HappinessStandard
 from app.models.broadcast import BroadcastEvent, EventType, PushStatus, PushChannel
 from app.models.committee import Committee, CommitteeMember
@@ -33,6 +33,7 @@ __all__ = [
     "ReportDetail",
     "ReportStatus",
     "DetailType",
+    "WeeklyReport",
     "HappinessStandard",
     "BroadcastEvent",
     "EventType",

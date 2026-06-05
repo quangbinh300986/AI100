@@ -2,7 +2,7 @@
  * 每日填报相关API
  */
 import { get, post, put } from './client'
-import type { DailyReport, PaginatedResponse, PaginationParams } from '@shared/types'
+import type { DailyReport, PaginatedResponse, PaginationParams, WeeklyReport } from '@shared/types'
 
 /** 提交每日填报 */
 export function submitReport(data: Omit<DailyReport, 'id' | 'userId' | 'status' | 'createdAt'>) {
@@ -37,4 +37,24 @@ export function getPendingReports(params: PaginationParams) {
 /** 获取团队填报列表（管理端） */
 export function getTeamReports(params: PaginationParams & { teamId?: number; date?: string }) {
   return get<PaginatedResponse<DailyReport>>('/reports/team', { params })
+}
+
+/** 获取我的周复盘填报 (根据 start_date) */
+export function getMyWeeklyReport(startDate: string) {
+  return get<WeeklyReport>(`/reports/weekly/mine`, { params: { start_date: startDate } })
+}
+
+/** 提交或保存周复盘填报 */
+export function saveWeeklyReport(data: any) {
+  return post<WeeklyReport>(`/reports/weekly`, data)
+}
+
+/** 自动从播报系统提取该周的播报数据推荐文本 */
+export function extractWeeklyBroadcasts(startDate: string) {
+  return get<{ delivery_actual: string; sales_actual: string }>(`/reports/weekly/auto-extract`, { params: { start_date: startDate } })
+}
+
+/** 获取所有人的周复盘汇总列表 (管理端) */
+export function getWeeklyReportsSummary(startDate: string, teamId?: number) {
+  return get<WeeklyReport[]>(`/reports/weekly/summary`, { params: { start_date: startDate, team_id: teamId } })
 }

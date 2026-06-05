@@ -9,6 +9,7 @@ import DailyReport from './pages/DailyReport'
 import MyGoals from './pages/MyGoals'
 import TeamRanking from './pages/TeamRanking'
 import Profile from './pages/Profile'
+import WeeklyReport from './pages/WeeklyReport'
 
 export default function App() {
   return (
@@ -16,6 +17,9 @@ export default function App() {
       <Routes>
         {/* 登录页 - 无底部导航 */}
         <Route path="/m/login" element={<Login />} />
+        
+        {/* 周报填报页 - 无底部导航 */}
+        <Route path="/m/weekly-report" element={<WeeklyReport />} />
         
         {/* 主布局 - 带底部TabBar */}
         <Route path="/m" element={<MobileLayout />}>
