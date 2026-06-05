@@ -525,6 +525,47 @@ async def search_crm_projects(
         return []
 
 
+@router.get("/summary-stats", summary="获取战报看板统计数据")
+async def get_broadcast_summary_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    在数据库中通过聚合查询获取战报看板所需的 4 个核心统计指标，所有注释必须使用中文
+    """
+    from sqlalchemy import func
+    from datetime import datetime, time, timezone, timedelta
+    
+    # 按照北京时间今日零点进行过滤 (北京时间 = UTC + 8小时)
+    bj_tz = timezone(timedelta(hours=8))
+    now_bj = datetime.now(bj_tz)
+    today_bj_start = datetime.combine(now_bj.date(), time.min).replace(tzinfo=bj_tz)
+    utc_today_start = today_bj_start.astimezone(timezone.utc)
+
+    # 1. 今日播报数 (创建时间在今日北京零点以后的播报)
+    today_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.created_at >= utc_today_start)
+    today_count = await db.scalar(today_stmt) or 0
+
+    # 2. 待推送消息 (push_status 为 pending)
+    pending_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.push_status == "pending")
+    pending_count = await db.scalar(pending_stmt) or 0
+
+    # 3. 成功已发送 (push_status 为 sent)
+    sent_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.push_status == "sent")
+    sent_count = await db.scalar(sent_stmt) or 0
+
+    # 4. 历史累计战报 (总记录数)
+    total_stmt = select(func.count(BroadcastEvent.id))
+    total_count = await db.scalar(total_stmt) or 0
+
+    return {
+        "today_count": today_count,
+        "pending_count": pending_count,
+        "sent_count": sent_count,
+        "total_count": total_count
+    }
+
+
 @router.get("", response_model=BroadcastListResponse, summary="获取播报列表")
 async def list_broadcasts(
     page: int = Query(1, ge=1, description="页码"),

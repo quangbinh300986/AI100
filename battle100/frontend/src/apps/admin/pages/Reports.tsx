@@ -614,22 +614,14 @@ const Reports: React.FC = () => {
   // 计算看板指标统计
   const loadSummaryStats = async () => {
     try {
-      // 简易抓取最近的100条用于本地聚合计算今日、待推送等指标
-      const res = await get<any>('/broadcast?page=1&page_size=100')
+      const res = await get<any>('/broadcast/summary-stats')
       const data = res?.data ? res.data : res
-      if (data && data.items) {
-        const items: BroadcastItem[] = data.items || []
-        const todayStr = dayjs().format('YYYY-MM-DD')
-        
-        const todayCount = items.filter(x => dayjs(x.created_at).format('YYYY-MM-DD') === todayStr).length
-        const pendingCount = items.filter(x => x.push_status === 'pending').length
-        const sentCount = items.filter(x => x.push_status === 'sent').length
-        
+      if (data) {
         setSummaryData({
-          todayCount,
-          pendingCount,
-          sentCount,
-          totalCount: data.total || 0,
+          todayCount: data.today_count || 0,
+          pendingCount: data.pending_count || 0,
+          sentCount: data.sent_count || 0,
+          totalCount: data.total_count || 0,
         })
       }
     } catch (err) {
