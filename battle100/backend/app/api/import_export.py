@@ -91,7 +91,7 @@ async def import_users(
             user = User(
                 name=name,
                 phone=phone,
-                password_hash=hash_password("gdzd_!!!+++"),  # 默认密码
+                password_hash=hash_password("zdpglsf_!!!+++"),  # 默认密码
                 position=str(row[2]).strip() if row[2] else None,
                 position_type=str(row[3]).strip() if row[3] else None,
                 role=str(row[4]).strip() if row[4] else "staff",
@@ -982,7 +982,7 @@ async def sync_users_from_dingtalk(
                 new_user = User(
                     name=name,
                     phone=phone,
-                    password_hash=hash_password("gdzd_!!!+++"),
+                    password_hash=hash_password("zdpglsf_!!!+++"),
                     position=position,
                     position_type=pos_type,
                     third_class_bar=third_class_bar,
