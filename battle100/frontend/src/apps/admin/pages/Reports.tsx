@@ -37,7 +37,8 @@ import {
   InfoCircleOutlined,
   DingtalkOutlined,
   GlobalOutlined,
-  DesktopOutlined
+  DesktopOutlined,
+  ExportOutlined
 } from '@ant-design/icons'
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -298,6 +299,7 @@ const Reports: React.FC = () => {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [exportLoading, setExportLoading] = useState(false)
 
   // 筛选项状态
   const [filterTeamId, setFilterTeamId] = useState<string | undefined>(
@@ -632,6 +634,47 @@ const Reports: React.FC = () => {
       }
     } catch (err) {
       console.error('获取统计看板失败', err)
+    }
+  }
+
+  // 导出战报数据为 Excel
+  const handleExportBroadcasts = async () => {
+    setExportLoading(true)
+    try {
+      let url = `/broadcast/export?`
+      const targetTeam = isTeamLeader && user?.teamId ? String(user.teamId) : filterTeamId
+      const params = []
+      if (targetTeam && targetTeam !== 'all') {
+        params.push(`team_id=${targetTeam}`)
+      }
+      if (filterEventType && filterEventType !== 'all') {
+        params.push(`event_type=${filterEventType}`)
+      }
+      if (filterKeyword) {
+        params.push(`keyword=${encodeURIComponent(filterKeyword)}`)
+      }
+      url += params.join('&')
+
+      const response = await get<any>(url, { responseType: 'blob' })
+      
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `战报导出_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success('战报导出成功')
+    } catch (err) {
+      console.error('导出战报数据失败', err)
+      message.error('导出战报数据失败')
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -1541,6 +1584,14 @@ const Reports: React.FC = () => {
         </Col>
         <Col>
           <Space>
+            <Button
+              icon={<ExportOutlined />}
+              loading={exportLoading}
+              onClick={handleExportBroadcasts}
+              style={{ borderRadius: 4 }}
+            >
+              导出
+            </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}

@@ -1589,3 +1589,164 @@ async def check_duplicate_broadcast(
         triangle_list=triangle_list
     )
 
+
+@router.get("/export", summary="导出战报列表为Excel")
+async def export_broadcasts(
+    team_id: int | None = Query(None, description="按战队筛选"),
+    event_type: str | None = Query(None, description="按事件类型筛选"),
+    keyword: str | None = Query(None, description="关键字检索播报内容"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    根据筛选条件，将所有符合条件的战报记录导出为 Excel 文件
+    """
+    from fastapi.responses import StreamingResponse
+    import pandas as pd
+    import io
+    from sqlalchemy import func
+    from app.models.user import User as DbUser
+    from app.models.organization import Team as DbTeam
+
+    # 主查询语句（不进行分页，限制最多 10000 条数据）
+    query = select(
+        BroadcastEvent.id,
+        BroadcastEvent.event_type,
+        BroadcastEvent.user_id,
+        BroadcastEvent.team_id,
+        BroadcastEvent.content,
+        BroadcastEvent.push_status,
+        BroadcastEvent.push_channel,
+        BroadcastEvent.event_time,
+        BroadcastEvent.created_at,
+        BroadcastEvent.crm_opportunity_id,
+        BroadcastEvent.project_name,
+        DbUser.name.label("user_name"),
+        DbTeam.name.label("team_name")
+    ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
+     .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+     .order_by(BroadcastEvent.created_at.desc())\
+     .limit(10000)
+
+    # 过滤条件
+    if team_id:
+        query = query.where(BroadcastEvent.team_id == team_id)
+    if event_type:
+        query = query.where(BroadcastEvent.event_type == event_type)
+    if keyword:
+        query = query.where(BroadcastEvent.content.contains(keyword))
+
+    res = await db.execute(query)
+    rows = res.all()
+
+    # 批量抓取 crm_opportunity_id 相关的项目中文名，避免 N+1
+    opp_ids = [r.crm_opportunity_id for r in rows if r.crm_opportunity_id]
+    opp_names = {}
+    if opp_ids:
+        import pymysql
+        from app.config import settings
+        try:
+            conn = pymysql.connect(
+                host=settings.CRM_DB_HOST,
+                port=settings.CRM_DB_PORT,
+                user=settings.CRM_DB_USER,
+                password=settings.CRM_DB_PASSWORD,
+                database=settings.CRM_DB_NAME,
+                charset='utf8mb4',
+                connect_timeout=3
+            )
+            cur = conn.cursor(pymysql.cursors.DictCursor)
+            placeholders = ', '.join(['%s'] * len(opp_ids))
+            
+            # 1. 潜在项目商机表
+            query_opp = f"SELECT id, name FROM zdcrm_business_opportunity WHERE id IN ({placeholders})"
+            cur.execute(query_opp, tuple(opp_ids))
+            for o_row in cur.fetchall():
+                opp_names[str(o_row["id"])] = o_row["name"]
+
+            # 2. 招标表
+            query_tender = f"SELECT id, project_name AS name FROM tender_base_info WHERE id IN ({placeholders})"
+            cur.execute(query_tender, tuple(opp_ids))
+            for t_row in cur.fetchall():
+                opp_names[str(t_row["id"])] = t_row["name"]
+
+            # 3. 合同表
+            query_contract = f"SELECT id, contract_name AS name FROM contract WHERE id IN ({placeholders})"
+            cur.execute(query_contract, tuple(opp_ids))
+            for c_row in cur.fetchall():
+                opp_names[str(c_row["id"])] = c_row["name"]
+            cur.close()
+            conn.close()
+        except Exception as crm_err:
+            import logging
+            logging.getLogger("battle100").error(f"导出接口直连CRM获取项目名称失败: {crm_err}")
+
+    # 映射字典
+    event_type_map = {
+        "lead_25": "有效线索确定",
+        "lead_75": "中标确定",
+        "contract_signed": "合同签订",
+        "triangle": "铁三角联动",
+        "happiness": "客户幸福动作",
+        "custom": "自定义广播"
+    }
+
+    push_status_map = {
+        "pending": "待推送",
+        "sent": "已发送",
+        "failed": "发送失败"
+    }
+
+    push_channel_map = {
+        "dingtalk": "钉钉",
+        "all": "全渠道"
+    }
+
+    # 拼装数据
+    data_list = []
+    for r in rows:
+        crm_opp = r.crm_opportunity_id
+        opp_name = opp_names.get(crm_opp) if crm_opp else None
+
+        created_at_str = ""
+        if r.created_at:
+            from datetime import timedelta, timezone
+            bj_tz = timezone(timedelta(hours=8))
+            created_at_str = r.created_at.astimezone(bj_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        data_list.append({
+            "事件类型": event_type_map.get(r.event_type, r.event_type),
+            "播报内容": r.content or "",
+            "发布人": r.user_name or "",
+            "所属战队": r.team_name or "",
+            "推送状态": push_status_map.get(r.push_status, r.push_status),
+            "推送渠道": push_channel_map.get(r.push_channel, r.push_channel),
+            "CRM商机关联": opp_name or r.project_name or "未关联",
+            "播报时间": created_at_str
+        })
+
+    df = pd.DataFrame(data_list)
+
+    # 转换 Excel 流
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="战报列表")
+    output.seek(0)
+
+    # 规范文件名
+    from datetime import datetime, timezone, timedelta
+    now_bj = datetime.now(timezone(timedelta(hours=8)))
+    filename_encoded = f"broadcast_export_{now_bj.strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename_encoded}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition'
+    }
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers
+    )
+
+
