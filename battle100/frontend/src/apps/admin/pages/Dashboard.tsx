@@ -4004,8 +4004,8 @@ const Dashboard: React.FC = () => {
         destroyOnClose
       >
         <div style={{ margin: '12px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12 }}>
-            <Space style={{ flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, borderBottom: '1px dashed #f0f0f0', paddingBottom: 12 }}>
+            <Space style={{ flexWrap: 'wrap' }}>
               <span style={{ whiteSpace: 'nowrap' }}><strong>选择填报周：</strong></span>
               <DatePicker
                 picker="week"
@@ -4020,11 +4020,11 @@ const Dashboard: React.FC = () => {
                 }}
                 allowClear={false}
               />
-              <span style={{ fontSize: 13, color: '#8c8c8c', marginLeft: 4, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 13, color: '#8c8c8c', marginLeft: 4 }}>
                 （当前周范围：<strong>{getMondayAndSunday(weeklyDate)[0].format('YYYY-MM-DD')} ~ {getMondayAndSunday(weeklyDate)[1].format('YYYY-MM-DD')}</strong>）
               </span>
             </Space>
-            <Space>
+            <Space style={{ flexWrap: 'wrap' }}>
               <Button
                 type="primary"
                 ghost
