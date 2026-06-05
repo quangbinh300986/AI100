@@ -3029,6 +3029,501 @@ async def get_company_kpi_detail(
         raise HTTPException(status_code=400, detail="无效的 KPI 类型")
 
 
+@router.get("/company-kpi-detail/export", summary="导出全公司 KPI 明细数据")
+async def export_company_kpi_detail(
+    kpi_type: str = Query(..., description="KPI类型: contracts, happiness, triangle, leads, tenders"),
+    team_id: int | None = Query(None, description="按战队筛选"),
+    week: int | None = Query(None, description="按周筛选 (1-15)"),
+    reporter_name: str | None = Query(None, description="按提报人筛选"),
+    keyword: str | None = Query(None, description="按客户或描述搜索"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    根据筛选条件，将全公司级别的 KPI 指标明细数据导出为 Excel，所有注释必须使用中文
+    """
+    from fastapi.responses import StreamingResponse
+    import pandas as pd
+    import io
+    from app.models.user import User, PositionType
+    from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
+    from app.models.organization import Team
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import select
+    from datetime import date
+
+    PartnerUser = aliased(User)
+
+    # 官方标准的百日战役15周日期区间定义
+    STANDARD_WEEKS = {
+        1: (date(2026, 6, 1), date(2026, 6, 7)),
+        2: (date(2026, 6, 8), date(2026, 6, 14)),
+        3: (date(2026, 6, 15), date(2026, 6, 21)),
+        4: (date(2026, 6, 22), date(2026, 6, 28)),
+        5: (date(2026, 6, 29), date(2026, 7, 5)),
+        6: (date(2026, 7, 6), date(2026, 7, 12)),
+        7: (date(2026, 7, 13), date(2026, 7, 19)),
+        8: (date(2026, 7, 20), date(2026, 7, 26)),
+        9: (date(2026, 7, 27), date(2026, 8, 2)),
+        10: (date(2026, 8, 3), date(2026, 8, 9)),
+        11: (date(2026, 8, 10), date(2026, 8, 16)),
+        12: (date(2026, 8, 17), date(2026, 8, 23)),
+        13: (date(2026, 8, 24), date(2026, 8, 30)),
+        14: (date(2026, 8, 31), date(2026, 9, 6)),
+        15: (date(2026, 9, 7), date(2026, 9, 8))
+    }
+
+    output = io.BytesIO()
+
+    if kpi_type == "contracts":
+        # 1. 交付新签明细
+        delivery_stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                PartnerUser.name.label("partner_name"),
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                ~ReportDetail.description.contains("营销新签分摊")
+            )
+        )
+
+        # 2. 营销新签明细
+        marketing_stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                PartnerUser.name.label("partner_name"),
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT,
+                (
+                    (ReportDetail.description.contains("营销新签分摊")) |
+                    (
+                        (~ReportDetail.description.contains("交付新签分摊")) &
+                        (
+                            (User.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])) |
+                            (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))
+                        )
+                    )
+                )
+            )
+        )
+
+        if team_id is not None:
+            delivery_stmt = delivery_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            marketing_stmt = marketing_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+        
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            delivery_stmt = delivery_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            marketing_stmt = marketing_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+
+        if reporter_name:
+            delivery_stmt = delivery_stmt.where(User.name == reporter_name)
+            marketing_stmt = marketing_stmt.where(User.name == reporter_name)
+
+        if keyword:
+            kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+            delivery_stmt = delivery_stmt.where(kw_filter)
+            marketing_stmt = marketing_stmt.where(kw_filter)
+
+        delivery_stmt = delivery_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        marketing_stmt = marketing_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+
+        delivery_rows = (await db.execute(delivery_stmt)).all()
+        marketing_rows = (await db.execute(marketing_stmt)).all()
+
+        delivery_list = []
+        for r in delivery_rows:
+            delivery_list.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": r.amount or 0.0,
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+        delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
+
+        marketing_list = []
+        for r in marketing_rows:
+            marketing_list.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": r.amount or 0.0,
+                "partner_name": r.partner_name or "—",
+                "description": r.description or "—",
+            })
+        marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
+
+        df_delivery = pd.DataFrame(delivery_list_clean)
+        df_marketing = pd.DataFrame(marketing_list_clean)
+
+        for df in [df_delivery, df_marketing]:
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "签单日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "amount": "签约金额(万元)",
+                    "partner_name": "协同搭档",
+                    "description": "播报内容"
+                }, inplace=True)
+
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df_delivery.to_excel(writer, index=False, sheet_name="交付新签明细")
+            df_marketing.to_excel(writer, index=False, sheet_name="营销新签明细")
+
+    else:
+        if kpi_type == "happiness":
+            stmt = (
+                select(
+                    ReportDetail.id,
+                    DailyReport.report_date,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    ReportDetail.customer_name,
+                    ReportDetail.happiness_level,
+                    ReportDetail.description,
+                )
+                .select_from(ReportDetail)
+                .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+                .join(User, DailyReport.user_id == User.id)
+                .outerjoin(Team, User.team_id == Team.id)
+                .where(
+                    DailyReport.status == ReportStatus.REVIEWED,
+                    ReportDetail.detail_type == DetailType.HAPPINESS,
+                )
+            )
+            if team_id is not None:
+                stmt = stmt.where(User.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+            stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
+                    "description": r.description or "—",
+                })
+            list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+            df = pd.DataFrame(list_data_clean)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "填报日期",
+                    "reporter_name": "执行人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "level": "标准分值",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "客户幸福动作明细"
+
+        elif kpi_type == "triangle":
+            stmt = (
+                select(
+                    ReportDetail.id,
+                    DailyReport.report_date,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    ReportDetail.customer_name,
+                    PartnerUser.name.label("partner_name"),
+                    ReportDetail.description,
+                )
+                .select_from(ReportDetail)
+                .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+                .join(User, DailyReport.user_id == User.id)
+                .outerjoin(Team, User.team_id == Team.id)
+                .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+                .where(
+                    DailyReport.status == ReportStatus.REVIEWED,
+                    ReportDetail.detail_type == DetailType.TRIANGLE,
+                )
+            )
+            if team_id is not None:
+                stmt = stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+            stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            import re
+            broadcast_groups = {}
+            non_broadcast_rows = []
+
+            for r in rows:
+                desc = r.description or ""
+                bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc)
+                if bid_match:
+                    bid = int(bid_match.group(1))
+                    if bid not in broadcast_groups:
+                        broadcast_groups[bid] = []
+                    broadcast_groups[bid].append(r)
+                else:
+                    non_broadcast_rows.append(r)
+
+            final_rows = []
+            for bid, group_rows in broadcast_groups.items():
+                if len(group_rows) == 1:
+                    final_rows.append(group_rows[0])
+                else:
+                    first_desc = group_rows[0].description or ""
+                    initiator_match = re.search(r"我司【(.*?)】", first_desc)
+                    selected_r = None
+                    if initiator_match:
+                        initiator_name = initiator_match.group(1).strip()
+                        for gr in group_rows:
+                            if gr.reporter_name and gr.reporter_name.strip() == initiator_name:
+                                selected_r = gr
+                                break
+                    if not selected_r:
+                        selected_r = group_rows[0]
+                    final_rows.append(selected_r)
+
+            final_rows.extend(non_broadcast_rows)
+            final_rows.sort(key=lambda x: (x.report_date or date.min, x.id), reverse=True)
+
+            for r in final_rows:
+                desc_str = r.description or ""
+                partner_name_val = r.partner_name or "—"
+                if partner_name_val == "—" or not partner_name_val:
+                    partners = []
+                    m1 = re.search(r"与联动人\((.*?)\)", desc_str)
+                    if m1:
+                        names = m1.group(1).replace(",", "、").replace("，", "、").strip()
+                        if names:
+                            partners.append(names)
+                    m2 = re.search(r"营销人员\((.*?)\)", desc_str)
+                    if m2:
+                        names = m2.group(1).replace(",", "、").replace("，", "、").strip()
+                        if names:
+                            partners.append(names)
+                    if partners:
+                        partner_name_val = "、".join(partners)
+                    else:
+                        partner_name_val = "—"
+
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "partner_name": partner_name_val,
+                    "description": r.description or "—",
+                })
+            list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+            df = pd.DataFrame(list_data_clean)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "联动日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "partner_name": "联动搭档",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "铁三角联动明细"
+
+        elif kpi_type == "leads":
+            stmt = (
+                select(
+                    ReportDetail.id,
+                    DailyReport.report_date,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    ReportDetail.customer_name,
+                    ReportDetail.amount,
+                    ReportDetail.lead_progress,
+                    ReportDetail.description,
+                )
+                .select_from(ReportDetail)
+                .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+                .join(User, DailyReport.user_id == User.id)
+                .outerjoin(Team, User.team_id == Team.id)
+                .where(
+                    DailyReport.status == ReportStatus.REVIEWED,
+                    ReportDetail.detail_type == DetailType.LEAD,
+                    (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+                )
+            )
+            if team_id is not None:
+                stmt = stmt.where(User.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+            stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "progress": r.lead_progress or "—",
+                    "description": r.description or "—",
+                })
+            list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+            df = pd.DataFrame(list_data_clean)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "发现日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "amount": "预计金额(万元)",
+                    "progress": "当前进度",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "有效商机线索明细"
+
+        elif kpi_type == "tenders":
+            stmt = (
+                select(
+                    ReportDetail.id,
+                    DailyReport.report_date,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    ReportDetail.customer_name,
+                    ReportDetail.amount,
+                    ReportDetail.lead_progress,
+                    ReportDetail.description,
+                )
+                .select_from(ReportDetail)
+                .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+                .join(User, DailyReport.user_id == User.id)
+                .outerjoin(Team, User.team_id == Team.id)
+                .where(
+                    DailyReport.status == ReportStatus.REVIEWED,
+                    ReportDetail.detail_type == DetailType.LEAD,
+                    (ReportDetail.lead_progress.contains("75") | (ReportDetail.lead_progress == "75%"))
+                )
+            )
+            if team_id is not None:
+                stmt = stmt.where(User.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+            stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "progress": r.lead_progress or "—",
+                    "description": r.description or "—",
+                })
+            list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+            df = pd.DataFrame(list_data_clean)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "中标日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "amount": "预计金额(万元)",
+                    "progress": "当前进度",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "中标项目明细"
+        else:
+            raise HTTPException(status_code=400, detail="无效的 KPI 类型")
+
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name=sheet_name)
+
+    output.seek(0)
+
+    from datetime import datetime, timezone, timedelta
+    now_bj = datetime.now(timezone(timedelta(hours=8)))
+    filename = f"kpi_detail_{kpi_type}_{now_bj.strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition'
+    }
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers
+    )
+
+
 @router.get("/daily-report", summary="生成个人/战队当天日报")
 async def generate_daily_report(
     team_id: int | None = Query(None, description="战队ID"),

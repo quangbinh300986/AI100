@@ -16,7 +16,8 @@ import {
   PlusOutlined,
   TrophyOutlined,
   SearchOutlined,
-  TeamOutlined
+  TeamOutlined,
+  ExportOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
@@ -490,6 +491,7 @@ const Dashboard: React.FC = () => {
   const [companyKpiDetailLoading, setCompanyKpiDetailLoading] = useState(false)
   const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders'>('contracts')
   const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
+  const [companyExportLoading, setCompanyExportLoading] = useState(false)
 
   // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
   const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'>('marketing_signing')
@@ -561,6 +563,61 @@ const Dashboard: React.FC = () => {
       message.error(errMsg)
     } finally {
       setCompanyKpiDetailLoading(false)
+    }
+  }
+
+  // 导出全公司 KPI 明细数据为 Excel，所有注释必须使用中文
+  const handleExportCompanyKpi = async () => {
+    setCompanyExportLoading(true)
+    try {
+      const typeMap: Record<string, string> = {
+        contracts: '公司累计新签合同额明细',
+        happiness: '公司客户幸福动作明细',
+        triangle: '售前铁三角联动明细',
+        leads: '新增有效商机线索明细',
+        tenders: '公司累计中标项目明细'
+      }
+      const title = typeMap[companyKpiDetailType] || '大盘指标明细'
+
+      let url = `/dashboard/company-kpi-detail/export?kpi_type=${companyKpiDetailType}`
+      const params = []
+      if (companyFilterTeamId) {
+        params.push(`team_id=${companyFilterTeamId}`)
+      }
+      if (companyFilterWeek) {
+        params.push(`week=${companyFilterWeek}`)
+      }
+      if (companyFilterReporter) {
+        params.push(`reporter_name=${encodeURIComponent(companyFilterReporter)}`)
+      }
+      if (companyFilterKeyword) {
+        params.push(`keyword=${encodeURIComponent(companyFilterKeyword)}`)
+      }
+      if (params.length > 0) {
+        url += '&' + params.join('&')
+      }
+
+      // 请求后端导出接口，接收 blob
+      const response = await get<any>(url, { responseType: 'blob' })
+      
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${title}_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success(`${title}导出成功`)
+    } catch (err) {
+      console.error('导出 KPI 明细失败', err)
+      message.error('导出 KPI 明细失败')
+    } finally {
+      setCompanyExportLoading(false)
     }
   }
 
@@ -3390,6 +3447,17 @@ const Dashboard: React.FC = () => {
             
             {/* 标题栏右侧的筛选组合栏，所有注释必须使用中文 */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+              {/* 导出按钮 */}
+              <Button
+                icon={<ExportOutlined />}
+                loading={companyExportLoading}
+                onClick={handleExportCompanyKpi}
+                size="small"
+                style={{ borderRadius: 4 }}
+              >
+                导出
+              </Button>
+
               {/* 战队筛选 */}
               <Select
                 placeholder="选择战队"
