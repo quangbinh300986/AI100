@@ -100,6 +100,10 @@ const WeeklyReports: React.FC = () => {
   const [crmViewVisible, setCrmViewVisible] = useState(false)
   const [viewingCrmReport, setViewingCrmReport] = useState<any>(null)
 
+  // 三级巴筛选状态
+  const [weeklyThirdBar, setWeeklyThirdBar] = useState<string>('all')
+  const [thirdClassBarOptions, setThirdClassBarOptions] = useState<{ label: string; value: string }[]>([])
+
   // 周复盘汇总相关状态，默认当前周
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
   // 战队筛选：非全局角色默认限制为本战队
@@ -516,6 +520,9 @@ const WeeklyReports: React.FC = () => {
       if (targetTeamId && targetTeamId !== 'all') {
         url += `&team_id=${targetTeamId}`
       }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
       
       const res = await get<any>(url)
       const data = res?.data ? res.data : res
@@ -636,6 +643,9 @@ const WeeklyReports: React.FC = () => {
       if (targetTeamId && targetTeamId !== 'all') {
         url += `&team_id=${targetTeamId}`
       }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
       
       const res = await get<any>(url)
       const data = res?.data ? res.data : res
@@ -656,6 +666,22 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 加载系统所有的三级巴选项
+  const loadThirdClassBars = async () => {
+    try {
+      const res = await get<string[]>('/users/third-class-bars')
+      if (res) {
+        const opts = [
+          { label: '全部三级巴', value: 'all' },
+          ...res.map((bar: string) => ({ label: bar, value: bar }))
+        ]
+        setThirdClassBarOptions(opts)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   // 打开 CRM 查看详情 Modal
   const openCrmViewModal = (record: any) => {
     setViewingCrmReport(record)
@@ -663,12 +689,16 @@ const WeeklyReports: React.FC = () => {
   }
 
   useEffect(() => {
+    loadThirdClassBars()
+  }, [])
+
+  useEffect(() => {
     if (activeTab === 'report') {
       loadWeeklyReports()
     } else {
       loadCrmReports()
     }
-  }, [activeTab, weeklyDate, weeklyTeamId, weeklyPage, weeklyPageSize, crmPage, crmPageSize])
+  }, [activeTab, weeklyDate, weeklyTeamId, weeklyThirdBar, weeklyPage, weeklyPageSize, crmPage, crmPageSize])
 
   useEffect(() => {
     checkMyReport()
@@ -1132,6 +1162,17 @@ const WeeklyReports: React.FC = () => {
               }}
               disabled={!isGlobalUser} // 只有管理员/目标官允许切换战队，非全局角色被锁定
               options={TEAM_OPTIONS}
+            />
+          </Col>
+          <Col xs={24} sm={8} md={6}>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="按三级巴筛选"
+              value={weeklyThirdBar}
+              onChange={(val) => {
+                setWeeklyThirdBar(val)
+              }}
+              options={thirdClassBarOptions}
             />
           </Col>
           <Col>

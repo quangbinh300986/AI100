@@ -1137,6 +1137,7 @@ async def extract_weekly_crm_data(
 async def get_weekly_reports_summary(
     start_date: date = Query(..., description="周开始日期(周一)"),
     team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     db: AsyncSession = Depends(get_db),
@@ -1180,6 +1181,9 @@ async def get_weekly_reports_summary(
     
     if team_id:
         query = query.where(DbUser.team_id == team_id)
+        
+    if third_class_bar and third_class_bar != "all":
+        query = query.where(DbUser.third_class_bar == third_class_bar)
         
     query = query.where(WeeklyReport.start_date == start_date)
     query = query.order_by(DbUser.name.asc())
@@ -1231,6 +1235,7 @@ async def get_weekly_reports_summary(
 async def get_weekly_reports_crm_summary(
     start_date: date = Query(..., description="周开始日期(周一)"),
     team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     db: AsyncSession = Depends(get_db),
@@ -1279,10 +1284,13 @@ async def get_weekly_reports_crm_summary(
         stmt = stmt.where(or_(*conditions))
         count_stmt = count_stmt.where(or_(*conditions))
         
-        # 即使非全局角色传入了 team_id，我们为了安全也可以再次过滤
         if team_id:
             stmt = stmt.where(DbUser.team_id == team_id)
             count_stmt = count_stmt.where(DbUser.team_id == team_id)
+
+    if third_class_bar and third_class_bar != "all":
+        stmt = stmt.where(DbUser.third_class_bar == third_class_bar)
+        count_stmt = count_stmt.where(DbUser.third_class_bar == third_class_bar)
 
     # 2. 统计总数
     total_res = await db.execute(count_stmt)
