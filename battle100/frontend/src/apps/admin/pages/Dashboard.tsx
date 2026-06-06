@@ -2852,8 +2852,8 @@ const Dashboard: React.FC = () => {
                           const ratio = parseFloat(broadcastForm.getFieldValue(['deliveryAllocations', name, 'ratio']) || 0);
                           const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
                           return (
-                            <Row key={key} gutter={16} align="middle" style={{ marginBottom: 8 }}>
-                              <Col span={10}>
+                            <div key={key} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, width: '100%' }}>
+                              <div style={{ flex: 10, minWidth: 0 }}>
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'userId']}
@@ -2872,8 +2872,8 @@ const Dashboard: React.FC = () => {
                                       }))}
                                   />
                                 </Form.Item>
-                              </Col>
-                              <Col span={8}>
+                              </div>
+                              <div style={{ flex: 8, minWidth: 0 }}>
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'ratio']}
@@ -2887,18 +2887,18 @@ const Dashboard: React.FC = () => {
                                     style={{ width: '100%' }}
                                   />
                                 </Form.Item>
-                              </Col>
-                              <Col span={4} style={{ paddingLeft: 8 }}>
+                              </div>
+                              <div style={{ flex: 4, minWidth: 0, textAlign: 'right', paddingRight: 4, whiteSpace: 'nowrap' }}>
                                 <span style={{ fontSize: 12, color: '#888' }}>
                                   {allocatedAmount} 万元
                                 </span>
-                              </Col>
-                              <Col span={2}>
-                                <Button type="link" danger onClick={() => remove(name)}>
+                              </div>
+                              <div style={{ flex: 2, minWidth: 0, textAlign: 'right' }}>
+                                <Button type="link" danger onClick={() => remove(name)} style={{ padding: 0 }}>
                                   删除
                                 </Button>
-                              </Col>
-                            </Row>
+                              </div>
+                            </div>
                           );
                         })}
                         <Form.Item noStyle>
@@ -2954,8 +2954,8 @@ const Dashboard: React.FC = () => {
                           const ratio = parseFloat(broadcastForm.getFieldValue(['marketingAllocations', name, 'ratio']) || 0);
                           const allocatedAmount = ((ratio * expectMoneyVal) / 100).toFixed(2);
                           return (
-                            <Row key={key} gutter={16} align="middle" style={{ marginBottom: 8 }}>
-                              <Col span={10}>
+                            <div key={key} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, width: '100%' }}>
+                              <div style={{ flex: 10, minWidth: 0 }}>
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'userId']}
@@ -2974,8 +2974,8 @@ const Dashboard: React.FC = () => {
                                       }))}
                                   />
                                 </Form.Item>
-                              </Col>
-                              <Col span={8}>
+                              </div>
+                              <div style={{ flex: 8, minWidth: 0 }}>
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'ratio']}
@@ -2989,18 +2989,18 @@ const Dashboard: React.FC = () => {
                                     style={{ width: '100%' }}
                                   />
                                 </Form.Item>
-                              </Col>
-                              <Col span={4} style={{ paddingLeft: 8 }}>
+                              </div>
+                              <div style={{ flex: 4, minWidth: 0, textAlign: 'right', paddingRight: 4, whiteSpace: 'nowrap' }}>
                                 <span style={{ fontSize: 12, color: '#888' }}>
                                   {allocatedAmount} 万元
                                 </span>
-                              </Col>
-                              <Col span={2}>
-                                <Button type="link" danger onClick={() => remove(name)}>
+                              </div>
+                              <div style={{ flex: 2, minWidth: 0, textAlign: 'right' }}>
+                                <Button type="link" danger onClick={() => remove(name)} style={{ padding: 0 }}>
                                   删除
                                 </Button>
-                              </Col>
-                            </Row>
+                              </div>
+                            </div>
                           );
                         })}
                         <Form.Item noStyle>
