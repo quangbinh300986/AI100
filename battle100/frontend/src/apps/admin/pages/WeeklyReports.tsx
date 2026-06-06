@@ -145,6 +145,106 @@ const WeeklyReports: React.FC = () => {
     blockers: true
   })
 
+  // AI 助手智能整理状态
+  const [weeklyAiOptimizing, setWeeklyAiOptimizing] = useState(false)
+  const [aiOptimizeModalVisible, setAiOptimizeModalVisible] = useState(false)
+  const [aiOptimizeForm] = Form.useForm()
+
+  const handleAiOptimizeWeekly = async () => {
+    const values = weeklyForm.getFieldsValue()
+    const actual = isMarketing ? values.sales_actual : values.delivery_actual
+    const highlights = isMarketing ? values.sales_highlights : values.delivery_highlights
+    const blockers = isMarketing ? values.sales_blockers : values.delivery_blockers
+    const support = isMarketing ? values.sales_support : values.delivery_support
+    const next_plan = isMarketing ? values.next_sales_plan : values.next_delivery_plan
+
+    const isActualEmpty = !actual || actual.trim() === '' || actual.includes('做了什么项目') || actual.includes('销售：（已签约')
+    const isHighlightsEmpty = !highlights || highlights.trim() === '' || highlights.includes('【项目】') || highlights.includes('【销售】')
+    const isBlockersEmpty = !blockers || blockers.trim() === '' || blockers.includes('项目难点') || blockers.includes('销售难点')
+    const isSupportEmpty = !support || support.trim() === '' || support.includes('项目侧：') || support.includes('销售侧：')
+    const isNextPlanEmpty = !next_plan || next_plan.trim() === '' || next_plan.includes('项目交付工作') || next_plan.includes('销售：（新签')
+
+    if (isActualEmpty && isHighlightsEmpty && isBlockersEmpty && isSupportEmpty && isNextPlanEmpty) {
+      message.warning('当前“本周实际完成”、“本周工作亮点”、“本周工作卡点/难点”、“需要支持”及“下周工作目标”均为空，请先填写或导入数据！')
+      return
+    }
+
+    setWeeklyAiOptimizing(true)
+    try {
+      const res = await post<any>('/llm/agents/extractor/chat', {
+        variables: {
+          actual: actual || '',
+          highlights: highlights || '',
+          blockers: blockers || '',
+          support: support || '',
+          next_plan: next_plan || ''
+        },
+        response_format_json: true
+      })
+      
+      const content = res?.data?.content || res?.content
+      if (content) {
+        aiOptimizeForm.setFieldsValue({
+          actual: content.actual || '',
+          highlights: content.highlights || '',
+          blockers: content.blockers || '',
+          support: content.support || '',
+          next_plan: content.next_plan || ''
+        })
+        setAiOptimizeModalVisible(true)
+      } else {
+        message.error('AI 整理返回的数据格式不正确')
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || 'AI 智能整理失败，请重试')
+    } finally {
+      setWeeklyAiOptimizing(false)
+    }
+  }
+
+  const handleConfirmAiOptimize = () => {
+    const values = aiOptimizeForm.getFieldsValue()
+    
+    // 增加回写逻辑：支持项不直接覆盖原内容，若AI整理出新内容，则追加拼接在原内容后
+    const oldSupport = weeklyForm.getFieldValue(isMarketing ? 'sales_support' : 'delivery_support') || ''
+    const aiSupport = values.support || ''
+    let finalSupport = oldSupport
+    if (aiSupport.trim() && aiSupport !== '无' && aiSupport !== '暂无') {
+      const cleanOld = oldSupport.trim()
+      const cleanAi = aiSupport.trim()
+      if (cleanOld === '项目侧：' || cleanOld === '销售侧：') {
+        finalSupport = cleanAi
+      } else if (cleanOld) {
+        if (!cleanOld.includes(cleanAi)) {
+          finalSupport = `${cleanOld}\n${cleanAi}`
+        }
+      } else {
+        finalSupport = cleanAi
+      }
+    }
+
+    if (isMarketing) {
+      weeklyForm.setFieldsValue({
+        sales_actual: values.actual,
+        sales_highlights: values.highlights,
+        sales_blockers: values.blockers,
+        sales_support: finalSupport,
+        next_sales_plan: values.next_plan
+      })
+    } else {
+      weeklyForm.setFieldsValue({
+        delivery_actual: values.actual,
+        delivery_highlights: values.highlights,
+        delivery_blockers: values.blockers,
+        delivery_support: finalSupport,
+        next_delivery_plan: values.next_plan
+      })
+    }
+    setAiOptimizeModalVisible(false)
+    message.success('已成功将 AI 整理优化后的内容填回周报表单！')
+  }
+
   // 动态权限校验函数 (支持系统管理员 admin 与默认配置兜底)
   const hasPermission = (perm: string) => {
     if (user?.role === 'admin') return true
@@ -653,7 +753,7 @@ const WeeklyReports: React.FC = () => {
       ],
     },
     {
-      title: '上级支持需求',
+      title: '支持协调需求',
       children: [
         {
           title: '项目侧',
@@ -868,7 +968,7 @@ const WeeklyReports: React.FC = () => {
           ]}
           width={800}
           centered
-          destroyOnClose
+          destroyOnHidden
         >
           {viewingWeeklyReport && (
             <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px' }}>
@@ -983,7 +1083,7 @@ const WeeklyReports: React.FC = () => {
                 )}
               </Row>
 
-              <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>🤝 需要上级支持协调</div>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>🤝 需要支持协调</div>
               <Row gutter={16} style={{ marginBottom: 12 }}>
                 {!isViewingMarketing && (
                   <Col span={24}>
@@ -1054,7 +1154,7 @@ const WeeklyReports: React.FC = () => {
             </Button>
           ]}
           width={800}
-          destroyOnClose
+          destroyOnHidden
         >
           <div style={{ margin: '12px 0' }}>
             <Space style={{ marginBottom: 16 }}>
@@ -1075,6 +1175,15 @@ const WeeklyReports: React.FC = () => {
                 onClick={handleAutoExtractCrmWeekly}
               >
                 ⚡ 智能拉取 CRM 业绩与进度
+              </Button>
+              <Button
+                type="primary"
+                style={{ backgroundColor: '#722ed1', borderColor: '#722ed1' }}
+                icon={<SyncOutlined spin={weeklyAiOptimizing} />}
+                loading={weeklyAiOptimizing}
+                onClick={handleAiOptimizeWeekly}
+              >
+                🪄 AI 助手智能整理
               </Button>
             </Space>
             
@@ -1144,15 +1253,15 @@ const WeeklyReports: React.FC = () => {
                 </Form.Item>
               )}
 
-              <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要上级支持协调</div>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要支持协调</div>
               {!isMarketing && (
                 <Form.Item name="delivery_support" style={{ marginBottom: 0 }}>
-                  <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
+                  <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持交付，请填写..." />
                 </Form.Item>
               )}
               {isMarketing && (
                 <Form.Item name="sales_support" style={{ marginBottom: 0 }}>
-                  <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
+                  <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持销售，请填写..." />
                 </Form.Item>
               )}
 
@@ -1184,7 +1293,7 @@ const WeeklyReports: React.FC = () => {
           okText="确认填入选中的数据"
           cancelText="取消"
           width={800}
-          bodyStyle={{ maxHeight: '600px', overflowY: 'auto', padding: '16px' }}
+          styles={{ body: { maxHeight: '600px', overflowY: 'auto', padding: '16px' } }}
         >
           {/* 1. 分析环境描述卡片 */}
           <Card 
@@ -1235,7 +1344,7 @@ const WeeklyReports: React.FC = () => {
                 </Checkbox>
               }
               style={{ border: crmSelectedKeys.actual ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              bodyStyle={{ backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' }}
+              styles={{ body: { backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' } }}
             >
               <div style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
                 {isMarketing ? crmPreviewData?.sales_actual : crmPreviewData?.delivery_actual}
@@ -1254,7 +1363,7 @@ const WeeklyReports: React.FC = () => {
                 </Checkbox>
               }
               style={{ border: crmSelectedKeys.rate ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              bodyStyle={{ backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' }}
+              styles={{ body: { backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' } }}
             >
               <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
                 {isMarketing ? crmPreviewData?.sales_rate : crmPreviewData?.delivery_rate}
@@ -1273,7 +1382,7 @@ const WeeklyReports: React.FC = () => {
                 </Checkbox>
               }
               style={{ border: crmSelectedKeys.highlights ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              bodyStyle={{ backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' }}
+              styles={{ body: { backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' } }}
             >
               <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
                 {isMarketing ? crmPreviewData?.sales_highlights : crmPreviewData?.delivery_highlights}
@@ -1292,7 +1401,7 @@ const WeeklyReports: React.FC = () => {
                 </Checkbox>
               }
               style={{ border: crmSelectedKeys.blockers ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              bodyStyle={{ backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' }}
+              styles={{ body: { backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' } }}
             >
               <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
                 {isMarketing ? crmPreviewData?.sales_blockers : crmPreviewData?.delivery_blockers}
@@ -1300,6 +1409,67 @@ const WeeklyReports: React.FC = () => {
             </Card>
 
           </Space>
+        </Modal>
+
+        {/* 🪄 AI 助手智能整理微调确认 Modal */}
+        <Modal
+          title={
+            <Space>
+              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#722ed1' }}>🪄 AI 助手周报整理与优化微调</span>
+            </Space>
+          }
+          open={aiOptimizeModalVisible}
+          onCancel={() => setAiOptimizeModalVisible(false)}
+          onOk={handleConfirmAiOptimize}
+          okText="确认并填回周报"
+          cancelText="取消"
+          width={750}
+          destroyOnHidden
+        >
+          <div style={{ padding: '8px 0' }}>
+            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f9f0ff', border: '1px solid #d3adf7', borderRadius: '4px', fontSize: '13px', color: '#722ed1' }}>
+              💡 以下是 AI 周报助手为您润色整理后的内容，您可以在下方文本框中直接进行微调，确认无误后点击“确认并填回周报”即可自动覆盖并回填主表单。
+            </div>
+            <Form
+              form={aiOptimizeForm}
+              layout="vertical"
+            >
+              <Form.Item
+                name="actual"
+                label={<span style={{ fontWeight: 'bold' }}>🔥 本周实际完成 (优化后)</span>}
+              >
+                <Input.TextArea rows={6} placeholder="润色后的本周实际完成情况..." />
+              </Form.Item>
+
+              <Form.Item
+                name="highlights"
+                label={<span style={{ fontWeight: 'bold' }}>🏆 本周工作亮点 (优化后)</span>}
+              >
+                <Input.TextArea rows={3} placeholder="润色后的本周亮点..." />
+              </Form.Item>
+
+              <Form.Item
+                name="blockers"
+                label={<span style={{ fontWeight: 'bold' }}>🚧 本周工作卡点/难点 (优化后)</span>}
+              >
+                <Input.TextArea rows={3} placeholder="润色后的本周卡点与难点..." />
+              </Form.Item>
+
+              <Form.Item
+                name="support"
+                label={<span style={{ fontWeight: 'bold' }}>🤝 需要支持协调 (优化后)</span>}
+              >
+                <Input.TextArea rows={2} placeholder="AI 分析或润色出的需要支持与协调事项（若无，可留空，系统不会覆盖原内容）..." />
+              </Form.Item>
+
+              <Form.Item
+                name="next_plan"
+                label={<span style={{ fontWeight: 'bold' }}>🚀 下周工作目标 (优化后)</span>}
+              >
+                <Input.TextArea rows={4} placeholder="润色后的下周工作目标..." />
+              </Form.Item>
+            </Form>
+          </div>
         </Modal>
 
         {/* 周报编辑Modal弹窗 */}
@@ -1323,7 +1493,7 @@ const WeeklyReports: React.FC = () => {
             </Button>
           ]}
           width={800}
-          destroyOnClose
+          destroyOnHidden
         >
           <div style={{ margin: '12px 0' }}>
             <Form
@@ -1398,15 +1568,15 @@ const WeeklyReports: React.FC = () => {
                       </Form.Item>
                     )}
 
-                    <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要上级支持协调</div>
+                    <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要支持协调</div>
                     {!isEditingMarketing && (
                       <Form.Item name="delivery_support" style={{ marginBottom: 0 }}>
-                        <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
+                        <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持交付，请填写..." />
                       </Form.Item>
                     )}
                     {isEditingMarketing && (
                       <Form.Item name="sales_support" style={{ marginBottom: 0 }}>
-                        <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
+                        <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持销售，请填写..." />
                       </Form.Item>
                     )}
 

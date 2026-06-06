@@ -2,11 +2,12 @@
  * 个人周复盘填报页面 (移动端)
  * 提供本周目标计划、本周实际完成（可自动导入播报）、达成率、亮点、卡点及下周目标填报
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, TextArea, Input, Button, Toast, Card, NavBar } from 'antd-mobile'
+import { Form, TextArea, Input, Button, Toast, Card, NavBar, Modal } from 'antd-mobile'
 import { LeftOutline, RightOutline, StarOutline, CalendarOutline, FileOutline } from 'antd-mobile-icons'
 import { getMyWeeklyReport, saveWeeklyReport, extractWeeklyBroadcasts, extractWeeklyCrmData } from '@shared/api/report'
+import { post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import type { WeeklyReport as WeeklyReportType } from '@shared/types'
 
@@ -74,6 +75,8 @@ export default function WeeklyReport() {
   const mondayStr = formatDate(monday)
   const sundayStr = formatDate(sunday)
   
+  const originalReportRef = useRef<any>(null)
+
   // 周报数据状态
   const [report, setReport] = useState<Partial<WeeklyReportType>>({
     start_date: mondayStr,
@@ -99,6 +102,152 @@ export default function WeeklyReport() {
   const [extracting, setExtracting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // 切换星期时立即置空基准值，防止拉取异步空档期错位写入本地缓存
+  useEffect(() => {
+    originalReportRef.current = null
+  }, [mondayStr])
+
+  // 监听数据改变并实时同步本地缓存（只在与基准数据有差异时写入）
+  useEffect(() => {
+    if (!user?.id || !mondayStr) return
+    if (!originalReportRef.current) return
+
+    const fields = [
+      'delivery_plan', 'sales_plan',
+      'delivery_actual', 'sales_actual',
+      'delivery_rate', 'sales_rate',
+      'delivery_highlights', 'sales_highlights',
+      'delivery_blockers', 'sales_blockers',
+      'delivery_support', 'sales_support',
+      'next_delivery_plan', 'next_sales_plan'
+    ]
+
+    let hasDiff = false
+    for (const field of fields) {
+      if (report[field as keyof WeeklyReportType] !== originalReportRef.current[field]) {
+        hasDiff = true
+        break
+      }
+    }
+
+    if (hasDiff) {
+      const cacheKey = `weekly_report_draft_${user.id}_${mondayStr}`
+      localStorage.setItem(cacheKey, JSON.stringify(report))
+    }
+  }, [report, user?.id, mondayStr])
+
+  // AI 智能整理与微调状态
+  const [aiOptimizeModalVisible, setAiOptimizeModalVisible] = useState(false)
+  const [weeklyAiOptimizing, setWeeklyAiOptimizing] = useState(false)
+  const [aiOptimizeForm] = Form.useForm()
+
+  const handleAiOptimizeWeekly = async () => {
+    const actual = isMarketing ? report.sales_actual : report.delivery_actual
+    const highlights = isMarketing ? report.sales_highlights : report.delivery_highlights
+    const blockers = isMarketing ? report.sales_blockers : report.delivery_blockers
+    const support = isMarketing ? report.sales_support : report.delivery_support
+    const next_plan = isMarketing ? report.next_sales_plan : report.next_delivery_plan
+
+    const isActualEmpty = !actual || actual.trim() === '' || actual.includes('做了什么项目') || actual.includes('销售：（已签约')
+    const isHighlightsEmpty = !highlights || highlights.trim() === '' || highlights.includes('【项目】') || highlights.includes('【销售】')
+    const isBlockersEmpty = !blockers || blockers.trim() === '' || blockers.includes('项目难点') || blockers.includes('销售难点')
+    const isSupportEmpty = !support || support.trim() === '' || support.includes('项目侧：') || support.includes('销售侧：')
+    const isNextPlanEmpty = !next_plan || next_plan.trim() === '' || next_plan.includes('项目交付工作') || next_plan.includes('销售：（新签')
+
+    if (isActualEmpty && isHighlightsEmpty && isBlockersEmpty && isSupportEmpty && isNextPlanEmpty) {
+      Toast.show({
+        icon: 'fail',
+        content: '当前各模块内容均为空，请先填写或导入数据！'
+      })
+      return
+    }
+
+    setWeeklyAiOptimizing(true)
+    try {
+      const res = await post<any>('/llm/agents/extractor/chat', {
+        variables: {
+          actual: actual || '',
+          highlights: highlights || '',
+          blockers: blockers || '',
+          support: support || '',
+          next_plan: next_plan || ''
+        },
+        response_format_json: true
+      })
+      
+      const content = res?.data?.content || res?.content
+      if (content) {
+        aiOptimizeForm.setFieldsValue({
+          actual: content.actual || '',
+          highlights: content.highlights || '',
+          blockers: content.blockers || '',
+          support: content.support || '',
+          next_plan: content.next_plan || ''
+        })
+        setAiOptimizeModalVisible(true)
+      } else {
+        Toast.show({
+          icon: 'fail',
+          content: 'AI 整理返回的数据格式不正确'
+        })
+      }
+    } catch (err: any) {
+      console.error(err)
+      Toast.show({
+        icon: 'fail',
+        content: err?.response?.data?.detail || 'AI 智能整理失败，请重试'
+      })
+    } finally {
+      setWeeklyAiOptimizing(false)
+    }
+  }
+
+  const handleConfirmAiOptimize = () => {
+    const values = aiOptimizeForm.getFieldsValue()
+    
+    // 增加回写逻辑：支持项不直接覆盖原内容，以追加拼接形式回写
+    const oldSupport = (isMarketing ? report.sales_support : report.delivery_support) || ''
+    const aiSupport = values.support || ''
+    let finalSupport = oldSupport
+    if (aiSupport.trim() && aiSupport !== '无' && aiSupport !== '暂无') {
+      const cleanOld = oldSupport.trim()
+      const cleanAi = aiSupport.trim()
+      if (cleanOld === '项目侧：' || cleanOld === '销售侧：') {
+        finalSupport = cleanAi
+      } else if (cleanOld) {
+        if (!cleanOld.includes(cleanAi)) {
+          finalSupport = `${cleanOld}\n${cleanAi}`
+        }
+      } else {
+        finalSupport = cleanAi
+      }
+    }
+
+    setReport(prev => {
+      const nextReport = { ...prev }
+      if (isMarketing) {
+        nextReport.sales_actual = values.actual
+        nextReport.sales_highlights = values.highlights
+        nextReport.sales_blockers = values.blockers
+        nextReport.sales_support = finalSupport
+        nextReport.next_sales_plan = values.next_plan
+      } else {
+        nextReport.delivery_actual = values.actual
+        nextReport.delivery_highlights = values.highlights
+        nextReport.delivery_blockers = values.blockers
+        nextReport.delivery_support = finalSupport
+        nextReport.next_delivery_plan = values.next_plan
+      }
+      return nextReport
+    })
+
+    setAiOptimizeModalVisible(false)
+    Toast.show({
+      icon: 'success',
+      content: '内容已成功填回周报表单！'
+    })
+  }
+
   // 拉取当周周报数据
   const fetchWeeklyReport = async (monDate: Date) => {
     setLoading(true)
@@ -108,8 +257,9 @@ export default function WeeklyReport() {
     let data: any = null
     try {
       const res = await getMyWeeklyReport(monStr)
-      if (res && res.data) {
-        data = res.data
+      const responseData = res?.data ? res.data : res
+      if (responseData) {
+        data = responseData
       }
     } catch (err) {
       console.log('尚未填写周报，将预填模版说明')
@@ -147,6 +297,34 @@ export default function WeeklyReport() {
         }
       }
     })
+    // 检查本地未保存的临时草稿并恢复
+    if (user?.id) {
+      const cacheKey = `weekly_report_draft_${user.id}_${monStr}`
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        try {
+          const cachedReport = JSON.parse(cached)
+          let hasDiff = false
+          fields.forEach(field => {
+            if (cachedReport[field] !== undefined && cachedReport[field] !== newReport[field]) {
+              hasDiff = true
+              newReport[field] = cachedReport[field]
+            }
+          })
+          if (hasDiff) {
+            Toast.show({
+              icon: 'success',
+              content: '已为您自动恢复上次未保存的本地草稿内容',
+              duration: 2000
+            })
+          }
+        } catch (e) {
+          console.error('解析本地周报草稿失败:', e)
+        }
+      }
+    }
+
+    originalReportRef.current = { ...newReport }
     
     setReport(newReport)
     setLoading(false)
@@ -298,8 +476,17 @@ export default function WeeklyReport() {
       })
       
       const res = await saveWeeklyReport(payload)
-      if (res && res.data) {
-        setReport(res.data)
+      const responseData = res?.data ? res.data : res
+      if (responseData) {
+        originalReportRef.current = { ...responseData }
+        setReport(responseData)
+        
+        // 保存/提交成功后清除当前周的本地临时草稿缓存
+        if (user?.id) {
+          const cacheKey = `weekly_report_draft_${user.id}_${mondayStr}`
+          localStorage.removeItem(cacheKey)
+        }
+        
         Toast.show({
           icon: 'success',
           content: submitStatus === 'submitted' ? '周复盘提交成功！' : '草稿保存成功！'
@@ -357,27 +544,46 @@ export default function WeeklyReport() {
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>正在拉取周报数据...</div>
         ) : (
           <Form layout='vertical' style={{ '--background-color': 'transparent' }}>
-            {/* 一键提取战报 - 炫酷横幅按钮 */}
-            <div style={{ margin: '8px 0 16px 0' }}>
+            {/* 一键提取战报 与 AI 智能整理 - 按钮组 */}
+            <div style={{ margin: '8px 0 16px 0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <Button
                 block
                 loading={extracting}
                 onClick={handleAutoExtract}
-                disabled={report.status === 'submitted'}
                 style={{
-                  background: report.status === 'submitted' ? '#ccc' : 'linear-gradient(135deg, #722ed1, #3f1a68)',
+                  background: 'linear-gradient(135deg, #1890ff, #102a4c)',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '12px',
-                  height: '46px',
+                  height: '42px',
                   fontWeight: 'bold',
-                  boxShadow: report.status === 'submitted' ? 'none' : '0 4px 10px rgba(114,46,209,0.3)',
+                  boxShadow: '0 4px 10px rgba(24,144,255,0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
               >
-                ✨ 一键自动拉取当周实际完成
+                ✨ 一键拉取 CRM 业绩与进度
+              </Button>
+              
+              <Button
+                block
+                loading={weeklyAiOptimizing}
+                onClick={handleAiOptimizeWeekly}
+                style={{
+                  background: 'linear-gradient(135deg, #722ed1, #3f1a68)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  height: '42px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 4px 10px rgba(114,46,209,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                🪄 AI 助手智能整理周报
               </Button>
             </div>
 
@@ -389,7 +595,6 @@ export default function WeeklyReport() {
                     placeholder='请输入项目交付计划...'
                     autoSize={{ minRows: 2, maxRows: 6 }}
                     value={report.delivery_plan || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_plan: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -401,7 +606,6 @@ export default function WeeklyReport() {
                     placeholder='请输入销售目标计划...'
                     autoSize={{ minRows: 2, maxRows: 6 }}
                     value={report.sales_plan || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_plan: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -417,7 +621,6 @@ export default function WeeklyReport() {
                     placeholder='请输入本周项目交付实际完成情况...'
                     autoSize={{ minRows: 3, maxRows: 8 }}
                     value={report.delivery_actual || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_actual: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -429,7 +632,6 @@ export default function WeeklyReport() {
                     placeholder='请输入本周销售实际完成情况...'
                     autoSize={{ minRows: 3, maxRows: 8 }}
                     value={report.sales_actual || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_actual: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -444,7 +646,6 @@ export default function WeeklyReport() {
                   <Input
                     placeholder='例如 100%'
                     value={report.delivery_rate || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_rate: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -455,7 +656,6 @@ export default function WeeklyReport() {
                   <Input
                     placeholder='例如 85%'
                     value={report.sales_rate || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_rate: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -471,7 +671,6 @@ export default function WeeklyReport() {
                     placeholder='请输入项目交付方面突出的工作成果与正反馈...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.delivery_highlights || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_highlights: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -483,7 +682,6 @@ export default function WeeklyReport() {
                     placeholder='请输入新签、回款、客户突破方面的亮点...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.sales_highlights || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_highlights: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -499,7 +697,6 @@ export default function WeeklyReport() {
                     placeholder='请输入项目推进卡点或技术堵点...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.delivery_blockers || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_blockers: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -511,7 +708,6 @@ export default function WeeklyReport() {
                     placeholder='请输入客情推进、合同流转或回款被拒等销售难点...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.sales_blockers || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_blockers: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -519,27 +715,25 @@ export default function WeeklyReport() {
               )}
             </Card>
 
-            {/* 模块六：是否需要上级支持 */}
-            <Card title='🤝 6. 是否需要上级支持' style={{ borderRadius: '12px', marginBottom: 12 }}>
+            {/* 模块六：是否需要支持协调 */}
+            <Card title='🤝 6. 是否需要支持协调' style={{ borderRadius: '12px', marginBottom: 12 }}>
               {!isMarketing && (
-                <Form.Item label='【项目侧支持需求】'>
+                <Form.Item label='【项目侧支持协调需求】'>
                   <TextArea
-                    placeholder='请输入您需要的专家资源、技术援助等项目支持...'
+                    placeholder='如需要协调其他人或团队支持交付，请填写...'
                     autoSize={{ minRows: 2, maxRows: 4 }}
                     value={report.delivery_support || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, delivery_support: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
                 </Form.Item>
               )}
               {isMarketing && (
-                <Form.Item label='【销售侧支持需求】'>
+                <Form.Item label='【销售侧支持协调需求】'>
                   <TextArea
-                    placeholder='请输入您需要的公司高管公关、商务条件放宽等销售支持...'
+                    placeholder='如需要协调其他人或团队支持销售，请填写...'
                     autoSize={{ minRows: 2, maxRows: 4 }}
                     value={report.sales_support || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, sales_support: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -555,7 +749,6 @@ export default function WeeklyReport() {
                     placeholder='请输入下周项目交付计划...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.next_delivery_plan || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, next_delivery_plan: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -567,7 +760,6 @@ export default function WeeklyReport() {
                     placeholder='请输入下周销售目标计划...'
                     autoSize={{ minRows: 2, maxRows: 5 }}
                     value={report.next_sales_plan || ''}
-                    disabled={report.status === 'submitted'}
                     onChange={val => setReport(prev => ({ ...prev, next_sales_plan: val }))}
                     style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }}
                   />
@@ -587,7 +779,7 @@ export default function WeeklyReport() {
                 border: '1px solid #b7eb8f',
                 marginBottom: 16
               }}>
-                ✓ 本周复盘已提交 (锁定修改)
+                ✓ 本周复盘已提交（您仍可进行编辑并重新保存/提交）
               </div>
             )}
 
@@ -595,7 +787,6 @@ export default function WeeklyReport() {
               <Button
                 onClick={() => handleSave('draft')}
                 loading={submitting}
-                disabled={report.status === 'submitted'}
                 style={{
                   flex: 1,
                   borderRadius: '20px',
@@ -611,25 +802,76 @@ export default function WeeklyReport() {
               <Button
                 onClick={() => handleSave('submitted')}
                 loading={submitting}
-                disabled={report.status === 'submitted'}
                 style={{
                   flex: 1.5,
                   borderRadius: '20px',
                   height: '40px',
                   fontSize: 14,
                   fontWeight: 'bold',
-                  background: report.status === 'submitted' ? '#ccc' : 'linear-gradient(135deg, #1890ff, #102a4c)',
+                  background: 'linear-gradient(135deg, #1890ff, #102a4c)',
                   color: '#fff',
                   border: 'none',
                   boxShadow: '0 4px 8px rgba(24,144,255,0.2)'
                 }}
               >
-                提交周复盘
+                {report.status === 'submitted' ? '重新提交周复盘' : '提交周复盘'}
               </Button>
             </div>
           </Form>
         )}
       </div>
+
+      {/* 🪄 AI 助手周报整理微调确认 Modal */}
+      <Modal
+        visible={aiOptimizeModalVisible}
+        title={<span style={{ color: '#722ed1', fontWeight: 'bold' }}>🪄 AI 助手周报整理与微调</span>}
+        content={
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '4px 0' }}>
+            <div style={{ marginBottom: 12, padding: 8, background: '#f9f0ff', border: '1px solid #d3adf7', borderRadius: '6px', fontSize: '11px', color: '#722ed1', lineHeight: '1.5' }}>
+              💡 以下是 AI 周报助手为您润色整理后的内容，您可以在下方直接进行微调，点击“确认并填回周报”即可自动追加或回写。
+            </div>
+            <Form
+              form={aiOptimizeForm}
+              layout='vertical'
+            >
+              <Form.Item name='actual' label={<span style={{ fontWeight: 'bold' }}>🔥 本周实际完成 (优化后)</span>}>
+                <TextArea rows={5} placeholder="润色后的本周实际完成情况..." style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }} />
+              </Form.Item>
+              <Form.Item name='highlights' label={<span style={{ fontWeight: 'bold' }}>🏆 本周工作亮点 (优化后)</span>}>
+                <TextArea rows={2} placeholder="润色后的本周亮点..." style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }} />
+              </Form.Item>
+              <Form.Item name='blockers' label={<span style={{ fontWeight: 'bold' }}>🚧 本周工作卡点/难点 (优化后)</span>}>
+                <TextArea rows={2} placeholder="润色后的本周卡点与难点..." style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }} />
+              </Form.Item>
+              <Form.Item name='support' label={<span style={{ fontWeight: 'bold' }}>🤝 需要支持协调 (优化后)</span>}>
+                <TextArea rows={2} placeholder="AI 整理出的支持协调事项..." style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }} />
+              </Form.Item>
+              <Form.Item name='next_plan' label={<span style={{ fontWeight: 'bold' }}>🚀 下周工作目标 (优化后)</span>}>
+                <TextArea rows={3} placeholder="润色后的下周工作目标..." style={{ backgroundColor: '#fafafa', padding: 8, borderRadius: 6 }} />
+              </Form.Item>
+            </Form>
+          </div>
+        }
+        closeOnAction={false}
+        actions={[
+          {
+            key: 'cancel',
+            text: '取消',
+          },
+          {
+            key: 'confirm',
+            text: '确认并填回周报',
+            primary: true,
+          },
+        ]}
+        onAction={(action) => {
+          if (action.key === 'confirm') {
+            handleConfirmAiOptimize()
+          } else {
+            setAiOptimizeModalVisible(false)
+          }
+        }}
+      />
     </div>
   )
 }

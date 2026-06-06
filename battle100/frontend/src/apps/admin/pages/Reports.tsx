@@ -1280,7 +1280,7 @@ const Reports: React.FC = () => {
       </Row>
 
       {/* 筛选面板 */}
-      <Card bordered={false} style={{ marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }} bodyStyle={{ padding: '16px' }}>
+      <Card bordered={false} style={{ marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }} styles={{ body: { padding: '16px' } }}>
         <Row gutter={[16, 16]} align="middle">
           <Col>
             <Space>

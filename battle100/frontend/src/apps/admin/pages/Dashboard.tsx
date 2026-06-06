@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, List, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker, Descriptions } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker, Descriptions } from 'antd'
 import dayjs from 'dayjs'
 import {
   DollarOutlined,
@@ -78,6 +78,7 @@ const Dashboard: React.FC = () => {
   const isMarketing = user?.position_type === 'marketing' || ['target_officer', 'marketing_staff', 'tech_marketing'].includes(user?.role || '');
 
   // 周复盘个人填写相关状态和函数
+  const [hasWeeklyReport, setHasWeeklyReport] = useState(false)
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
   const [weeklyWriteVisible, setWeeklyWriteVisible] = useState(false)
   const [weeklyWriteLoading, setWeeklyWriteLoading] = useState(false)
@@ -96,6 +97,106 @@ const Dashboard: React.FC = () => {
     blockers: true
   })
   const [weeklyCrmExtractLoading, setWeeklyCrmExtractLoading] = useState(false)
+
+  // AI 助手智能整理状态
+  const [weeklyAiOptimizing, setWeeklyAiOptimizing] = useState(false)
+  const [aiOptimizeModalVisible, setAiOptimizeModalVisible] = useState(false)
+  const [aiOptimizeForm] = Form.useForm()
+
+  const handleAiOptimizeWeekly = async () => {
+    const values = weeklyForm.getFieldsValue()
+    const actual = isMarketing ? values.sales_actual : values.delivery_actual
+    const highlights = isMarketing ? values.sales_highlights : values.delivery_highlights
+    const blockers = isMarketing ? values.sales_blockers : values.delivery_blockers
+    const support = isMarketing ? values.sales_support : values.delivery_support
+    const next_plan = isMarketing ? values.next_sales_plan : values.next_delivery_plan
+
+    const isActualEmpty = !actual || actual.trim() === '' || actual.includes('做了什么项目') || actual.includes('销售：（已签约')
+    const isHighlightsEmpty = !highlights || highlights.trim() === '' || highlights.includes('【项目】') || highlights.includes('【销售】')
+    const isBlockersEmpty = !blockers || blockers.trim() === '' || blockers.includes('项目难点') || blockers.includes('销售难点')
+    const isSupportEmpty = !support || support.trim() === '' || support.includes('项目侧：') || support.includes('销售侧：')
+    const isNextPlanEmpty = !next_plan || next_plan.trim() === '' || next_plan.includes('项目交付工作') || next_plan.includes('销售：（新签')
+
+    if (isActualEmpty && isHighlightsEmpty && isBlockersEmpty && isSupportEmpty && isNextPlanEmpty) {
+      message.warning('当前“本周实际完成”、“本周工作亮点”、“本周工作卡点/难点”、“需要支持”及“下周工作目标”均为空，请先填写或导入数据！')
+      return
+    }
+
+    setWeeklyAiOptimizing(true)
+    try {
+      const res = await post<any>('/llm/agents/extractor/chat', {
+        variables: {
+          actual: actual || '',
+          highlights: highlights || '',
+          blockers: blockers || '',
+          support: support || '',
+          next_plan: next_plan || ''
+        },
+        response_format_json: true
+      })
+      
+      const content = res?.data?.content || res?.content
+      if (content) {
+        aiOptimizeForm.setFieldsValue({
+          actual: content.actual || '',
+          highlights: content.highlights || '',
+          blockers: content.blockers || '',
+          support: content.support || '',
+          next_plan: content.next_plan || ''
+        })
+        setAiOptimizeModalVisible(true)
+      } else {
+        message.error('AI 整理返回的数据格式不正确')
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || 'AI 智能整理失败，请重试')
+    } finally {
+      setWeeklyAiOptimizing(false)
+    }
+  }
+
+  const handleConfirmAiOptimize = () => {
+    const values = aiOptimizeForm.getFieldsValue()
+    
+    // 增加回写逻辑：支持项不直接覆盖原内容，若AI整理出新内容，则追加拼接在原内容后
+    const oldSupport = weeklyForm.getFieldValue(isMarketing ? 'sales_support' : 'delivery_support') || ''
+    const aiSupport = values.support || ''
+    let finalSupport = oldSupport
+    if (aiSupport.trim() && aiSupport !== '无' && aiSupport !== '暂无') {
+      const cleanOld = oldSupport.trim()
+      const cleanAi = aiSupport.trim()
+      if (cleanOld === '项目侧：' || cleanOld === '销售侧：') {
+        finalSupport = cleanAi
+      } else if (cleanOld) {
+        if (!cleanOld.includes(cleanAi)) {
+          finalSupport = `${cleanOld}\n${cleanAi}`
+        }
+      } else {
+        finalSupport = cleanAi
+      }
+    }
+
+    if (isMarketing) {
+      weeklyForm.setFieldsValue({
+        sales_actual: values.actual,
+        sales_highlights: values.highlights,
+        sales_blockers: values.blockers,
+        sales_support: finalSupport,
+        next_sales_plan: values.next_plan
+      })
+    } else {
+      weeklyForm.setFieldsValue({
+        delivery_actual: values.actual,
+        delivery_highlights: values.highlights,
+        delivery_blockers: values.blockers,
+        delivery_support: finalSupport,
+        next_delivery_plan: values.next_plan
+      })
+    }
+    setAiOptimizeModalVisible(false)
+    message.success('已成功将 AI 整理优化后的内容填回周报表单！')
+  }
 
   const getMondayAndSunday = (dateVal: dayjs.Dayjs) => {
     const day = dateVal.day()
@@ -286,6 +387,22 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  const checkMyWeeklyReportStatus = async () => {
+    try {
+      const [mon] = getMondayAndSunday(dayjs())
+      const startDateStr = mon.format('YYYY-MM-DD')
+      const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
+      const data = res?.data ? res.data : res
+      if (data && data.id) {
+        setHasWeeklyReport(true)
+      } else {
+        setHasWeeklyReport(false)
+      }
+    } catch (err) {
+      setHasWeeklyReport(false)
+    }
+  }
+
   const openWeeklyWriteModal = () => {
     setWeeklyWriteVisible(true)
     const today = dayjs()
@@ -307,6 +424,7 @@ const Dashboard: React.FC = () => {
       if (res) {
         message.success(weeklyStatusToSubmit === 'draft' ? '周复盘草稿已暂存' : '周复盘已正式提交')
         setWeeklyWriteVisible(false)
+        setHasWeeklyReport(true)
       }
     } catch (err: any) {
       console.error(err)
@@ -1345,6 +1463,9 @@ const Dashboard: React.FC = () => {
       if (statsRes) {
         setPersonalStats((statsRes as any).personal_stats)
       }
+
+      // 3. 检查当前用户本周是否已填写过周报
+      await checkMyWeeklyReportStatus()
     } catch (err: any) {
       console.error(err)
       const detailError = err?.response?.data?.detail || err?.message || '加载系统作战看板数据失败'
@@ -1832,7 +1953,7 @@ const Dashboard: React.FC = () => {
               icon={<FileTextOutlined />}
               onClick={openWeeklyWriteModal}
             >
-              填写我的周报
+              {hasWeeklyReport ? '编辑我的周报' : '填写我的周报'}
             </Button>
             <Button icon={<FireOutlined />} onClick={loadData} loading={loading}>刷新看板</Button>
             <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
@@ -1855,7 +1976,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
-            bordered={false}
+            variant="borderless"
             hoverable
             style={{ cursor: 'pointer', transition: 'all 0.3s' }}
             onClick={() => handleViewCompanyKpiDetail('contracts')}
@@ -1864,7 +1985,7 @@ const Dashboard: React.FC = () => {
               title="💰 公司累计新签合同额"
               value={kpis?.newContracts.value}
               precision={2}
-              valueStyle={{ color: '#1677ff', fontSize: 26, fontWeight: 700 }}
+              styles={{ content: { color: '#1677ff', fontSize: 26, fontWeight: 700 } }}
               prefix={<DollarOutlined />}
               suffix="万元"
             />
@@ -1881,7 +2002,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
-            bordered={false}
+            variant="borderless"
             hoverable
             style={{ cursor: 'pointer', transition: 'all 0.3s' }}
             onClick={() => handleViewCompanyKpiDetail('happiness')}
@@ -1889,7 +2010,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="😊 公司客户幸福动作"
               value={kpis?.happinessActions.value}
-              valueStyle={{ color: '#52c41a', fontSize: 26, fontWeight: 700 }}
+              styles={{ content: { color: '#52c41a', fontSize: 26, fontWeight: 700 } }}
               prefix={<HeartOutlined />}
               suffix="次"
             />
@@ -1906,7 +2027,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
-            bordered={false}
+            variant="borderless"
             hoverable
             style={{ cursor: 'pointer', transition: 'all 0.3s' }}
             onClick={() => handleViewCompanyKpiDetail('triangle')}
@@ -1914,7 +2035,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🤝 售前铁三角联动次数"
               value={kpis?.ironTriangle.value}
-              valueStyle={{ color: '#fa8c16', fontSize: 26, fontWeight: 700 }}
+              styles={{ content: { color: '#fa8c16', fontSize: 26, fontWeight: 700 } }}
               prefix={<SmileOutlined />}
               suffix="次"
             />
@@ -1931,7 +2052,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
-            bordered={false}
+            variant="borderless"
             hoverable
             style={{ cursor: 'pointer', transition: 'all 0.3s' }}
             onClick={() => handleViewCompanyKpiDetail('tenders')}
@@ -1939,7 +2060,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🏆 公司累计中标项目"
               value={kpis?.tenderProjects?.value}
-              valueStyle={{ color: '#13c2c2', fontSize: 26, fontWeight: 700 }}
+              styles={{ content: { color: '#13c2c2', fontSize: 26, fontWeight: 700 } }}
               prefix={<TrophyOutlined />}
               suffix="个"
             />
@@ -1956,7 +2077,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
           <Card 
             className="card-kpi" 
-            bordered={false}
+            variant="borderless"
             hoverable
             style={{ cursor: 'pointer', transition: 'all 0.3s' }}
             onClick={() => handleViewCompanyKpiDetail('leads')}
@@ -1964,7 +2085,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🔍 新增有效商机线索"
               value={kpis?.validLeads.value}
-              valueStyle={{ color: '#722ed1', fontSize: 26, fontWeight: 700 }}
+              styles={{ content: { color: '#722ed1', fontSize: 26, fontWeight: 700 } }}
               prefix={<RiseOutlined />}
               suffix="条"
             />
@@ -1984,7 +2105,7 @@ const Dashboard: React.FC = () => {
         title={<span><FlagOutlined style={{ marginRight: 8 }} />战队双轨动力大PK (3x3九宫格看板，点击卡片可查看战队多维度指标)</span>} 
         style={{ marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
       >
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
           {/* 第一战区 */}
           {zone1Teams.length > 0 && (
             <div>
@@ -2053,14 +2174,14 @@ const Dashboard: React.FC = () => {
               </Row>
             </div>
           )}
-        </Space>
+        </div>
       </Card>
 
       {/* 第三级：战区赛马 & 个人英雄榜 & 个人岗位考核水位 */}
       <Row gutter={[16, 16]}>
         {/* 各战区战队冲刺排名 */}
         <Col xs={24} lg={10}>
-          <Card title="🏆 各战区战队冲刺排名" bordered={false} style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+          <Card title="🏆 各战区战队冲刺排名" variant="borderless" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
             <Table
               dataSource={teamRankingDataSource}
               columns={zoneColumns}
@@ -2078,7 +2199,7 @@ const Dashboard: React.FC = () => {
           <Card 
             title={<span>{getRankListDetails().title}</span>}
             extra={<span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal', whiteSpace: 'nowrap' }}>⏳ 8s 轮播</span>}
-            bordered={false} 
+            variant="borderless" 
             style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
           >
             {/* 5个 Tab 按钮选择器 */}
@@ -2131,7 +2252,7 @@ const Dashboard: React.FC = () => {
                 style={{ width: 100 }}
                 value={rankFilterTeamId}
                 onChange={(val) => setRankFilterTeamId(val)}
-                dropdownMatchSelectWidth={false}
+                popupMatchSelectWidth={false}
               >
                 {(data as any)?.teams?.map((t: any) => (
                   <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
@@ -2144,38 +2265,27 @@ const Dashboard: React.FC = () => {
                 style={{ width: 110 }}
                 value={rankFilterThirdClassBar}
                 onChange={(val) => setRankFilterThirdClassBar(val)}
-                dropdownMatchSelectWidth={false}
+                popupMatchSelectWidth={false}
               >
                 {(data as any)?.thirdClassBars?.map((b: string) => (
                   <Select.Option key={b} value={b}>{b}</Select.Option>
                 ))}
               </Select>
-              {/* 🛌 躺平榜切换开关暂时隐藏，保留后台逻辑
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 12, color: rankFilterLyingFlat ? '#d4380d' : '#595959', fontWeight: rankFilterLyingFlat ? 'bold' : 'normal' }}>
-                  🛌 躺平榜
-                </span>
-                <Checkbox
-                  checked={rankFilterLyingFlat}
-                  onChange={(e) => setRankFilterLyingFlat(e.target.checked)}
-                />
-              </div>
-              */}
             </div>
 
             {/* 英雄榜数据列表容器 */}
             <div style={{ paddingRight: 4 }}>
-              <List
-                loading={loading}
-                itemLayout="horizontal"
-                dataSource={getRankListDetails().list.slice(0, 15)}
-                locale={{ emptyText: <span style={{ color: '#bfbfbf', fontSize: 12 }}>暂无当周数据记录</span> }}
-                renderItem={(item, index) => {
-                  const details = getRankListDetails()
-                  return (
-                    <List.Item style={{ padding: '6px 0' }}>
-                      <List.Item.Meta
-                        avatar={
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}><Spin size="small" /></div>
+              ) : getRankListDetails().list.slice(0, 15).length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#bfbfbf', fontSize: 12, padding: '20px 0' }}>暂无当周数据记录</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {getRankListDetails().list.slice(0, 15).map((item, index) => {
+                    const details = getRankListDetails()
+                    return (
+                      <div key={index} style={{ padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div
                             style={{
                               width: 20,
@@ -2191,121 +2301,118 @@ const Dashboard: React.FC = () => {
                           >
                             {index + 1}
                           </div>
-                        }
-                        title={
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 13, fontWeight: 'bold' }}>{item.name}</span>
                             <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 'normal' }}>{item.teamName}</span>
                           </div>
-                        }
-                      />
-                      <div>
-                        <Tooltip title="点击查看本周实绩详情 🔍">
-                          <span 
-                            onClick={() => handleViewPersonalDetail(item.name, activeRankTab)}
-                            style={{ 
-                              color: details.color, 
-                              fontSize: 13, 
-                              cursor: 'pointer', 
-                              fontWeight: 'bold', 
-                              textDecoration: 'underline',
-                              transition: 'all 0.3s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.opacity = '0.7';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.opacity = '1';
-                            }}
-                          >
-                            {details.unit === '万元' ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)} {details.unit}
-                          </span>
-                        </Tooltip>
+                        </div>
+                        <div>
+                          <Tooltip title="点击查看本周实绩详情 🔍">
+                            <span 
+                              onClick={() => handleViewPersonalDetail(item.name, activeRankTab)}
+                              style={{ 
+                                color: details.color, 
+                                fontSize: 13, 
+                                cursor: 'pointer', 
+                                fontWeight: 'bold', 
+                                textDecoration: 'underline',
+                                transition: 'all 0.3s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = '0.7';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = '1';
+                              }}
+                            >
+                              {details.unit === '万元' ? item.score.toFixed(1).replace('.0', '') : Math.round(item.score)} {details.unit}
+                            </span>
+                          </Tooltip>
+                        </div>
                       </div>
-                    </List.Item>
-                  )
-                }}
-              />
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </Card>
         </Col>
 
         {/* 个人双轨考核水位 */}
         <Col xs={24} lg={7}>
-          <Card title={<span><UserOutlined style={{ marginRight: 8 }} />🎯 我的个人考核双水位</span>} bordered={false} style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            {personalStats && personalStats.length > 0 ? (
-              <List
-                dataSource={personalStats}
-                renderItem={(item) => {
-                  const maxVal = Math.max(item.challenge_target, item.actual, 1)
-                  const basePct = (item.base_target / maxVal) * 100
-                  const challengePct = (item.challenge_target / maxVal) * 100
-                  const actualPct = (item.actual / maxVal) * 100
+            <Card title={<span><UserOutlined style={{ marginRight: 8 }} />🎯 我的个人考核双水位</span>} variant="borderless" style={{ height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              {personalStats && personalStats.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {personalStats.map((item: any, idx: number) => {
+                    const maxVal = Math.max(item.challenge_target, item.actual, 1)
+                    const basePct = (item.base_target / maxVal) * 100
+                    const challengePct = (item.challenge_target / maxVal) * 100
+                    const actualPct = (item.actual / maxVal) * 100
 
-                  return (
-                    <div style={{ marginBottom: 14, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                        <Text strong>{item.goal_name}</Text>
-                        <Text type="success" strong>实际：{item.actual} {item.unit}</Text>
-                      </div>
+                    return (
+                      <div key={idx} style={{ marginBottom: 14, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <Text strong>{item.goal_name}</Text>
+                          <Text type="success" strong>实际：{item.actual} {item.unit}</Text>
+                        </div>
 
-                      {/* 自定义双轨水位进度条 */}
-                      <div style={{ position: 'relative', height: 10, background: '#e8e8e8', borderRadius: 5, margin: '6px 0' }}>
-                        {/* 实际值条 */}
-                        <div
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            height: '100%',
-                            width: `${Math.min(actualPct, 100)}%`,
-                            background: 'linear-gradient(90deg, #1677ff, #00d4ff)',
-                            borderRadius: 5
-                          }}
-                        />
-                        {/* 基础水位红色刻度 */}
-                        <div
-                          style={{
-                            position: 'absolute',
-                            left: `${basePct}%`,
-                            top: -2,
-                            bottom: -2,
-                            width: 2.5,
-                            backgroundColor: '#ff4d4f',
-                            zIndex: 2
-                          }}
-                          title={`基础水位: ${item.base_target}`}
-                        />
-                        {/* 挑战水位金色刻度 */}
-                        <div
-                          style={{
-                            position: 'absolute',
-                            left: `${challengePct}%`,
-                            top: -2,
-                            bottom: -2,
-                            width: 2.5,
-                            backgroundColor: '#ffd700',
-                            zIndex: 2
-                          }}
-                          title={`挑战水位: ${item.challenge_target}`}
-                        />
-                      </div>
+                        {/* 自定义双轨水位进度条 */}
+                        <div style={{ position: 'relative', height: 10, background: '#e8e8e8', borderRadius: 5, margin: '6px 0' }}>
+                          {/* 实际值条 */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              height: '100%',
+                              width: `${Math.min(actualPct, 100)}%`,
+                              background: 'linear-gradient(90deg, #1677ff, #00d4ff)',
+                              borderRadius: 5
+                            }}
+                          />
+                          {/* 基础水位红色刻度 */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${basePct}%`,
+                              top: -2,
+                              bottom: -2,
+                              width: 2.5,
+                              backgroundColor: '#ff4d4f',
+                              zIndex: 2
+                            }}
+                            title={`基础水位: ${item.base_target}`}
+                          />
+                          {/* 挑战水位金色刻度 */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${challengePct}%`,
+                              top: -2,
+                              bottom: -2,
+                              width: 2.5,
+                              backgroundColor: '#ffd700',
+                              zIndex: 2
+                            }}
+                            title={`挑战水位: ${item.challenge_target}`}
+                          />
+                        </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c' }}>
-                        <span>🔴 基础:{item.base_target} ({item.actual >= item.base_target ? '达成✅' : '未达'})</span>
-                        <span>🟡 挑战:{item.challenge_target} ({item.actual >= item.challenge_target ? '破线🔥' : '未破'})</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c' }}>
+                          <span>🔴 基础:{item.base_target} ({item.actual >= item.base_target ? '达成✅' : '未达'})</span>
+                          <span>🟡 挑战:{item.challenge_target} ({item.actual >= item.challenge_target ? '破线🔥' : '未破'})</span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                }}
-              />
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-                系统管理员/中台无个人冲刺考核指标
-              </div>
-            )}
-          </Card>
-        </Col>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                  系统管理员/中台无个人冲刺考核指标
+                </div>
+              )}
+            </Card>
+          </Col>
       </Row>
 
       {/* 📊 个人奋斗目标实际完成矩阵大盘，所有注释均采用中文 */}
@@ -2478,7 +2585,7 @@ const Dashboard: React.FC = () => {
         return (
           <Card 
             title={<span><TeamOutlined style={{ marginRight: 8 }} />📊 个人奋斗目标实际完成矩阵大盘</span>} 
-            bordered={false} 
+            variant="borderless" 
             style={{ marginTop: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
           >
             <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="middle">
@@ -2499,7 +2606,7 @@ const Dashboard: React.FC = () => {
                   placeholder="筛选战队"
                   allowClear
                   onChange={(val) => setMatrixTeamId(val)}
-                  dropdownMatchSelectWidth={false}
+                  popupMatchSelectWidth={false}
                 >
                   {(data as any)?.teams?.map((t: any) => (
                     <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
@@ -2513,7 +2620,7 @@ const Dashboard: React.FC = () => {
                   placeholder="筛选三级巴"
                   allowClear
                   onChange={(val) => setMatrixThirdClassBar(val)}
-                  dropdownMatchSelectWidth={false}
+                  popupMatchSelectWidth={false}
                 >
                   {(data as any)?.thirdClassBars?.map((b: string) => (
                     <Select.Option key={b} value={b}>{b}</Select.Option>
@@ -2542,52 +2649,65 @@ const Dashboard: React.FC = () => {
       })()}
 
       {/* 实时动态战报 */}
-      <Card title="🔔 战役实时攻坚播报" bordered={false} style={{ marginTop: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-        <List
-          loading={loading}
-          dataSource={data?.liveFeed}
-          renderItem={(item) => (
-            <List.Item style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '12px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-                {/* 固定 75px 的标签容器，实现左侧标签垂直整齐对齐 */}
-                <div style={{ width: 75, flexShrink: 0, marginRight: 16, display: 'flex', justifyContent: 'center' }}>
-                  <Tag 
-                    color={
-                      item.type === 'contract' ? 'error' : 
-                      item.type === 'achievement' ? 'success' : 
-                      item.type === 'milestone' ? 'warning' : 'processing'
-                    }
-                    style={{ 
-                      whiteSpace: 'normal', 
-                      wordBreak: 'break-all', 
-                      height: 'auto', 
-                      lineHeight: '1.3', 
-                      padding: '4px 6px',
-                      textAlign: 'center',
-                      marginRight: 0,
-                      width: '100%',
-                      fontSize: 12
-                    }}
-                  >
-                    {
-                      item.type === 'contract' ? '合同新签' : 
-                      item.type === 'achievement' ? '有效线索' : 
-                      item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
-                    }
-                  </Tag>
+      <Card title="🔔 战役实时攻坚播报" variant="borderless" style={{ marginTop: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+        <Spin spinning={loading}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {(!data?.liveFeed || data.liveFeed.length === 0) ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#8c8c8c' }}>暂无战报播报</div>
+            ) : (
+              data.liveFeed.map((item: any, idx: number) => (
+                <div 
+                  key={idx} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    justifyContent: 'space-between', 
+                    padding: '12px 0',
+                    borderBottom: idx === data.liveFeed.length - 1 ? 'none' : '1px solid #f0f0f0' 
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                    {/* 固定 75px 的标签容器，实现左侧标签垂直整齐对齐 */}
+                    <div style={{ width: 75, flexShrink: 0, marginRight: 16, display: 'flex', justifyContent: 'center' }}>
+                      <Tag 
+                        color={
+                          item.type === 'contract' ? 'error' : 
+                          item.type === 'achievement' ? 'success' : 
+                          item.type === 'milestone' ? 'warning' : 'processing'
+                        }
+                        style={{ 
+                          whiteSpace: 'normal', 
+                          wordBreak: 'break-all', 
+                          height: 'auto', 
+                          lineHeight: '1.3', 
+                          padding: '4px 6px',
+                          textAlign: 'center',
+                          marginRight: 0,
+                          width: '100%',
+                          fontSize: 12
+                        }}
+                      >
+                        {
+                          item.type === 'contract' ? '合同新签' : 
+                          item.type === 'achievement' ? '有效线索' : 
+                          item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
+                        }
+                      </Tag>
+                    </div>
+                    {/* 正文文本，支持长文字自动折行 */}
+                    <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                      <Text style={{ fontSize: 13, wordBreak: 'break-all', lineHeight: '1.5' }}>{item.content}</Text>
+                    </div>
+                  </div>
+                  {/* 右侧时间，确保绝对不折行 */}
+                  <div style={{ flexShrink: 0, marginLeft: 16, whiteSpace: 'nowrap', color: '#8c8c8c', fontSize: 12, paddingTop: 4 }}>
+                    {item.time}
+                  </div>
                 </div>
-                {/* 正文文本，支持长文字自动折行 */}
-                <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
-                  <Text style={{ fontSize: 13, wordBreak: 'break-all', lineHeight: '1.5' }}>{item.content}</Text>
-                </div>
-              </div>
-              {/* 右侧时间，确保绝对不折行 */}
-              <div style={{ flexShrink: 0, marginLeft: 16, whiteSpace: 'nowrap', color: '#8c8c8c', fontSize: 12, paddingTop: 4 }}>
-                {item.time}
-              </div>
-            </List.Item>
-          )}
-        />
+              ))
+            )}
+          </div>
+        </Spin>
       </Card>
 
       {/* 手动发送播报Modal */}
@@ -2599,7 +2719,7 @@ const Dashboard: React.FC = () => {
           setCurrentActionType('')
         }}
         onOk={() => broadcastForm.submit()}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form 
           form={broadcastForm} 
@@ -2719,6 +2839,7 @@ const Dashboard: React.FC = () => {
                 {/* 交付新签业绩分配 */}
                 <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
                   <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                    <span style={{ color: '#ff4d4f', marginRight: 4, fontFamily: 'SimSun, sans-serif' }}>*</span>
                     交付新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
                     <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
                       (除了营销岗以外的人员，如技术、交付人员)
@@ -2802,6 +2923,7 @@ const Dashboard: React.FC = () => {
                 {/* 营销新签业绩分配 */}
                 <div style={{ marginTop: 16, marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#fafafa' }}>
                   <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                    <span style={{ color: '#ff4d4f', marginRight: 4, fontFamily: 'SimSun, sans-serif' }}>*</span>
                     营销新签业绩分配（合同总额：{expectMoneyVal.toFixed(2)} 万元）
                     <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
                       (当前 CRM 项目对应的营销人员分摊，支持手动增删与微调)
@@ -3106,7 +3228,7 @@ const Dashboard: React.FC = () => {
         title="⚠️ 发现重复播报内容"
         open={duplicateModalVisible}
         closable={false}
-        maskClosable={false}
+        mask={{ closable: false }}
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <span style={{ color: '#fa8c16', fontSize: 12, textAlign: 'left' }}>
@@ -3137,16 +3259,26 @@ const Dashboard: React.FC = () => {
 
           {showDetails && duplicateCheckData?.list && (
             <Card size="small" style={{ maxHeight: 180, overflowY: 'auto', backgroundColor: '#fafafa', marginTop: 8 }}>
-              <List
-                size="small"
-                dataSource={duplicateCheckData.list}
-                locale={{ emptyText: <span style={{ color: '#bfbfbf', fontSize: 11 }}>本日暂无该客户的铁三角联动记录</span> }}
-                renderItem={(item, index) => (
-                  <List.Item style={{ padding: '4px 0', fontSize: 12 }}>
-                    {index + 1}. {item}
-                  </List.Item>
-                )}
-              />
+              {duplicateCheckData.list.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '12px 0', color: '#bfbfbf', fontSize: 11 }}>
+                  本日暂无该客户的铁三角联动记录
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {duplicateCheckData.list.map((item: any, index: number) => (
+                    <div 
+                      key={index} 
+                      style={{ 
+                        padding: '4px 0', 
+                        fontSize: 12, 
+                        borderBottom: index === duplicateCheckData.list.length - 1 ? 'none' : '1px solid #f0f0f0' 
+                      }}
+                    >
+                      {index + 1}. {item}
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
         </div>
@@ -3162,7 +3294,7 @@ const Dashboard: React.FC = () => {
         }}
         footer={null}
         width={960}
-        destroyOnClose
+        destroyOnHidden
       >
         {metricsLoading ? (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -3399,7 +3531,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={1200}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           dataSource={leadsList}
@@ -3427,7 +3559,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={1100}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           dataSource={contractsList}
@@ -3455,7 +3587,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={1100}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           dataSource={trianglesList}
@@ -3483,7 +3615,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={1100}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           dataSource={happinessList}
@@ -3518,7 +3650,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={600}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ padding: '8px 0' }}>
           {/* 日报范围选择下拉框，只在超级管理员和数字专员时提供灵活切换，目标官则显示为只读战队名称 */}
@@ -3688,7 +3820,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={950}
-        destroyOnClose
+        destroyOnHidden
       >
         <Spin spinning={companyKpiDetailLoading}>
           {companyKpiDetailData && (
@@ -3952,10 +4084,10 @@ const Dashboard: React.FC = () => {
           </div>
         }
         placement="right"
-        width={750}
+        styles={{ wrapper: { width: 750 } }}
         onClose={() => setDetailDrawerVisible(false)}
         open={detailDrawerVisible}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           dataSource={detailData}
@@ -4001,7 +4133,7 @@ const Dashboard: React.FC = () => {
           </Button>
         ]}
         width={800}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ margin: '12px 0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, borderBottom: '1px dashed #f0f0f0', paddingBottom: 12 }}>
@@ -4044,6 +4176,15 @@ const Dashboard: React.FC = () => {
                 style={{ whiteSpace: 'nowrap' }}
               >
                 ⚡ 智能拉取 CRM 业绩与进度
+              </Button>
+              <Button
+                type="primary"
+                style={{ backgroundColor: '#722ed1', borderColor: '#722ed1', whiteSpace: 'nowrap' }}
+                icon={<SyncOutlined spin={weeklyAiOptimizing} />}
+                loading={weeklyAiOptimizing}
+                onClick={handleAiOptimizeWeekly}
+              >
+                🪄 AI 助手智能整理
               </Button>
             </Space>
           </div>
@@ -4114,15 +4255,15 @@ const Dashboard: React.FC = () => {
               </Form.Item>
             )}
 
-            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要上级支持协调</div>
+            <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '12px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#262626' }}>🤝 需要支持协调</div>
             {!isMarketing && (
               <Form.Item name="delivery_support" style={{ marginBottom: 0 }}>
-                <Input.TextArea rows={2} placeholder="如需要领导出面协调项目交付资源，请填写..." />
+                <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持交付，请填写..." />
               </Form.Item>
             )}
             {isMarketing && (
               <Form.Item name="sales_support" style={{ marginBottom: 0 }}>
-                <Input.TextArea rows={2} placeholder="如需要领导出面协调销售/资源，请填写..." />
+                <Input.TextArea rows={2} placeholder="如需要协调其他人或团队支持销售，请填写..." />
               </Form.Item>
             )}
 
@@ -4154,7 +4295,7 @@ const Dashboard: React.FC = () => {
         okText="确认填入选中的数据"
         cancelText="取消"
         width={800}
-        bodyStyle={{ maxHeight: '600px', overflowY: 'auto', padding: '16px' }}
+        styles={{ body: { maxHeight: '600px', overflowY: 'auto', padding: '16px' } }}
       >
         {/* 1. 分析环境描述卡片 */}
         <Card 
@@ -4207,7 +4348,7 @@ const Dashboard: React.FC = () => {
               </Checkbox>
             }
             style={{ border: crmSelectedKeys.actual ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-            bodyStyle={{ backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' }}
+            styles={{ body: { backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' } }}
           >
             <div style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
               {isMarketing ? crmPreviewData?.sales_actual : crmPreviewData?.delivery_actual}
@@ -4226,7 +4367,7 @@ const Dashboard: React.FC = () => {
               </Checkbox>
             }
             style={{ border: crmSelectedKeys.rate ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-            bodyStyle={{ backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' }}
+            styles={{ body: { backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' } }}
           >
             <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
               {isMarketing ? crmPreviewData?.sales_rate : crmPreviewData?.delivery_rate}
@@ -4245,7 +4386,7 @@ const Dashboard: React.FC = () => {
               </Checkbox>
             }
             style={{ border: crmSelectedKeys.highlights ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-            bodyStyle={{ backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' }}
+            styles={{ body: { backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' } }}
           >
             <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
               {isMarketing ? crmPreviewData?.sales_highlights : crmPreviewData?.delivery_highlights}
@@ -4264,7 +4405,7 @@ const Dashboard: React.FC = () => {
               </Checkbox>
             }
             style={{ border: crmSelectedKeys.blockers ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-            bodyStyle={{ backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' }}
+            styles={{ body: { backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' } }}
           >
             <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
               {isMarketing ? crmPreviewData?.sales_blockers : crmPreviewData?.delivery_blockers}
@@ -4272,6 +4413,67 @@ const Dashboard: React.FC = () => {
           </Card>
 
         </Space>
+      </Modal>
+
+      {/* 🪄 AI 助手智能整理微调确认 Modal */}
+      <Modal
+        title={
+          <Space>
+            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#722ed1' }}>🪄 AI 助手周报整理与优化微调</span>
+          </Space>
+        }
+        open={aiOptimizeModalVisible}
+        onCancel={() => setAiOptimizeModalVisible(false)}
+        onOk={handleConfirmAiOptimize}
+        okText="确认并填回周报"
+        cancelText="取消"
+        width={750}
+        destroyOnHidden
+      >
+        <div style={{ padding: '8px 0' }}>
+          <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f9f0ff', border: '1px solid #d3adf7', borderRadius: '4px', fontSize: '13px', color: '#722ed1' }}>
+            💡 以下是 AI 周报助手为您润色整理后的内容，您可以在下方文本框中直接进行微调，确认无误后点击“确认并填回周报”即可自动覆盖并回填主表单。
+          </div>
+          <Form
+            form={aiOptimizeForm}
+            layout="vertical"
+          >
+            <Form.Item
+              name="actual"
+              label={<span style={{ fontWeight: 'bold' }}>🔥 本周实际完成 (优化后)</span>}
+            >
+              <Input.TextArea rows={6} placeholder="润色后的本周实际完成情况..." />
+            </Form.Item>
+
+            <Form.Item
+              name="highlights"
+              label={<span style={{ fontWeight: 'bold' }}>🏆 本周工作亮点 (优化后)</span>}
+            >
+              <Input.TextArea rows={3} placeholder="润色后的本周亮点..." />
+            </Form.Item>
+
+            <Form.Item
+              name="blockers"
+              label={<span style={{ fontWeight: 'bold' }}>🚧 本周工作卡点/难点 (优化后)</span>}
+            >
+              <Input.TextArea rows={3} placeholder="润色后的本周卡点与难点..." />
+            </Form.Item>
+
+            <Form.Item
+              name="support"
+              label={<span style={{ fontWeight: 'bold' }}>🤝 需要支持协调 (优化后)</span>}
+            >
+              <Input.TextArea rows={2} placeholder="AI 分析或润色出的需要支持与协调事项（若无，可留空，系统不会覆盖原内容）..." />
+            </Form.Item>
+
+            <Form.Item
+              name="next_plan"
+              label={<span style={{ fontWeight: 'bold' }}>🚀 下周工作目标 (优化后)</span>}
+            >
+              <Input.TextArea rows={4} placeholder="润色后的下周工作目标..." />
+            </Form.Item>
+          </Form>
+        </div>
       </Modal>
     </div>
   )

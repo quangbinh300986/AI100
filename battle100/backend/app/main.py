@@ -26,6 +26,7 @@ from app.api.ranking import router as ranking_router
 from app.api.broadcast import router as broadcast_router
 from app.api.import_export import router as import_export_router
 from app.api.audit_logs import router as audit_logs_router
+from app.api.llm_config import router as llm_config_router, start_cherry_sync_scheduler, stop_cherry_sync_scheduler
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +45,11 @@ async def init_db():
         # 自愈式升级：自动在 report_details 和 broadcast_events 中补充 project_name 字段列
         await conn.execute(text("ALTER TABLE report_details ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
         await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
+        # 自愈式升级：为 agent_routes 自动添加自定义名称描述及提示词系统/用户模板列
+        await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_name VARCHAR(100);"))
+        await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_description VARCHAR(500);"))
+        await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS system_prompt TEXT;"))
+        await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS user_prompt TEXT;"))
     logger.info("数据库表结构初始化成功")
 
     # 异步预置角色权限默认配置
@@ -88,9 +94,39 @@ async def init_db():
                 ]
                 db.add_all(default_perms)
                 await db.commit()
-                logger.info("默认角色权限数据预置成功")
+            logger.info("默认角色权限数据预置成功")
         except Exception as ex:
             logger.error(f"预置默认角色权限数据失败: {ex}")
+
+    # 异步预置默认大模型厂商数据
+    from app.models.llm_config import LLMProvider
+    async with AsyncSessionLocal() as db:
+        try:
+            # 检查是否有提供商记录
+            from sqlalchemy import func
+            count_res = await db.execute(select(func.count(LLMProvider.id)))
+            if count_res.scalar() == 0:
+                logger.info("未检测到大模型厂商配置，正在预置 13 家默认主流模型平台配置...")
+                default_p_list = [
+                    LLMProvider(id="deepseek", name="深度求索", type="openai", base_url="https://api.deepseek.com/v1", sort_order=1, website_official="https://www.deepseek.com", website_api_key="https://platform.deepseek.com/api_keys", website_docs="https://api-docs.deepseek.com", website_models="https://api-docs.deepseek.com/zh-cn/pricing"),
+                    LLMProvider(id="zhipu", name="智谱开放平台", type="openai", base_url="https://open.bigmodel.cn/api/paas/v4/", sort_order=2, website_official="https://open.bigmodel.cn", website_api_key="https://open.bigmodel.cn/usercenter/apikeys", website_docs="https://open.bigmodel.cn/dev/api", website_models="https://open.bigmodel.cn/pricing"),
+                    LLMProvider(id="dashscope", name="阿里云百炼", type="openai", base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/", sort_order=3, website_official="https://bailian.console.aliyun.com", website_api_key="https://bailian.console.aliyun.com", website_docs="https://help.aliyun.com/document_detail/2712194.html", website_models="https://help.aliyun.com/document_detail/2712194.html"),
+                    LLMProvider(id="doubao", name="火山引擎", type="openai", base_url="https://ark.cn-beijing.volces.com/api/v3/", sort_order=4, website_official="https://www.volcengine.com", website_api_key="https://console.volcengine.com/ark", website_docs="https://www.volcengine.com/docs/82379", website_models="https://www.volcengine.com/docs/82379/1174242"),
+                    LLMProvider(id="silicon", name="硅基流动", type="openai", base_url="https://api.siliconflow.cn", sort_order=5, website_official="https://siliconflow.cn", website_api_key="https://cloud.siliconflow.cn/account/ak", website_docs="https://docs.siliconflow.cn", website_models="https://siliconflow.cn/pricing"),
+                    LLMProvider(id="moonshot", name="月之暗面", type="openai", base_url="https://api.moonshot.cn", sort_order=6, website_official="https://www.moonshot.cn", website_api_key="https://platform.moonshot.cn/console/api-keys", website_docs="https://platform.moonshot.cn/docs", website_models="https://platform.moonshot.cn/pricing"),
+                    LLMProvider(id="minimax", name="MiniMax", type="openai", base_url="https://api.minimaxi.com/v1/", sort_order=7, website_official="https://www.minimaxi.com", website_api_key="https://platform.minimaxi.com/user-center/basic-information/api-key", website_docs="https://platform.minimaxi.com/document", website_models="https://platform.minimaxi.com/document"),
+                    LLMProvider(id="openai", name="OpenAI", type="openai", base_url="https://api.openai.com", sort_order=8, website_official="https://openai.com", website_api_key="https://platform.openai.com/api-keys", website_docs="https://platform.openai.com/docs", website_models="https://openai.com/pricing"),
+                    LLMProvider(id="gemini", name="Gemini", type="gemini", base_url="https://generativelanguage.googleapis.com", sort_order=9, website_official="https://deepmind.google/technologies/gemini", website_api_key="https://aistudio.google.com/app/apikey", website_docs="https://ai.google.dev/gemini-api/docs", website_models="https://ai.google.dev/gemini-api/pricing"),
+                    LLMProvider(id="anthropic", name="Anthropic", type="openai", base_url="https://api.anthropic.com/v1", sort_order=10, website_official="https://www.anthropic.com", website_api_key="https://console.anthropic.com/settings/keys", website_docs="https://docs.anthropic.com", website_models="https://www.anthropic.com/pricing"),
+                    LLMProvider(id="ollama", name="Ollama", type="ollama", base_url="http://localhost:11434/v1", sort_order=11, website_official="https://ollama.com", website_api_key="", website_docs="https://github.com/ollama/ollama", website_models=""),
+                    LLMProvider(id="groq", name="Groq", type="openai", base_url="https://api.groq.com/openai", sort_order=12, website_official="https://groq.com", website_api_key="https://console.groq.com/keys", website_docs="https://console.groq.com/docs", website_models="https://groq.com/pricing"),
+                    LLMProvider(id="openrouter", name="OpenRouter", type="openai", base_url="https://openrouter.ai/api/v1/", sort_order=13, website_official="https://openrouter.ai", website_api_key="https://openrouter.ai/keys", website_docs="https://openrouter.ai/docs", website_models="https://openrouter.ai/models"),
+                ]
+                db.add_all(default_p_list)
+                await db.commit()
+                logger.info("默认大模型厂商数据预置成功")
+        except Exception as ex:
+            logger.error(f"预置默认大模型厂商数据失败: {ex}")
 
 import asyncio
 from app.services.backup import run_auto_backup
@@ -119,11 +155,17 @@ async def lifespan(app: FastAPI):
         await init_db()
         # 挂载后台定期备份守护任务，使用 create_task 保证非阻塞主线程启动
         asyncio.create_task(backup_scheduler())
+        # 启动 Cherry 大模型自动拉取同步调度器
+        start_cherry_sync_scheduler()
     except Exception as e:
-        logger.error(f"数据库初始化或自动备份启动失败: {e}")
+        logger.error(f"数据库初始化、自动备份或大模型同步调度器启动失败: {e}")
     yield
     # 关闭时
     logger.info("系统正在关闭...")
+    try:
+        stop_cherry_sync_scheduler()
+    except Exception as e:
+        logger.error(f"停止大模型自动同步调度器失败: {e}")
     await engine.dispose()
 
 
@@ -154,6 +196,7 @@ app.include_router(broadcast_router, prefix=settings.API_PREFIX)
 app.include_router(import_export_router, prefix=settings.API_PREFIX)
 app.include_router(import_export_router, prefix="/api")
 app.include_router(audit_logs_router, prefix=settings.API_PREFIX)
+app.include_router(llm_config_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/")

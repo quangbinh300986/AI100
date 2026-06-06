@@ -13,6 +13,7 @@ from app.models.broadcast import BroadcastEvent, EventType, PushStatus, PushChan
 from app.models.committee import Committee, CommitteeMember
 from app.models.lead import LeadConversion
 from app.models.audit_log import AuditLog
+from app.models.llm_config import LLMProvider, LLMModel, AgentRoute
 
 # 导出所有模型，供外部统一引用
 __all__ = [
@@ -43,4 +44,8 @@ __all__ = [
     "CommitteeMember",
     "LeadConversion",
     "AuditLog",
+    "LLMProvider",
+    "LLMModel",
+    "AgentRoute",
 ]
+

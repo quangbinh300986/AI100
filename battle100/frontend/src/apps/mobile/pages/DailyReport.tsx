@@ -733,7 +733,7 @@ export default function DailyReport() {
                 {/* 交付分摊 */}
                 <div style={{ background: '#fafafa', borderRadius: 8, padding: 10, marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 'bold' }}>🛠️ 交付分配分摊 (总和需为100%)</span>
+                    <span style={{ fontSize: 13, fontWeight: 'bold' }}><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>🛠️ 交付分配分摊 (总和需为100%)</span>
                     <Button
                       size="mini"
                       fill="outline"
@@ -794,7 +794,7 @@ export default function DailyReport() {
                 {/* 营销分摊 */}
                 <div style={{ background: '#fafafa', borderRadius: 8, padding: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 'bold' }}>💰 营销分配分摊 (总和需为100%)</span>
+                    <span style={{ fontSize: 13, fontWeight: 'bold' }}><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>💰 营销分配分摊 (总和需为100%)</span>
                     <Button
                       size="mini"
                       fill="outline"

@@ -6,7 +6,7 @@
 from datetime import date, datetime, timezone
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -532,6 +532,7 @@ async def get_my_weekly_report(
 @router.post("/weekly", response_model=WeeklyReportResponse, summary="保存或提交周复盘填报")
 async def save_weekly_report(
     report_in: WeeklyReportCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -610,6 +611,10 @@ async def save_weekly_report(
         after_state=to_dict(report)
     )
     
+    if status_val == "submitted":
+        from app.services.dingtalk import send_weekly_report_to_dingtalk
+        background_tasks.add_task(send_weekly_report_to_dingtalk, report, current_user)
+        
     return report
 
 

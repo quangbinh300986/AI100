@@ -22,6 +22,8 @@ import {
 import { SettingOutlined, SafetyCertificateOutlined, SearchOutlined, SyncOutlined } from '@ant-design/icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
+import LlmSettings from './LlmSettings'
+import AgentRoutes from './AgentRoutes'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -421,7 +423,7 @@ const Settings: React.FC = () => {
       <Row gutter={24}>
         {/* 左侧角色列表 */}
         <Col xs={24} md={8}>
-          <Card title="系统角色列表" bordered={false} bodyStyle={{ padding: 0 }}>
+          <Card title="系统角色列表" bordered={false} styles={{ body: { padding: 0 } }}>
             <List
               dataSource={ROLES}
               renderItem={(item) => {
@@ -489,7 +491,7 @@ const Settings: React.FC = () => {
                   key={group}
                   title={<Text strong style={{ fontSize: '15px' }}>{group}</Text>}
                   style={{ marginBottom: 20, boxShadow: '0 1px 2px rgba(0,0,0,0.03)', borderRadius: '6px' }}
-                  bodyStyle={{ padding: '16px' }}
+                  styles={{ body: { padding: '16px' } }}
                 >
                   <Row gutter={[12, 12]}>
                     {groupPerms.map((perm) => {
@@ -543,7 +545,7 @@ const Settings: React.FC = () => {
     return (
       <div style={{ padding: '8px 0' }}>
         {/* 检索过滤工具栏 */}
-        <Card bordered={false} bodyStyle={{ padding: '16px 20px', background: '#fcfcfc', border: '1px solid #f0f0f0', borderRadius: '6px' }}>
+        <Card bordered={false} styles={{ body: { padding: '16px 20px', background: '#fcfcfc', border: '1px solid #f0f0f0', borderRadius: '6px' } }}>
           <Space size="middle" wrap style={{ width: '100%', justifyContent: 'space-between' }}>
             <Space size="small" wrap>
               <Text strong style={{ marginRight: 8 }}>日志筛选:</Text>
@@ -715,6 +717,24 @@ const Settings: React.FC = () => {
         </span>
       ),
       children: renderPermissionsTab()
+    },
+    {
+      key: 'llm_config',
+      label: (
+        <span style={{ fontSize: '15px' }}>
+          🤖 LLM 模型配置
+        </span>
+      ),
+      children: <LlmSettings />
+    },
+    {
+      key: 'agent_routes',
+      label: (
+        <span style={{ fontSize: '15px' }}>
+          🔗 Agent 路由
+        </span>
+      ),
+      children: <AgentRoutes />
     },
     {
       key: 'audit_logs',
