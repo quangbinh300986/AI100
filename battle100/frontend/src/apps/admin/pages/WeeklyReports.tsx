@@ -946,20 +946,6 @@ const WeeklyReports: React.FC = () => {
     }
   ]
 
-  // 翻译角色为中文
-  const translateRole = (roleKey: string) => {
-    const roleMap: Record<string, string> = {
-      admin: '超级管理员',
-      target_officer: '目标官',
-      digital_specialist: '数字专员',
-      team_leader: '战队长',
-      staff: '普通员工',
-      marketing_staff: '营销',
-      tech_marketing: '技术营销',
-    }
-    return roleMap[roleKey] || roleKey
-  }
-
   const crmColumns = [
     {
       title: '成员姓名',
@@ -983,18 +969,6 @@ const WeeklyReports: React.FC = () => {
       key: 'team_name',
       width: 130,
       render: (text: string) => text || '—',
-    },
-    {
-      title: '系统角色',
-      dataIndex: 'role',
-      key: 'role',
-      width: 110,
-      align: 'center' as const,
-      render: (role: string) => (
-        <Tag color={role === 'admin' ? 'red' : role === 'team_leader' ? 'orange' : 'blue'}>
-          {translateRole(role)}
-        </Tag>
-      ),
     },
     {
       title: 'CRM 业务完成情况',
