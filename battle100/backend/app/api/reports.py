@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db, get_crm_db
 from app.models.user import User, UserRole
-from app.models.report import DailyReport, ReportDetail, ReportStatus, WeeklyReport
+from app.models.report import DailyReport, ReportDetail, ReportStatus, WeeklyReport, GroupWeeklyReport
 from app.schemas.report import (
     DailyReportCreate,
     DailyReportUpdate,
@@ -27,6 +27,8 @@ from app.schemas.report import (
     WeeklyReportListResponse,
     WeeklyCrmSummaryListResponse,
     WeeklyCrmSummaryItem,
+    GroupWeeklyReportSave,
+    GroupWeeklyReportResponse,
 )
 from fastapi import Request
 from app.api.deps import get_current_user, require_permission
@@ -1456,3 +1458,678 @@ async def update_weekly_report(
     report.user_role = db_user.role
     
     return report
+
+
+# ==========================================
+#          战队/三级巴 整体周报与产值统计 API
+# ==========================================
+
+def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], start_date_val: date) -> dict:
+    """同步直连 CRM 数据库统计指定成员周内的产值、线索、回款及项目反馈明细"""
+    from datetime import timedelta
+    from sqlalchemy import text
+    from app.database import get_crm_db
+    
+    start_date_str = start_date_val.strftime('%Y-%m-%d 00:00:00')
+    end_date_str = (start_date_val + timedelta(days=6)).strftime('%Y-%m-%d 23:59:59')
+    
+    res = {
+        "potential_leads": 0,
+        "valid_leads": 0,
+        "production_value": 0.0,
+        "receive_value": 0.0,
+        "crm_details_text": "暂无 CRM 沟通或项目跟进明细"
+    }
+    
+    try:
+        with get_crm_db() as conn:
+            # 1. 统计 CRM 有效线索 (25%) 与潜力线索 (5%-10%)
+            if crm_user_ids:
+                user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+                
+                # 潜力商机线索
+                pot_sql = text(f"""
+                    SELECT COUNT(*) as count 
+                    FROM zdcrm_business_opportunity 
+                    WHERE progress BETWEEN 5 AND 10 
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                      AND market_user_id IN ({user_ids_str})
+                      AND update_time BETWEEN :start AND :end
+                """)
+                pot_val = conn.execute(pot_sql, {"start": start_date_str, "end": end_date_str}).scalar() or 0
+                res["potential_leads"] = int(pot_val)
+                
+                # 有效商机线索
+                val_sql = text(f"""
+                    SELECT COUNT(*) as count 
+                    FROM zdcrm_business_opportunity 
+                    WHERE progress = 25 
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                      AND market_user_id IN ({user_ids_str})
+                      AND update_time BETWEEN :start AND :end
+                """)
+                val_val = conn.execute(val_sql, {"start": start_date_str, "end": end_date_str}).scalar() or 0
+                res["valid_leads"] = int(val_val)
+                
+            # 2. 统计 CRM 累计产值额（万元，过滤 createDate 落在当周，负责人为本组成员。同时排除历史旧账期跑批数据的虚高干扰）
+            if user_names:
+                from datetime import timedelta
+                names_str = ", ".join([f"'{name}'" for name in user_names])
+                month_start_date = start_date_val.replace(day=1)
+                prev_month_start_date = (month_start_date - timedelta(days=15)).replace(day=1)
+                
+                prod_sql = text(f"""
+                    SELECT COALESCE(SUM(dp.money), 0) as total_prod
+                    FROM dashboard_production dp
+                    JOIN project p ON dp.project_id = p.id
+                    WHERE p.project_manager IN ({names_str})
+                      AND dp.createDate BETWEEN :start AND :end
+                      AND dp.account_date IN (:prev_month_start, :month_start)
+                      AND dp.isDel = '0'
+                """)
+                prod_val = conn.execute(prod_sql, {
+                    "start": start_date_str,
+                    "end": end_date_str,
+                    "prev_month_start": prev_month_start_date.strftime('%Y-%m-%d'),
+                    "month_start": month_start_date.strftime('%Y-%m-%d')
+                }).scalar() or 0.0
+                res["production_value"] = float(prod_val) / 10000.0 # 元转万元
+                
+                # 3. 统计 CRM 实际到账回款额（万元，过滤回款落在当周，签约人为本组成员）
+                recv_sql = text(f"""
+                    SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
+                    FROM zdcrm_contract_receive_money_view r
+                    INNER JOIN contract c ON r.contract_id = c.id
+                    WHERE c.signer IN ({names_str})
+                      AND r.receive_date BETWEEN :start_date AND :end_date
+                """)
+                recv_val = conn.execute(recv_sql, {
+                    "start_date": start_date_val.strftime('%Y-%m-%d'),
+                    "end_date": (start_date_val + timedelta(days=6)).strftime('%Y-%m-%d')
+                }).scalar() or 0.0
+                res["receive_value"] = float(recv_val)
+                
+                # 4. 放宽 Token 至 20K-30K 后，拉取客户拜访与进度反馈原文等真实细节，喂给 AI 大模型
+                detail_texts = []
+                
+                # 本周商务跟进拜访记录原文
+                visit_sql = text(f"""
+                    SELECT customer_name, remark, create_time, create_by
+                    FROM zdcrm_visit_customer_record
+                    WHERE create_by IN ({names_str})
+                      AND create_time BETWEEN :start AND :end
+                      AND is_del = '0'
+                    ORDER BY create_time ASC
+                    LIMIT 20
+                """)
+                visits = conn.execute(visit_sql, {"start": start_date_str, "end": end_date_str}).mappings().all()
+                if visits:
+                    detail_texts.append("【成员商务拜访/客户对接详情记录】:")
+                    for idx, v in enumerate(visits, 1):
+                        t_str = v['create_time'].strftime('%m-%d') if v['create_time'] else '—'
+                        detail_texts.append(f"  {idx}) 成员[{v['create_by']}]于 {t_str} 对接客户【{v['customer_name']}】，跟进记录：“{v['remark'] or '未填'}”")
+                
+                # 本周进度变动项目及其确认产值详情
+                p_change_sql = text(f"""
+                    SELECT DISTINCT p.project_name, p.project_manager, dp.start_progress, dp.end_progress, dp.progress_change, dp.money
+                    FROM dashboard_production dp
+                    JOIN project p ON dp.project_id = p.id
+                    WHERE p.project_manager IN ({names_str})
+                      AND dp.createDate BETWEEN :start AND :end
+                      AND dp.account_date IN (:prev_month_start, :month_start)
+                      AND dp.isDel = '0'
+                    LIMIT 20
+                """)
+                p_changes = conn.execute(p_change_sql, {
+                    "start": start_date_str,
+                    "end": end_date_str,
+                    "prev_month_start": prev_month_start_date.strftime('%Y-%m-%d'),
+                    "month_start": month_start_date.strftime('%Y-%m-%d')
+                }).mappings().all()
+                if p_changes:
+                    detail_texts.append("\n【项目交付进度异动与确认产值记录】:")
+                    for idx, pc in enumerate(p_changes, 1):
+                        detail_texts.append(
+                            f"  {idx}) 负责人[{pc['project_manager']}]负责的【{pc['project_name']}】"
+                            f"进度由 {pc['start_progress']}% 推进至 {pc['end_progress']}%"
+                            f"（异动：+{pc['progress_change']}%，确认产值额 {float(pc['money'])/10000:.2f} 万元）"
+                        )
+                
+                # 交付难点 (已到交付节点但未开票)
+                unbilled_sql = text(f"""
+                    SELECT DISTINCT p.project_name, p.project_manager, p.project_progress, np.project_progress_trigger, cm.installment_money
+                    FROM project p
+                    INNER JOIN contract_money_urge_notify_project np ON p.id = np.project_id
+                    INNER JOIN contract_money cm ON np.contract_money_id = cm.id
+                    WHERE p.project_manager IN ({names_str})
+                      AND p.project_progress >= np.project_progress_trigger
+                      AND (cm.invoic_status IS NULL OR cm.invoic_status = '' OR cm.invoic_status = '0')
+                      AND (p.project_status IS NULL OR (p.project_status != '已归档' AND p.project_status != '已结项'))
+                    LIMIT 20
+                """)
+                unbilled = conn.execute(unbilled_sql).mappings().all()
+                if unbilled:
+                    detail_texts.append("\n【交付卡点预警（已达交付触发节点但尚未开票）】:")
+                    for idx, ub in enumerate(unbilled, 1):
+                        detail_texts.append(
+                            f"  {idx}) 项目【{ub['project_name']}】(负责人: {ub['project_manager']}) "
+                            f"当前进度已达 {float(ub['project_progress']):.1f}% (已触发节点 {float(ub['project_progress_trigger']):.1f}%)，"
+                            f"但未开具发票，影响后续收款回款。对应阶段款项金额: {float(ub['installment_money']):.2f} 万元。"
+                        )
+                
+                if detail_texts:
+                    res["crm_details_text"] = "\n".join(detail_texts)
+                    
+    except Exception as e:
+        import logging
+        logging.getLogger("battle100").warning(f"同步拉取团队 CRM 数据细节异常: {e}")
+        
+    return res
+
+
+async def get_group_weekly_metrics(
+    db: AsyncSession, 
+    start_date: date, 
+    team_id: int | None, 
+    third_class_bar: str | None
+) -> dict:
+    """提取战队或三级巴的本地多维业务动作，并并发直连获取 CRM 产值回款数据"""
+    from datetime import timedelta, datetime, time, timezone
+    from app.models.user import User as DbUser, PositionType
+    from app.models.organization import Team as DbTeam
+    from app.models.broadcast import BroadcastEvent
+    from app.models.report import DetailType
+    from sqlalchemy.orm import aliased
+    from fastapi.concurrency import run_in_threadpool
+    
+    end_date = start_date + timedelta(days=6)
+    
+    start_datetime = datetime.combine(start_date, time.min).replace(tzinfo=timezone.utc)
+    end_datetime = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
+    
+    # 1. 查找小组名称及全员激活成员
+    group_name = "团队"
+    if team_id:
+        t_res = await db.execute(select(DbTeam.name).where(DbTeam.id == team_id))
+        group_name = t_res.scalar() or "指定战队"
+    elif third_class_bar and third_class_bar != "all":
+        group_name = f"{third_class_bar}三级巴"
+        
+    # 查询本组所有激活成员
+    user_stmt = select(DbUser.id, DbUser.name, DbUser.crm_user_id).where(DbUser.is_active == True)
+    if team_id:
+        user_stmt = user_stmt.where(DbUser.team_id == team_id)
+    if third_class_bar and third_class_bar != "all":
+        user_stmt = user_stmt.where(DbUser.third_class_bar == third_class_bar)
+        
+    res = await db.execute(user_stmt)
+    members = res.all()
+    
+    user_ids = [m.id for m in members]
+    user_names = [m.name for m in members]
+    crm_user_ids = [m.crm_user_id for m in members if m.crm_user_id]
+    
+    metrics = {
+        "marketing_signed": 0.0,
+        "delivery_signed": 0.0,
+        "win_bids": 0,
+        "happiness_count": 0,
+        "triangle_count": 0,
+        "valid_leads": 0,
+        "potential_leads": 0,
+        "production_value": 0.0,
+        "receive_value": 0.0
+    }
+    
+    if not user_ids:
+        return {
+            "group_name": group_name,
+            "user_ids": [],
+            "user_names": [],
+            "members_list": [],
+            "metrics": metrics,
+            "crm_details_text": "暂无成员数据"
+        }
+        
+    # 2. 本系统业务指标汇总
+    PartnerUser = aliased(DbUser)
+    
+    # 营销新签合同额
+    m_signed_stmt = select(func.coalesce(func.sum(ReportDetail.amount), 0)).select_from(ReportDetail)\
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)\
+        .join(DbUser, DailyReport.user_id == DbUser.id)\
+        .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)\
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_date,
+            DailyReport.report_date <= end_date,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            (
+                ((ReportDetail.description.contains("营销新签分摊")) & ((DbUser.id.in_(user_ids)) | (PartnerUser.id.in_(user_ids)))) |
+                ((~ReportDetail.description.contains("交付新签分摊")) & (
+                    ((DbUser.id.in_(user_ids)) & (DbUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT]))) |
+                    ((PartnerUser.id.in_(user_ids)) & (PartnerUser.position_type.in_([PositionType.MARKETING, PositionType.MANAGEMENT])))
+                ))
+            )
+        )
+    m_signed_res = await db.execute(m_signed_stmt)
+    metrics["marketing_signed"] = float(m_signed_res.scalar() or 0.0)
+    
+    # 交付新签合同额
+    d_signed_stmt = select(func.coalesce(func.sum(ReportDetail.amount), 0)).select_from(ReportDetail)\
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)\
+        .join(DbUser, DailyReport.user_id == DbUser.id)\
+        .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)\
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.report_date >= start_date,
+            DailyReport.report_date <= end_date,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            (
+                ((ReportDetail.description.contains("交付新签分摊")) & ((DbUser.id.in_(user_ids)) | (PartnerUser.id.in_(user_ids)))) |
+                ((~ReportDetail.description.contains("营销新签分摊")) & (
+                    ((DbUser.id.in_(user_ids)) & (DbUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY]))) |
+                    ((PartnerUser.id.in_(user_ids)) & (PartnerUser.position_type.in_([PositionType.TECHNICAL, PositionType.DELIVERY])))
+                ))
+            )
+        )
+    d_signed_res = await db.execute(d_signed_stmt)
+    metrics["delivery_signed"] = float(d_signed_res.scalar() or 0.0)
+    
+    # 中标个数
+    win_bids_stmt = select(func.count(BroadcastEvent.id)).where(
+        BroadcastEvent.user_id.in_(user_ids),
+        BroadcastEvent.event_type == "lead_75",
+        BroadcastEvent.event_time >= start_datetime,
+        BroadcastEvent.event_time <= end_datetime
+    )
+    win_bids_res = await db.execute(win_bids_stmt)
+    metrics["win_bids"] = int(win_bids_res.scalar() or 0)
+    
+    # 幸福行动数
+    happiness_stmt = select(func.count(ReportDetail.id)).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        DailyReport.report_date >= start_date,
+        DailyReport.report_date <= end_date,
+        ReportDetail.detail_type == DetailType.HAPPINESS,
+        DailyReport.user_id.in_(user_ids)
+    )
+    happiness_res = await db.execute(happiness_stmt)
+    metrics["happiness_count"] = int(happiness_res.scalar() or 0)
+    
+    # 铁三角联动次数
+    triangle_stmt = select(func.count(ReportDetail.id)).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        DailyReport.report_date >= start_date,
+        DailyReport.report_date <= end_date,
+        ReportDetail.detail_type == DetailType.TRIANGLE,
+        DailyReport.user_id.in_(user_ids)
+    )
+    triangle_res = await db.execute(triangle_stmt)
+    metrics["triangle_count"] = int(triangle_res.scalar() or 0)
+    
+    # 本地有效线索
+    leads_stmt = select(func.count(ReportDetail.id)).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        DailyReport.report_date >= start_date,
+        DailyReport.report_date <= end_date,
+        ReportDetail.detail_type == DetailType.LEAD,
+        DailyReport.user_id.in_(user_ids),
+        (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+    )
+    leads_res = await db.execute(leads_stmt)
+    local_valid = int(leads_res.scalar() or 0)
+    
+    # 3. CRM 并发拉取
+    crm_res = await run_in_threadpool(
+        sync_get_group_crm_data,
+        user_names,
+        crm_user_ids,
+        start_date
+    )
+    
+    # 合并有效线索：本地录入有效线索数 + CRM 端有效线索数
+    metrics["valid_leads"] = local_valid + crm_res["valid_leads"]
+    metrics["potential_leads"] = crm_res["potential_leads"]
+    metrics["production_value"] = crm_res["production_value"]
+    metrics["receive_value"] = crm_res["receive_value"]
+    
+    return {
+        "group_name": group_name,
+        "user_ids": user_ids,
+        "user_names": user_names,
+        "members_list": [(m.id, m.name, m.crm_user_id) for m in members],
+        "metrics": metrics,
+        "crm_details_text": crm_res["crm_details_text"]
+    }
+
+
+@router.get("/weekly/group-report", response_model=GroupWeeklyReportResponse, summary="读取团队已存整体周报")
+async def get_group_weekly_report(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """读取指定周开始日期下，该战队或三级巴已保存的团队周报快照"""
+    stmt = select(GroupWeeklyReport).where(
+        GroupWeeklyReport.start_date == start_date
+    )
+    if team_id:
+        stmt = stmt.where(GroupWeeklyReport.team_id == team_id)
+    else:
+        stmt = stmt.where(GroupWeeklyReport.team_id == None)
+        
+    if third_class_bar and third_class_bar != "all":
+        stmt = stmt.where(GroupWeeklyReport.third_class_bar == third_class_bar)
+    else:
+        stmt = stmt.where(GroupWeeklyReport.third_class_bar == None)
+        
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="未找到该周保存的团队周报")
+        
+    return report
+
+
+@router.post("/weekly/save-group-report", response_model=GroupWeeklyReportResponse, summary="保存或覆盖更新团队整体周报")
+async def save_group_weekly_report(
+    report_in: GroupWeeklyReportSave,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """保存或覆盖更新团队整体周报记录及指标快照"""
+    from app.models.user import UserRole
+    allowed_roles = [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value, "digital_specialist"]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="权限不足，您无权保存团队整体周报")
+
+    stmt = select(GroupWeeklyReport).where(
+        GroupWeeklyReport.start_date == report_in.start_date
+    )
+    if report_in.team_id:
+        stmt = stmt.where(GroupWeeklyReport.team_id == report_in.team_id)
+    else:
+        stmt = stmt.where(GroupWeeklyReport.team_id == None)
+        
+    if report_in.third_class_bar and report_in.third_class_bar != "all":
+        stmt = stmt.where(GroupWeeklyReport.third_class_bar == report_in.third_class_bar)
+    else:
+        stmt = stmt.where(GroupWeeklyReport.third_class_bar == None)
+        
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    
+    if report:
+        # 更新现有周报
+        report.content = report_in.content
+        report.marketing_signed = report_in.marketing_signed
+        report.delivery_signed = report_in.delivery_signed
+        report.win_bids = report_in.win_bids
+        report.happiness_count = report_in.happiness_count
+        report.triangle_count = report_in.triangle_count
+        report.valid_leads = report_in.valid_leads
+        report.potential_leads = report_in.potential_leads
+        report.production_value = report_in.production_value
+        report.receive_value = report_in.receive_value
+        report.updated_at = datetime.now(timezone.utc)
+    else:
+        # 创建新周报
+        report = GroupWeeklyReport(
+            team_id=report_in.team_id,
+            third_class_bar=report_in.third_class_bar if report_in.third_class_bar != "all" else None,
+            start_date=report_in.start_date,
+            end_date=report_in.end_date,
+            content=report_in.content,
+            marketing_signed=report_in.marketing_signed,
+            delivery_signed=report_in.delivery_signed,
+            win_bids=report_in.win_bids,
+            happiness_count=report_in.happiness_count,
+            triangle_count=report_in.triangle_count,
+            valid_leads=report_in.valid_leads,
+            potential_leads=report_in.potential_leads,
+            production_value=report_in.production_value,
+            receive_value=report_in.receive_value,
+            created_by=current_user.id
+        )
+        db.add(report)
+        
+    await db.commit()
+    await db.refresh(report)
+    
+    return report
+
+
+@router.post("/weekly/generate-group-report", summary="AI 智能生成团队整体周报")
+async def generate_group_weekly_report(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """根据本组数据与 CRM 产值、周报/日报明细，自动驱动 AI 生成战队/三级巴整体周报 (放宽至 20K-30K 上下文)"""
+    from app.models.user import UserRole
+    from app.models.report import WeeklyReport
+    from datetime import timedelta
+    
+    allowed_roles = [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value, "digital_specialist"]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="权限不足，您无权生成团队整体周报")
+        
+    # 1. 自动提取指标与上下文
+    metrics_result = await get_group_weekly_metrics(db, start_date, team_id, third_class_bar)
+    
+    user_ids = metrics_result["user_ids"]
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="该战队或三级巴下暂无激活成员，无法生成周报")
+        
+    # 2. 收集全员周报与未交日报明细
+    weekly_stmt = select(WeeklyReport, User.name).join(User, WeeklyReport.user_id == User.id).where(
+        WeeklyReport.user_id.in_(user_ids),
+        WeeklyReport.start_date == start_date,
+        WeeklyReport.status == "submitted"
+    )
+    weekly_res = await db.execute(weekly_stmt)
+    weekly_rows = weekly_res.all()
+    
+    submitted_user_ids = set()
+    weekly_contents = []
+    
+    for wr, u_name in weekly_rows:
+        submitted_user_ids.add(wr.user_id)
+        w_text = (
+            f"--- 成员: {u_name} 的个人周复盘 ---\n"
+            f"【项目交付实际完成】: {wr.delivery_actual or '无'}\n"
+            f"【销售实际完成】: {wr.sales_actual or '无'}\n"
+            f"【本周项目亮点】: {wr.delivery_highlights or '无'}\n"
+            f"【本周销售亮点】: {wr.sales_highlights or '无'}\n"
+            f"【本周项目难点】: {wr.delivery_blockers or '无'}\n"
+            f"【本周销售难点】: {wr.sales_blockers or '无'}\n"
+            f"【下周交付计划】: {wr.next_delivery_plan or '无'}\n"
+            f"【下周销售计划】: {wr.next_sales_plan or '无'}\n"
+        )
+        weekly_contents.append(w_text)
+        
+    # 找出未交周报的成员名单
+    unsubmitted_members = []
+    unsubmitted_user_ids = []
+    for uid, uname, _ in metrics_result["members_list"]:
+        if uid not in submitted_user_ids:
+            unsubmitted_members.append(uname)
+            unsubmitted_user_ids.append(uid)
+            
+    # 对于未提交周报的成员，提取他们本周全量的日报日志明细，放宽上下文到 20K-30K 传全量日报描述
+    daily_contents = []
+    if unsubmitted_user_ids:
+        # 查询当周已审核日报及其明细
+        daily_stmt = select(DailyReport).where(
+            DailyReport.user_id.in_(unsubmitted_user_ids),
+            DailyReport.report_date >= start_date,
+            DailyReport.report_date <= (start_date + timedelta(days=6)),
+            DailyReport.status == ReportStatus.REVIEWED
+        ).order_by(DailyReport.report_date.asc())
+        daily_res = await db.execute(daily_stmt)
+        daily_reports = daily_res.scalars().all()
+        
+        user_daily_map = {}
+        for dr in daily_reports:
+            if dr.user_id not in user_daily_map:
+                user_daily_map[dr.user_id] = []
+            
+            # 读取该日报的明细
+            detail_stmt = select(ReportDetail).where(ReportDetail.report_id == dr.id)
+            detail_res = await db.execute(detail_stmt)
+            details = detail_res.scalars().all()
+            
+            detail_texts = []
+            for dt in details:
+                detail_texts.append(f"  - [{dt.detail_type}] {dt.project_name or dt.customer_name or ''}: {dt.description or ''}")
+                
+            dr_text = (
+                f"【{dr.report_date.strftime('%m-%d')} 日报】:\n"
+                f"  工作总结: {dr.work_summary or '未填'}\n"
+                f"  核心动作明细:\n" + ("\n".join(detail_texts) if detail_texts else "  无动作明细")
+            )
+            user_daily_map[dr.user_id].append(dr_text)
+            
+        for uid, uname, _ in metrics_result["members_list"]:
+            if uid in unsubmitted_user_ids:
+                d_reports_list = user_daily_map.get(uid, [])
+                d_text = (
+                    f"--- 成员: {uname} (本周未提交个人周报，以下为其本周全量日报流水) ---\n"
+                    + ("\n".join(d_reports_list) if d_reports_list else "本周无已审核的日报动作") + "\n"
+                )
+                daily_contents.append(d_text)
+                
+    # 3. 构造给 AI 汇总的数据文本
+    team_name_title = metrics_result["group_name"]
+    metrics = metrics_result["metrics"]
+    
+    metrics_summary_text = (
+        f"【本周 {team_name_title} 核心汇总业绩数据看板】:\n"
+        f"- 营销新签合同额: {metrics['marketing_signed']:.2f} 万元\n"
+        f"- 交付新签合同额: {metrics['delivery_signed']:.2f} 万元\n"
+        f"- 中标项目个数: {metrics['win_bids']} 个\n"
+        f"- 幸福动作个数: {metrics['happiness_count']} 次\n"
+        f"- 铁三角联动次数: {metrics['triangle_count']} 次\n"
+        f"- 有效商机线索量: {metrics['valid_leads']} 个\n"
+        f"- 潜力商机线索量: {metrics['potential_leads']} 个\n"
+        f"- CRM 累计产值: {metrics['production_value']:.2f} 万元\n"
+        f"- CRM 到账回款额: {metrics['receive_value']:.2f} 万元\n"
+    )
+    
+    crm_details = metrics_result.get("crm_details_text", "暂无 CRM 沟通或项目跟进明细")
+    
+    report_data_context = (
+        f"目前正在为团队【{team_name_title}】生成本周的整体复盘周报。\n"
+        f"时间跨度为: {start_date} ~ {start_date + timedelta(days=6)}\n\n"
+        f"{metrics_summary_text}\n"
+        f"【团队 CRM 业务明细跟进与沟通原文】:\n{crm_details}\n\n"
+        f"【已提交周报的成员复盘详情】:\n" + ("\n".join(weekly_contents) if weekly_contents else "无已提交的个人周报。\n") + "\n"
+        f"【未提交周报的成员全量已审核日报描述】:\n" + ("\n".join(daily_contents) if daily_contents else "无未提交周报的成员日报数据。\n") + "\n"
+    )
+    
+    unsubmitted_str = "、".join(unsubmitted_members) if unsubmitted_members else "无"
+    
+    # 4. 调用大模型路由进行周报编写
+    try:
+        from app.llm.provider import get_provider_for_agent
+        from app.models.llm_config import AgentRoute
+        
+        provider, model_id = await get_provider_for_agent("reports")
+        
+        # 优先读取数据库配置的自定义 system_prompt 与 user_prompt 模板
+        route_stmt = select(AgentRoute).where(AgentRoute.agent_role == "reports")
+        route_res = await db.execute(route_stmt)
+        route_obj = route_res.scalar_one_or_none()
+        
+        db_system_prompt = route_obj.system_prompt if route_obj else None
+        db_user_prompt = route_obj.user_prompt if route_obj else None
+        
+        # 默认强力 System Prompt 作为兜底
+        default_sys_prompt = (
+            "你是“百日奋战”战队及三级巴整体复盘的【战报及铁三角联动分析师】。\n"
+            "你的任务是根据提供的团队多维汇总数据（包括营销新签、交付新签、中标数、幸福动作、铁三角联动、CRM 产值、CRM 到账回款）以及每个成员的个人周报/日报工作流水，撰写并整理出一份精美、专业、条理清晰的【团队整体周报】。\n"
+            "要求：\n"
+            "1. 整体周报采用 Markdown 格式输出。内容必须切合数据，严禁虚构、夸大事实，突出团队的签约、回款以及里程碑交付成果。\n"
+            "2. 语言风格要充满战斗激情、逻辑严密，并提出下阶段重点攻坚建议。\n"
+            "3. 报告必须包含以下板块：\n"
+            "   - **一、团队本周核心业绩看板**（用 Markdown 表格展示提供给你的所有汇总指标快照，包括产值、回款、签约等）；\n"
+            "   - **二、本周工作主要战果与亮点**（结合个人周报/日报及 CRM 沟通纪要，细致描述具体项目的推进、突破、大额签约或回款情况，提及具体负责人）；\n"
+            "   - **三、交付卡点与重大业务预警**（分析团队面临的暂停/延期项目，特别是‘已到节点未开票’和‘已开票未回款’的项目，并给出分析）；\n"
+            "   - **四、下周重点攻坚方向与计划**（结合个人下周目标给出团队攻坚计划）；\n"
+            "   - **五、需要协调与支持的事项**（明确指出当前阻碍交付或签约、回款的卡点，并点明需要上级或跨部门支持的具体事项）。\n"
+            f"4. 你必须在 Markdown 文本的最后，用专门的一行渲染 `【本周未填报人员】：{unsubmitted_str}`。"
+        )
+        
+        # 确定最终 prompt
+        system_prompt = db_system_prompt if db_system_prompt else default_sys_prompt
+        # 对用户提示词，如果系统配了，则以系统配的模板把 {report_data} 替换掉
+        if db_user_prompt:
+            try:
+                user_prompt = db_user_prompt.format(report_data=report_data_context)
+            except Exception:
+                user_prompt = db_user_prompt + f"\n\n{report_data_context}"
+        else:
+            user_prompt = f"请为我们战队/三级巴撰写本周的整体分析周报，以下是团队的各项业绩指标 and 全员本周记录详情：\n\n{report_data_context}"
+            
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        # 增加最大输出限制到 8192 个 Token，防止超长团队周报（如多项目大表格及思考内容）被中途截断
+        ai_content = await provider.chat(messages, max_tokens=8192)
+        
+        # 自动清洗掉思考过程（针对思考类 LLM 模型输出的 <think>...</think>）
+        import re
+        ai_content = re.sub(r"<think>.*?</think>", "", ai_content, flags=re.DOTALL).strip()
+        
+    except Exception as e:
+        import logging
+        logging.getLogger("battle100").error(f"AI 生成团队周报出错: {e}")
+        ai_content = f"### AI 生成团队周报失败\n\n错误信息：{str(e)}\n\n请尝试点击“重新由 AI 智能生成”。"
+        
+    return {
+        "metrics": metrics,
+        "content": ai_content,
+        "unsubmitted_members": unsubmitted_members
+    }
+
+
+class SendGroupReportToDingtalkRequest(BaseModel):
+    group_name: str
+    start_date: date
+    metrics: dict
+    content: str
+    redirect_url: str | None = None
+
+
+@router.post("/weekly/send-group-report-to-dingtalk", summary="推送整体周报到钉钉群")
+async def send_group_report_to_dingtalk_api(
+    req: SendGroupReportToDingtalkRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """人工点击一键推送整体周报到钉钉机器人"""
+    from app.models.user import UserRole
+    allowed_roles = [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value, "digital_specialist"]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="权限不足，您无权向钉钉推送团队整体周报")
+        
+    from app.services.dingtalk import send_group_weekly_report_to_dingtalk
+    success = await send_group_weekly_report_to_dingtalk(
+        group_name=req.group_name,
+        start_date_val=req.start_date,
+        metrics=req.metrics,
+        content=req.content,
+        redirect_url=req.redirect_url
+    )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="推送至钉钉机器人失败，请检查配置或稍后重试")
+        
+    return {"message": "已成功推送至钉钉群机器人"}
+

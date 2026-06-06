@@ -226,3 +226,70 @@ class WeeklyReport(BaseModel):
 
     def __repr__(self) -> str:
         return f"<WeeklyReport(id={self.id}, user_id={self.user_id}, range={self.start_date}~{self.end_date})>"
+
+
+class GroupWeeklyReport(BaseModel):
+    """团队周复盘整体周报表ORM模型"""
+    __tablename__ = "group_weekly_reports"
+    __table_args__ = (
+        UniqueConstraint("team_id", "third_class_bar", "start_date", name="uq_group_weekly_report_team_bar_date"),
+    )
+
+    team_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=True, comment="战队ID"
+    )
+    third_class_bar: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, comment="三级巴名称"
+    )
+    start_date: Mapped[date] = mapped_column(
+        Date, nullable=False, comment="周开始日期"
+    )
+    end_date: Mapped[date] = mapped_column(
+        Date, nullable=False, comment="周结束日期"
+    )
+    
+    # 整体周报 Markdown 文本
+    content: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="整体周报 Markdown 内容"
+    )
+    
+    # 多维业务汇总指标快照 (万元/个/次)
+    marketing_signed: Mapped[float] = mapped_column(
+        Float, default=0.0, comment="营销新签合同额（万元）"
+    )
+    delivery_signed: Mapped[float] = mapped_column(
+        Float, default=0.0, comment="交付新签合同额（万元）"
+    )
+    win_bids: Mapped[int] = mapped_column(
+        Integer, default=0, comment="中标个数"
+    )
+    happiness_count: Mapped[int] = mapped_column(
+        Integer, default=0, comment="幸福动作个数"
+    )
+    triangle_count: Mapped[int] = mapped_column(
+        Integer, default=0, comment="铁三角联动次数"
+    )
+    valid_leads: Mapped[int] = mapped_column(
+        Integer, default=0, comment="有效商机线索量"
+    )
+    potential_leads: Mapped[int] = mapped_column(
+        Integer, default=0, comment="潜力商机线索量"
+    )
+    production_value: Mapped[float] = mapped_column(
+        Float, default=0.0, comment="CRM 累计产值（万元）"
+    )
+    receive_value: Mapped[float] = mapped_column(
+        Float, default=0.0, comment="CRM 到账回款额（万元）"
+    )
+
+    created_by: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, comment="创建者用户ID"
+    )
+
+    # ===== 关联关系 =====
+    team = relationship("Team", foreign_keys=[team_id])
+    creator = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<GroupWeeklyReport(id={self.id}, team_id={self.team_id}, bar={self.third_class_bar}, start={self.start_date})>"
+

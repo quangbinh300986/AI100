@@ -203,3 +203,50 @@ class WeeklyCrmSummaryListResponse(BaseModel):
     total: int
     items: list[WeeklyCrmSummaryItem]
 
+
+class GroupWeeklyReportSave(BaseModel):
+    """保存或覆盖更新团队整体周报的请求体"""
+    team_id: Optional[int] = Field(None, description="战队ID")
+    third_class_bar: Optional[str] = Field(None, description="三级巴名称")
+    start_date: date = Field(..., description="周开始日期")
+    end_date: date = Field(..., description="周结束日期")
+    content: str = Field(..., description="Markdown整体周报内容")
+    
+    # 指标快照保存
+    marketing_signed: float = Field(0.0, description="营销新签合同额（万元）")
+    delivery_signed: float = Field(0.0, description="交付新签合同额（万元）")
+    win_bids: int = Field(0, description="中标个数")
+    happiness_count: int = Field(0, description="幸福动作个数")
+    triangle_count: int = Field(0, description="铁三角联动次数")
+    valid_leads: int = Field(0, description="有效商机线索量")
+    potential_leads: int = Field(0, description="潜力商机线索量")
+    production_value: float = Field(0.0, description="CRM 累计产值（万元）")
+    receive_value: float = Field(0.0, description="CRM 到账回款额（万元）")
+
+
+class GroupWeeklyReportResponse(BaseModel):
+    """团队整体周报响应模型"""
+    id: int
+    team_id: Optional[int] = None
+    third_class_bar: Optional[str] = None
+    start_date: date
+    end_date: date
+    content: str
+    
+    marketing_signed: float
+    delivery_signed: float
+    win_bids: int
+    happiness_count: int
+    triangle_count: int
+    valid_leads: int
+    potential_leads: int
+    production_value: float
+    receive_value: float
+    
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = {"from_attributes": True}
+
+

@@ -17,14 +17,19 @@ import {
   DatePicker,
   Descriptions,
   Checkbox,
-  Tabs
+  Tabs,
+  Alert,
+  Radio
 } from 'antd'
 import {
   DeleteOutlined,
   EditOutlined,
   SyncOutlined,
   FilterOutlined,
-  EyeOutlined
+  EyeOutlined,
+  FileTextOutlined,
+  DownloadOutlined,
+  CopyOutlined
 } from '@ant-design/icons'
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -169,6 +174,26 @@ const WeeklyReports: React.FC = () => {
   const [aiOptimizeModalVisible, setAiOptimizeModalVisible] = useState(false)
   const [aiOptimizeForm] = Form.useForm()
 
+  // ⚡ 团队（战队与三级巴）整体周报相关状态
+  const [groupReportVisible, setGroupReportVisible] = useState(false)
+  const [groupReportLoading, setGroupReportLoading] = useState(false)
+  const [groupReportContent, setGroupReportContent] = useState('')
+  const [hasSavedReport, setHasSavedReport] = useState(false)
+  const [savedReportTime, setSavedReportTime] = useState('')
+  const [previewMode, setPreviewMode] = useState<'edit' | 'preview'>('edit')
+  const [dingSending, setDingSending] = useState(false)
+  const [groupMetrics, setGroupMetrics] = useState<any>({
+    marketing_signed: 0,
+    delivery_signed: 0,
+    win_bids: 0,
+    happiness_count: 0,
+    triangle_count: 0,
+    valid_leads: 0,
+    potential_leads: 0,
+    production_value: 0,
+    receive_value: 0
+  })
+
   const handleAiOptimizeWeekly = async () => {
     const values = weeklyForm.getFieldsValue()
     const actual = isMarketing ? values.sales_actual : values.delivery_actual
@@ -262,6 +287,268 @@ const WeeklyReports: React.FC = () => {
     }
     setAiOptimizeModalVisible(false)
     message.success('已成功将 AI 整理优化后的内容填回周报表单！')
+  }
+
+  // 判定是否有生成团队整体周报的权限
+  const allowedGroupReport = ['admin', 'target_officer', 'team_leader', 'digital_specialist'].includes(user?.role || '')
+
+  // 获取当前所选团队名称
+  const getGroupNameText = () => {
+    if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+      return weeklyThirdBar
+    }
+    if (weeklyTeamId && weeklyTeamId !== 'all') {
+      const opt = TEAM_OPTIONS.find(o => o.value === weeklyTeamId)
+      return opt ? opt.label : ''
+    }
+    return ''
+  }
+
+  // 触发生成或获取团队已存整体周报
+  const handleGenerateGroupReport = async () => {
+    setGroupReportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      let url = `/reports/weekly/group-report?start_date=${startDateStr}`
+      if (weeklyTeamId && weeklyTeamId !== 'all') {
+        url += `&team_id=${weeklyTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      
+      try {
+        const res = await get<any>(url)
+        const data = res?.data ? res.data : res
+        if (data && data.id) {
+          setGroupReportContent(data.content)
+          setGroupMetrics({
+            marketing_signed: data.marketing_signed,
+            delivery_signed: data.delivery_signed,
+            win_bids: data.win_bids,
+            happiness_count: data.happiness_count,
+            triangle_count: data.triangle_count,
+            valid_leads: data.valid_leads,
+            potential_leads: data.potential_leads,
+            production_value: data.production_value,
+            receive_value: data.receive_value
+          })
+          setHasSavedReport(true)
+          setSavedReportTime(dayjs(data.updated_at || data.created_at).format('YYYY-MM-DD HH:mm:ss'))
+          setGroupReportVisible(true)
+          setGroupReportLoading(false)
+          return
+        }
+      } catch (err: any) {
+        console.error("获取团队存盘周报异常:", err)
+        const status = err?.response?.status || err?.status
+        const detail = err?.response?.data?.detail || ''
+        if (status === 404 || detail.includes('未找到该周') || detail.includes('不存在') || detail.includes('Not Found')) {
+          // 若无存盘周报，直接自动调用 AI 智能生成
+          await triggerAiGenerateGroupReport()
+          return
+        }
+        throw err
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || '获取团队整体周报快照失败')
+    } finally {
+      setGroupReportLoading(false)
+    }
+  }
+
+  // 强制/重新由 AI 智能生成整体周报
+  const triggerAiGenerateGroupReport = async () => {
+    setGroupReportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      let url = `/reports/weekly/generate-group-report?start_date=${startDateStr}`
+      if (weeklyTeamId && weeklyTeamId !== 'all') {
+        url += `&team_id=${weeklyTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      
+      const res = await post<any>(url, {})
+      const data = res?.data ? res.data : res
+      if (data) {
+        setGroupReportContent(data.content || '')
+        setGroupMetrics(data.metrics || {
+          marketing_signed: 0,
+          delivery_signed: 0,
+          win_bids: 0,
+          happiness_count: 0,
+          triangle_count: 0,
+          valid_leads: 0,
+          potential_leads: 0,
+          production_value: 0,
+          receive_value: 0
+        })
+        setHasSavedReport(false)
+        setSavedReportTime('')
+        setGroupReportVisible(true)
+        message.success('AI 团队整体周报智能整理生成完毕！')
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || 'AI 生成团队周报失败，请确认该团队是否有已激活成员及相关数据')
+    } finally {
+      setGroupReportLoading(false)
+    }
+  }
+
+  // 保存整体周报至系统数据库
+  const handleSaveGroupReport = async () => {
+    setGroupReportLoading(true)
+    try {
+      const [mon, sun] = getMondayAndSunday(weeklyDate)
+      const payload = {
+        team_id: weeklyTeamId !== 'all' ? parseInt(weeklyTeamId) : null,
+        third_class_bar: weeklyThirdBar !== 'all' ? weeklyThirdBar : null,
+        start_date: mon.format('YYYY-MM-DD'),
+        end_date: sun.format('YYYY-MM-DD'),
+        content: groupReportContent,
+        marketing_signed: groupMetrics.marketing_signed,
+        delivery_signed: groupMetrics.delivery_signed,
+        win_bids: groupMetrics.win_bids,
+        happiness_count: groupMetrics.happiness_count,
+        triangle_count: groupMetrics.triangle_count,
+        valid_leads: groupMetrics.valid_leads,
+        potential_leads: groupMetrics.potential_leads,
+        production_value: groupMetrics.production_value,
+        receive_value: groupMetrics.receive_value
+      }
+      
+      const res = await post<any>('/reports/weekly/save-group-report', payload)
+      const data = res?.data ? res.data : res
+      if (data) {
+        setHasSavedReport(true)
+        setSavedReportTime(dayjs(data.updated_at || data.created_at).format('YYYY-MM-DD HH:mm:ss'))
+        message.success('团队整体周报及数据指标快照已成功存盘！')
+      }
+    } catch (err: any) {
+      console.error(err)
+      message.error(err?.response?.data?.detail || '保存团队整体周报失败')
+    } finally {
+      setGroupReportLoading(false)
+    }
+  }
+
+  // 一键导出为 Markdown 文件
+  const handleExportGroupReportFile = () => {
+    try {
+      const groupName = getGroupNameText()
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const dateStr = mon.format('YYYY-MM-DD')
+      const filename = `${groupName || '团队'}_${dateStr}_整体复盘周报.md`
+      
+      const blob = new Blob([groupReportContent], { type: 'text/markdown;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      message.success('整体周报已导出为 Markdown 文件')
+    } catch (err) {
+      console.error(err)
+      message.error('导出文件失败')
+    }
+  }
+
+  // 一键复制 Markdown 文本
+  const handleCopyGroupReportText = async () => {
+    try {
+      await navigator.clipboard.writeText(groupReportContent)
+      message.success('整体周报 Markdown 文本已复制到剪贴板')
+    } catch (err) {
+      console.error(err)
+      message.error('浏览器拒绝了复制操作，请手动选择复制')
+    }
+  }
+
+  // 一键复制并同步发送至钉钉机器人，且自动完成系统数据库存盘
+  const handleCopyAndSendToDingtalk = async () => {
+    let copySuccess = false
+    try {
+      await navigator.clipboard.writeText(groupReportContent)
+      copySuccess = true
+    } catch (err) {
+      console.error(err)
+    }
+
+    setDingSending(true)
+    const [mon, sun] = getMondayAndSunday(weeklyDate)
+    const startDateStr = mon.format('YYYY-MM-DD')
+
+    // 1. 自动存盘到系统数据库
+    try {
+      const savePayload = {
+        team_id: weeklyTeamId !== 'all' ? parseInt(weeklyTeamId) : null,
+        third_class_bar: weeklyThirdBar !== 'all' ? weeklyThirdBar : null,
+        start_date: startDateStr,
+        end_date: sun.format('YYYY-MM-DD'),
+        content: groupReportContent,
+        marketing_signed: groupMetrics.marketing_signed,
+        delivery_signed: groupMetrics.delivery_signed,
+        win_bids: groupMetrics.win_bids,
+        happiness_count: groupMetrics.happiness_count,
+        triangle_count: groupMetrics.triangle_count,
+        valid_leads: groupMetrics.valid_leads,
+        potential_leads: groupMetrics.potential_leads,
+        production_value: groupMetrics.production_value,
+        receive_value: groupMetrics.receive_value
+      }
+      
+      const saveRes = await post<any>('/reports/weekly/save-group-report', savePayload)
+      const saveData = saveRes?.data ? saveRes.data : saveRes
+      if (saveData) {
+        setHasSavedReport(true)
+        setSavedReportTime(dayjs(saveData.updated_at || saveData.created_at).format('YYYY-MM-DD HH:mm:ss'))
+      }
+    } catch (err: any) {
+      console.error(err)
+      const errMsg = err.response?.data?.detail || '保存失败，请重试'
+      if (copySuccess) {
+        message.warn(`周报已复制到剪贴板，但同步存盘至系统数据库失败：${errMsg}`)
+      } else {
+        message.error(`同步存盘至系统数据库失败：${errMsg}`)
+      }
+      setDingSending(false)
+      return // 若存盘失败则直接中断，不再尝试向钉钉推送
+    }
+
+    // 2. 发送到钉钉机器人
+    try {
+      await post('/reports/weekly/send-group-report-to-dingtalk', {
+        group_name: getGroupNameText(),
+        start_date: startDateStr,
+        metrics: groupMetrics,
+        content: groupReportContent,
+        redirect_url: window.location.origin + '/admin/weekly-reports'
+      })
+
+      if (copySuccess) {
+        message.success('整体周报已复制、成功存盘数据库，并已同步推送至钉钉！')
+      } else {
+        message.success('整体周报已成功存盘数据库并推送至钉钉！(剪贴板复制失败，请手动复制)')
+      }
+    } catch (err: any) {
+      console.error(err)
+      const errMsg = err.response?.data?.detail || '推送失败，请重试'
+      if (copySuccess) {
+        message.warn(`周报已复制并成功存盘至系统数据库，但同步推送至钉钉机器人失败：${errMsg}`)
+      } else {
+        message.warn(`周报已成功存盘至系统数据库，但同步推送至钉钉机器人失败：${errMsg}`)
+      }
+    } finally {
+      setDingSending(false)
+    }
   }
 
   // 动态权限校验函数 (支持系统管理员 admin 与默认配置兜底)
@@ -1180,6 +1467,22 @@ const WeeklyReports: React.FC = () => {
                   {hasMineReport ? '修改我的周报' : '填写我的周报'}
                 </Button>
               )}
+              {allowedGroupReport && (
+                <Button
+                  type="primary"
+                  style={{
+                    backgroundColor: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#13c2c2',
+                    borderColor: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#13c2c2',
+                    color: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#fff'
+                  }}
+                  disabled={weeklyTeamId === 'all' && weeklyThirdBar === 'all'}
+                  icon={<FileTextOutlined />}
+                  loading={groupReportLoading}
+                  onClick={handleGenerateGroupReport}
+                >
+                  生成【{getGroupNameText() || '未选'}】整体周报
+                </Button>
+              )}
             </Space>
           </Col>
           <Col style={{ marginLeft: 'auto' }}>
@@ -1977,9 +2280,399 @@ const WeeklyReports: React.FC = () => {
             </Form>
           </div>
         </Modal>
+
+        {/* ⚡ 团队（战队与三级巴）整体周报预览及指标看板 Modal */}
+        <Modal
+          title={
+            <Space>
+              <FileTextOutlined style={{ color: '#13c2c2' }} />
+              <strong>⚡ 团队整体复盘周报（当前所选：{getGroupNameText()}）</strong>
+            </Space>
+          }
+          open={groupReportVisible}
+          onCancel={() => setGroupReportVisible(false)}
+          width={1000}
+          centered
+          destroyOnClose
+          footer={[
+            <Button 
+              key="regenerate" 
+              danger 
+              ghost
+              icon={<SyncOutlined />} 
+              loading={groupReportLoading}
+              onClick={triggerAiGenerateGroupReport}
+            >
+              重新由 AI 智能生成
+            </Button>,
+            <Button 
+              key="copy" 
+              icon={<CopyOutlined />} 
+              loading={dingSending}
+              onClick={handleCopyAndSendToDingtalk}
+            >
+              一键复制并发送到钉钉
+            </Button>,
+            <Button 
+              key="export" 
+              icon={<DownloadOutlined />} 
+              onClick={handleExportGroupReportFile}
+            >
+              导出为 .md 文件
+            </Button>,
+            <Button 
+              key="save" 
+              type="primary" 
+              loading={groupReportLoading}
+              onClick={handleSaveGroupReport}
+            >
+              保存至系统数据库
+            </Button>,
+            <Button 
+              key="close" 
+              onClick={() => setGroupReportVisible(false)}
+            >
+              关闭
+            </Button>
+          ]}
+        >
+          <div style={{ maxHeight: '75vh', overflowY: 'auto', padding: '4px' }}>
+            {/* 1. 存盘状态 Alert (小巧单行) */}
+            <Alert
+              message={
+                <span style={{ fontSize: '12px' }}>
+                  <strong>{hasSavedReport ? "已加载系统数据库存档快照" : "当前内容由 AI 智能生成（预览）"}</strong>。
+                  {hasSavedReport 
+                    ? `（存档时间：${savedReportTime}）。您可以随时在下方直接微调，或点击“重新由 AI 智能生成”刷新内容并覆盖保存。`
+                    : "您可以在下方直接进行润色调整，确认后点击下方“保存至系统数据库”进行存盘。"
+                  }
+                </span>
+              }
+              type={hasSavedReport ? "success" : "info"}
+              showIcon
+              style={{ marginBottom: 12, padding: '6px 12px' }}
+            />
+
+            {/* 2. 九个核心财务与播报指标看板卡片 (扁平 Grid 排列，极度压缩纵向空间) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>营销新签合同额</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#389e0d' }}>
+                  {groupMetrics.marketing_signed?.toFixed(2)} 万元
+                </span>
+              </div>
+              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>交付新签合同额</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#389e0d' }}>
+                  {groupMetrics.delivery_signed?.toFixed(2)} 万元
+                </span>
+              </div>
+              <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>中标项目个数</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#096dd9' }}>
+                  {groupMetrics.win_bids} 个
+                </span>
+              </div>
+              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>幸福动作个数</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>
+                  {groupMetrics.happiness_count} 次
+                </span>
+              </div>
+              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>铁三角联动次数</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>
+                  {groupMetrics.triangle_count} 次
+                </span>
+              </div>
+              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>有效商机线索量</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d39c4' }}>
+                  {groupMetrics.valid_leads} 个
+                </span>
+              </div>
+              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>潜力商机线索量</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d39c4' }}>
+                  {groupMetrics.potential_leads} 个
+                </span>
+              </div>
+              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>CRM 累计产值</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#c41d7f' }}>
+                  {groupMetrics.production_value?.toFixed(2)} 万元
+                </span>
+              </div>
+              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959' }}>CRM 到账回款额</span>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#c41d7f' }}>
+                  {groupMetrics.receive_value?.toFixed(2)} 万元
+                </span>
+              </div>
+            </div>
+
+            {/* 3. 周报文本编辑器 (带实时 Markdown 预览切换) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#262626' }}>📝 团队整体周报正文 (Markdown 文本)</div>
+              <Radio.Group 
+                value={previewMode} 
+                onChange={(e) => setPreviewMode(e.target.value)} 
+                size="small"
+                style={{ zIndex: 10 }}
+              >
+                <Radio.Button value="edit">
+                  <EditOutlined /> 编辑源码
+                </Radio.Button>
+                <Radio.Button value="preview">
+                  <EyeOutlined /> 实时预览
+                </Radio.Button>
+              </Radio.Group>
+            </div>
+
+            {previewMode === 'edit' ? (
+              <Input.TextArea
+                rows={18}
+                value={groupReportContent}
+                onChange={(e) => setGroupReportContent(e.target.value)}
+                placeholder="大模型正在分析和生成中，这可能需要一点时间..."
+                style={{ fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.6', backgroundColor: '#fafafa' }}
+                disabled={groupReportLoading}
+              />
+            ) : (
+              <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                <MarkdownPreview text={groupReportContent} />
+              </div>
+            )}
+          </div>
+        </Modal>
       </div>
     </div>
   )
 }
+
+// 外部自定义 Markdown 渲染预览组件，支持表格、粗体、多级标题和引用块
+interface MarkdownPreviewProps {
+  text: string;
+}
+
+const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ text }) => {
+  if (!text) return <div style={{ color: '#bfbfbf', fontStyle: 'italic', padding: '20px' }}>暂无内容</div>;
+
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  
+  let inTable = false;
+  let tableHeaders: string[] = [];
+  let tableRows: string[][] = [];
+  let tableAligns: ('left' | 'center' | 'right')[] = [];
+  
+  let inList = false;
+  let listItems: string[] = [];
+
+  const parseInlineMarkdown = (str: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    const regex = /(\*\*.*?\*\*)/g;
+    const splitParts = str.split(regex);
+    
+    splitParts.forEach((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        parts.push(<strong key={index}>{part.slice(2, -2)}</strong>);
+      } else {
+        parts.push(part);
+      }
+    });
+    return parts;
+  };
+
+  const renderTable = (headers: string[], rows: string[][], aligns: ('left' | 'center' | 'right')[], key: number) => {
+    return (
+      <div key={key} style={{ overflowX: 'auto', marginBottom: '12px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', border: '1px solid #f0f0f0' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#fafafa' }}>
+              {headers.map((h, i) => (
+                <th 
+                  key={i} 
+                  style={{ 
+                    border: '1px solid #f0f0f0', 
+                    padding: '6px 10px', 
+                    fontWeight: '600', 
+                    textAlign: aligns[i] || 'left',
+                    color: '#262626'
+                  }}
+                >
+                  {parseInlineMarkdown(h)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rIdx) => (
+              <tr key={rIdx} style={{ backgroundColor: rIdx % 2 === 1 ? '#fafafa' : '#fff' }}>
+                {row.map((cell, cIdx) => (
+                  <td 
+                    key={cIdx} 
+                    style={{ 
+                      border: '1px solid #f0f0f0', 
+                      padding: '6px 10px', 
+                      textAlign: aligns[cIdx] || 'left',
+                      color: '#595959'
+                    }}
+                  >
+                    {parseInlineMarkdown(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderList = (items: string[], key: number) => {
+    return (
+      <ul key={key} style={{ paddingLeft: '18px', marginBottom: '12px', listStyleType: 'disc' }}>
+        {items.map((item, i) => (
+          <li key={i} style={{ marginBottom: '4px', fontSize: '12.5px', lineHeight: '1.5', color: '#434343' }}>
+            {parseInlineMarkdown(item)}
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  let elementKey = 0;
+
+  const flushTable = () => {
+    if (inTable) {
+      elements.push(renderTable(tableHeaders, tableRows, tableAligns, elementKey++));
+      inTable = false;
+      tableHeaders = [];
+      tableRows = [];
+      tableAligns = [];
+    }
+  };
+
+  const flushList = () => {
+    if (inList) {
+      elements.push(renderList(listItems, elementKey++));
+      inList = false;
+      listItems = [];
+    }
+  };
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx].trim();
+
+    // 1. 表格
+    if (line.startsWith('|') && line.endsWith('|')) {
+      flushList();
+      const cells = line.split('|').map(c => c.trim()).slice(1, -1);
+      
+      if (!inTable) {
+        tableHeaders = cells;
+        inTable = true;
+        if (idx + 1 < lines.length) {
+          const nextLine = lines[idx + 1].trim();
+          if (nextLine.startsWith('|') && nextLine.includes('---')) {
+            const alignCells = nextLine.split('|').map(c => c.trim()).slice(1, -1);
+            tableAligns = alignCells.map(c => {
+              if (c.startsWith(':') && c.endsWith(':')) return 'center';
+              if (c.endsWith(':')) return 'right';
+              return 'left';
+            });
+            idx++;
+          }
+        }
+      } else {
+        tableRows.push(cells);
+      }
+      continue;
+    } else {
+      flushTable();
+    }
+
+    // 2. 列表
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      inList = true;
+      listItems.push(line.slice(2));
+      continue;
+    } else {
+      flushList();
+    }
+
+    // 3. 标题
+    if (line.startsWith('# ')) {
+      elements.push(
+        <h1 key={elementKey++} style={{ fontSize: '18px', fontWeight: 'bold', borderBottom: '2px solid #f0f0f0', paddingBottom: '6px', marginTop: '12px', marginBottom: '10px', color: '#141414' }}>
+          {parseInlineMarkdown(line.slice(2))}
+        </h1>
+      );
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      elements.push(
+        <h2 key={elementKey++} style={{ fontSize: '15px', fontWeight: 'bold', marginTop: '10px', marginBottom: '6px', color: '#1f1f1f', borderLeft: '3px solid #13c2c2', paddingLeft: '8px' }}>
+          {parseInlineMarkdown(line.slice(3))}
+        </h2>
+      );
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      elements.push(
+        <h3 key={elementKey++} style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '8px', marginBottom: '4px', color: '#434343' }}>
+          {parseInlineMarkdown(line.slice(4))}
+        </h3>
+      );
+      continue;
+    }
+
+    // 4. 引用
+    if (line.startsWith('> ')) {
+      elements.push(
+        <blockquote key={elementKey++} style={{ borderLeft: '3px solid #13c2c2', padding: '4px 10px', background: '#e6fffb', margin: '0 0 10px 0', borderRadius: '0 4px 4px 0', fontSize: '12px', color: '#595959' }}>
+          {parseInlineMarkdown(line.slice(2))}
+        </blockquote>
+      );
+      continue;
+    }
+
+    // 5. 空行
+    if (line === '') {
+      if (elements.length > 0 && elements[elements.length - 1] !== 'br') {
+        elements.push(<div key={elementKey++} style={{ height: '6px' }} />);
+      }
+      continue;
+    }
+
+    // 6. 普通行
+    elements.push(
+      <p key={elementKey++} style={{ fontSize: '12.5px', lineHeight: '1.5', marginBottom: '6px', color: '#262626' }}>
+        {parseInlineMarkdown(line)}
+      </p>
+    );
+  }
+
+  flushTable();
+  flushList();
+
+  return (
+    <div 
+      className="markdown-body" 
+      style={{ 
+        padding: '16px', 
+        background: '#fff', 
+        border: '1px solid #d9d9d9', 
+        borderRadius: '6px', 
+        minHeight: '380px',
+        color: '#262626',
+        textAlign: 'left'
+      }}
+    >
+      {elements}
+    </div>
+  );
+};
 
 export default WeeklyReports
