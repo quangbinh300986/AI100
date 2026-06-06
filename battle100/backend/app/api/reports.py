@@ -868,7 +868,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                     else:
                         sales_list.append("\n本周到账回款明细：")
                     for r in receives:
-                        sales_list.append(f"  {c_idx}) 【{r['contract_name']}】收到回款金额：{float(r['receive_money'] or 0):.2f} 元，到账日期：{r['receive_date'].strftime('%m-%d') if r['receive_date'] else '—'}")
+                        sales_list.append(f"  {c_idx}) 【{r['contract_name']}】收到回款金额：{float(r['receive_money'] or 0):.2f} 万元，到账日期：{r['receive_date'].strftime('%m-%d') if r['receive_date'] else '—'}")
                         c_idx += 1
                 
                 # 4. 营销岗：客户跟进拜访 actual
@@ -1061,7 +1061,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         blocker_list.append(
                             f"  {b_idx}) 交付卡点：项目【{up['project_name']}】进度已达 {float(up['project_progress'] or 0):.1f}%"
                             f"（已达收付款触发节点 {float(up['project_progress_trigger'] or 0):.1f}%），"
-                            f"但尚未开发票（本阶段合同款项：{money_str}元）"
+                            f"但尚未开发票（本阶段合同款项：{money_str}万元）"
                         )
                         b_idx += 1
 
@@ -1083,7 +1083,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         b_date_str = urp['bill_create_date'].strftime('%Y-%m-%d') if urp['bill_create_date'] else '—'
                         blocker_list.append(
                             f"  {b_idx}) 收欠款预警：项目【{urp['project_name']}】已开发票但尚未回款到账"
-                            f"（开票日期：{b_date_str}，开票金额：{bill_money_str}元，未到账金额：{un_money_str}元）"
+                            f"（开票日期：{b_date_str}，开票金额：{bill_money_str}万元，未到账金额：{un_money_str}万元）"
                         )
                         b_idx += 1
                 
