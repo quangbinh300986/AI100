@@ -16,7 +16,8 @@ import {
   Popconfirm,
   DatePicker,
   Descriptions,
-  Checkbox
+  Checkbox,
+  Tabs
 } from 'antd'
 import {
   DeleteOutlined,
@@ -84,6 +85,20 @@ const WeeklyReports: React.FC = () => {
   const isMarketing = user?.position_type === 'marketing' || ['target_officer', 'marketing_staff', 'tech_marketing'].includes(user?.role || '');
   // 是否为全局管理权限角色
   const isGlobalUser = user?.role === 'admin' || user?.role === 'target_officer';
+
+  // 当前活动 Tab：'report' 为员工填报周报汇总，'crm' 为 CRM 业务数据汇总
+  const [activeTab, setActiveTab] = useState<'report' | 'crm'>('report')
+
+  // CRM 业务汇总相关状态
+  const [crmReports, setCrmReports] = useState<any[]>([])
+  const [crmLoading, setCrmLoading] = useState(false)
+  const [crmPage, setCrmPage] = useState(1)
+  const [crmPageSize, setCrmPageSize] = useState(10)
+  const [crmTotal, setCrmTotal] = useState(0)
+
+  // 个人 CRM 业务详情弹窗状态
+  const [crmViewVisible, setCrmViewVisible] = useState(false)
+  const [viewingCrmReport, setViewingCrmReport] = useState<any>(null)
 
   // 周复盘汇总相关状态，默认当前周
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
@@ -608,10 +623,56 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 加载选定战队与选定周一的 CRM 业务数据汇总
+  const loadCrmReports = async () => {
+    setCrmLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/crm-summary?start_date=${startDateStr}&page=${crmPage}&page_size=${crmPageSize}`
+      // 如果是非全局角色，强制传递自身的 teamId 进行校验
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        setCrmReports(data.items)
+        setCrmTotal(data.total || 0)
+      } else {
+        setCrmReports([])
+        setCrmTotal(0)
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('加载 CRM 业务数据汇总失败')
+      setCrmReports([])
+      setCrmTotal(0)
+    } finally {
+      setCrmLoading(false)
+    }
+  }
+
+  // 打开 CRM 查看详情 Modal
+  const openCrmViewModal = (record: any) => {
+    setViewingCrmReport(record)
+    setCrmViewVisible(true)
+  }
+
   useEffect(() => {
-    loadWeeklyReports()
+    if (activeTab === 'report') {
+      loadWeeklyReports()
+    } else {
+      loadCrmReports()
+    }
+  }, [activeTab, weeklyDate, weeklyTeamId, weeklyPage, weeklyPageSize, crmPage, crmPageSize])
+
+  useEffect(() => {
     checkMyReport()
-  }, [weeklyDate, weeklyTeamId, weeklyPage, weeklyPageSize])
+  }, [weeklyDate])
 
   const [mon, sun] = getMondayAndSunday(weeklyDate)
   const selectedMonday = mon.format('YYYY-MM-DD')
@@ -855,6 +916,187 @@ const WeeklyReports: React.FC = () => {
     }
   ]
 
+  // 翻译角色为中文
+  const translateRole = (roleKey: string) => {
+    const roleMap: Record<string, string> = {
+      admin: '超级管理员',
+      target_officer: '目标官',
+      digital_specialist: '数字专员',
+      team_leader: '战队长',
+      staff: '普通员工',
+      marketing_staff: '营销',
+      tech_marketing: '技术营销',
+    }
+    return roleMap[roleKey] || roleKey
+  }
+
+  const crmColumns = [
+    {
+      title: '成员姓名',
+      dataIndex: 'user_name',
+      key: 'user_name',
+      width: 100,
+      fixed: 'left' as const,
+      align: 'center' as const,
+      render: (text: string) => <strong>{text}</strong>,
+    },
+    {
+      title: '三级巴',
+      dataIndex: 'third_class_bar',
+      key: 'third_class_bar',
+      width: 150,
+      render: (text: string) => text || '—',
+    },
+    {
+      title: '归属战队',
+      dataIndex: 'team_name',
+      key: 'team_name',
+      width: 130,
+      render: (text: string) => text || '—',
+    },
+    {
+      title: '系统角色',
+      dataIndex: 'role',
+      key: 'role',
+      width: 110,
+      align: 'center' as const,
+      render: (role: string) => (
+        <Tag color={role === 'admin' ? 'red' : role === 'team_leader' ? 'orange' : 'blue'}>
+          {translateRole(role)}
+        </Tag>
+      ),
+    },
+    {
+      title: 'CRM 业务完成情况',
+      children: [
+        {
+          title: '项目交付实际 (负责在研/里程碑)',
+          dataIndex: 'delivery_actual',
+          key: 'delivery_actual',
+          width: 300,
+          render: (text: string) => (
+            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
+          ),
+        },
+        {
+          title: '销售实际完成 (合同/回款/客户拜访)',
+          dataIndex: 'sales_actual',
+          key: 'sales_actual',
+          width: 300,
+          render: (text: string) => (
+            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
+          ),
+        },
+      ],
+    },
+    {
+      title: '达成情况',
+      children: [
+        {
+          title: '项目达成率说明',
+          dataIndex: 'delivery_rate',
+          key: 'delivery_rate',
+          width: 130,
+          render: (text: string) => text ? (
+            <Tag color="cyan" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
+              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
+                {text}
+              </Text>
+            </Tag>
+          ) : '—',
+        },
+        {
+          title: '销售达成率说明',
+          dataIndex: 'sales_rate',
+          key: 'sales_rate',
+          width: 130,
+          render: (text: string) => text ? (
+            <Tag color="purple" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
+              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
+                {text}
+              </Text>
+            </Tag>
+          ) : '—',
+        },
+      ],
+    },
+    {
+      title: '工作亮点',
+      children: [
+        {
+          title: '项目亮点 (自动诊断)',
+          dataIndex: 'delivery_highlights',
+          key: 'delivery_highlights',
+          width: 250,
+          render: (text: string) => (
+            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
+          ),
+        },
+        {
+          title: '销售亮点 (自动诊断)',
+          dataIndex: 'sales_highlights',
+          key: 'sales_highlights',
+          width: 250,
+          render: (text: string) => (
+            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
+          ),
+        },
+      ],
+    },
+    {
+      title: '异常与卡点预警',
+      children: [
+        {
+          title: '项目难点 (预设立/超期/未开票/未到账)',
+          dataIndex: 'delivery_blockers',
+          key: 'delivery_blockers',
+          width: 400,
+          render: (text: string) => {
+            if (!text) return '—';
+            // 判断是否具有严重问题的警示关键字，如预设立未签、开票未到账、到期未开票
+            const isWarning = text.includes('预设立预警') || text.includes('未开发票') || text.includes('未回款') || text.includes('交付卡点') || text.includes('收付款触发节点') || text.includes('未回款到账');
+            return (
+              <div style={{ color: isWarning ? '#ff4d4f' : 'inherit', fontWeight: isWarning ? '500' : 'normal' }}>
+                <Text ellipsis={{ tooltip: text }} style={{ color: isWarning ? '#ff4d4f' : 'inherit' }}>
+                  {text}
+                </Text>
+              </div>
+            );
+          },
+        },
+        {
+          title: '销售难点 (项目终止/商务阻碍)',
+          dataIndex: 'sales_blockers',
+          key: 'sales_blockers',
+          width: 250,
+          render: (text: string) => {
+            if (!text) return '—';
+            const isWarning = text.includes('中止') || text.includes('预警') || text.includes('阻碍');
+            return (
+              <div style={{ color: isWarning ? '#faad14' : 'inherit', fontWeight: isWarning ? '500' : 'normal' }}>
+                <Text ellipsis={{ tooltip: text }} style={{ color: isWarning ? '#faad14' : 'inherit' }}>
+                  {text}
+                </Text>
+              </div>
+            );
+          },
+        },
+      ],
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 110,
+      fixed: 'right' as const,
+      align: 'center' as const,
+      render: (_: any, record: any) => (
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openCrmViewModal(record)}>
+          查看 CRM
+        </Button>
+      ),
+    },
+  ]
+
   return (
     <div style={{ padding: '24px', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
       <div style={{ padding: '20px', backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', minHeight: '70vh' }}>
@@ -894,7 +1136,7 @@ const WeeklyReports: React.FC = () => {
           </Col>
           <Col>
             <Space>
-              {weeklySelectedRowKeys.length > 0 && hasPermission('delete_weekly_report') && (
+              {activeTab === 'report' && weeklySelectedRowKeys.length > 0 && hasPermission('delete_weekly_report') && (
                 <Popconfirm
                   title={`确定要删除选中的 ${weeklySelectedRowKeys.length} 条周报吗？`}
                   onConfirm={handleWeeklyBatchDelete}
@@ -908,19 +1150,21 @@ const WeeklyReports: React.FC = () => {
               )}
               <Button
                 type="primary"
-                onClick={loadWeeklyReports}
+                onClick={activeTab === 'report' ? loadWeeklyReports : loadCrmReports}
                 icon={<SyncOutlined />}
               >
                 刷新周汇总
               </Button>
-              <Button
-                type="primary"
-                ghost
-                icon={<EditOutlined />}
-                onClick={openWeeklyWriteModal}
-              >
-                {hasMineReport ? '修改我的周报' : '填写我的周报'}
-              </Button>
+              {activeTab === 'report' && (
+                <Button
+                  type="primary"
+                  ghost
+                  icon={<EditOutlined />}
+                  onClick={openWeeklyWriteModal}
+                >
+                  {hasMineReport ? '修改我的周报' : '填写我的周报'}
+                </Button>
+              )}
             </Space>
           </Col>
           <Col style={{ marginLeft: 'auto' }}>
@@ -930,30 +1174,70 @@ const WeeklyReports: React.FC = () => {
           </Col>
         </Row>
 
-        {/* 汇总大表 */}
-        <Table
-          dataSource={weeklyReports}
-          columns={weeklyColumns}
-          loading={weeklyLoading}
-          rowKey="id"
-          bordered
-          rowSelection={{
-            selectedRowKeys: weeklySelectedRowKeys,
-            onChange: (keys: React.Key[]) => setWeeklySelectedRowKeys(keys)
-          }}
-          pagination={{
-            current: weeklyPage,
-            pageSize: weeklyPageSize,
-            total: weeklyTotal,
-            onChange: (p, ps) => {
-              setWeeklyPage(p)
-              setWeeklyPageSize(ps)
+        {/* 双维度汇总 Tabs */}
+        <Tabs
+          type="card"
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as 'report' | 'crm')}
+          style={{ marginBottom: 16 }}
+          items={[
+            {
+              key: 'report',
+              label: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>📝 个人周复盘填报汇总</span>,
+              children: (
+                <Table
+                  dataSource={weeklyReports}
+                  columns={weeklyColumns}
+                  loading={weeklyLoading}
+                  rowKey="id"
+                  bordered
+                  rowSelection={{
+                    selectedRowKeys: weeklySelectedRowKeys,
+                    onChange: (keys: React.Key[]) => setWeeklySelectedRowKeys(keys)
+                  }}
+                  pagination={{
+                    current: weeklyPage,
+                    pageSize: weeklyPageSize,
+                    total: weeklyTotal,
+                    onChange: (p, ps) => {
+                      setWeeklyPage(p)
+                      setWeeklyPageSize(ps)
+                    },
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条数据`
+                  }}
+                  scroll={{ x: 3100 }}
+                  locale={{ emptyText: '该周内此小组/战队暂无提交的周复盘数据' }}
+                />
+              )
             },
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条数据`
-          }}
-          scroll={{ x: 3100 }}
-          locale={{ emptyText: '该周内此小组/战队暂无提交的周复盘数据' }}
+            {
+              key: 'crm',
+              label: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>⚡ CRM 业务数据智能汇总</span>,
+              children: (
+                <Table
+                  dataSource={crmReports}
+                  columns={crmColumns}
+                  loading={crmLoading}
+                  rowKey="user_id"
+                  bordered
+                  pagination={{
+                    current: crmPage,
+                    pageSize: crmPageSize,
+                    total: crmTotal,
+                    onChange: (p, ps) => {
+                      setCrmPage(p)
+                      setCrmPageSize(ps)
+                    },
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条数据`
+                  }}
+                  scroll={{ x: 2500 }}
+                  locale={{ emptyText: '该周内此小组/战队暂无匹配的 CRM 业务数据' }}
+                />
+              )
+            }
+          ]}
         />
 
         {/* 周报只读查看Modal弹窗 */}
@@ -1118,6 +1402,87 @@ const WeeklyReports: React.FC = () => {
                   </Col>
                 )}
               </Row>
+            </div>
+          )}
+        </Modal>
+
+        {/* 成员 CRM 业务详情 Modal */}
+        <Modal
+          title={<strong>🔍 查看成员 CRM 业务实时汇总（成员：{viewingCrmReport?.user_name} - 周范围：{selectedMonday} ~ {selectedSunday}）</strong>}
+          open={crmViewVisible}
+          onCancel={() => setCrmViewVisible(false)}
+          footer={[
+            <Button key="close" type="primary" onClick={() => setCrmViewVisible(false)}>
+              关闭
+            </Button>
+          ]}
+          width={800}
+          centered
+          destroyOnHidden
+        >
+          {viewingCrmReport && (
+            <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px' }}>
+              <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
+                <Descriptions.Item label="成员姓名"><strong>{viewingCrmReport.user_name}</strong></Descriptions.Item>
+                <Descriptions.Item label="岗位类别">
+                  <Tag color={viewingCrmReport.position_type === 'marketing' ? 'blue' : 'green'}>
+                    {viewingCrmReport.position_type === 'marketing' ? '营销岗' : '交付及其他'}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="三级巴">
+                  {viewingCrmReport.third_class_bar || '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="归属战队">
+                  {viewingCrmReport.team_name || '—'}
+                </Descriptions.Item>
+              </Descriptions>
+
+              {/* 区分营销岗位与交付岗位 */}
+              {viewingCrmReport.position_type === 'marketing' ? (
+                <>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#722ed1' }}>🔥 当周销售实际完成 (CRM)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#f6ffed' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 80, fontFamily: 'monospace' }}>{viewingCrmReport.sales_actual || '暂无数据'}</div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#722ed1' }}>📈 月度指标达成率 (CRM)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#e6f7ff' }}>
+                    <div><strong>{viewingCrmReport.sales_rate || '暂无统计指标'}</strong></div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#722ed1' }}>✨ 当周工作亮点 (CRM 诊断)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#fffb8f' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50 }}>{viewingCrmReport.sales_highlights || '正常无大额签约/高频客户动作'}</div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#722ed1' }}>⚠️ 销售卡点与异常预警 (CRM 异常)</div>
+                  <Card size="small" style={{ marginBottom: 16, border: '1px solid #ffe58f' }} headStyle={{ background: '#fffbe6' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50, color: viewingCrmReport.sales_blockers?.includes('1. 目前') ? 'inherit' : '#d46b08' }}>{viewingCrmReport.sales_blockers || '无异常'}</div>
+                  </Card>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>🔥 当周项目交付实际 (CRM)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#f6ffed' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 80, fontFamily: 'monospace' }}>{viewingCrmReport.delivery_actual || '暂无数据'}</div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>📈 月度指标达成率 (CRM)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#e6f7ff' }}>
+                    <div><strong>{viewingCrmReport.delivery_rate || '暂无统计指标'}</strong></div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>✨ 当周工作亮点 (CRM 诊断)</div>
+                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#fffb8f' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50 }}>{viewingCrmReport.delivery_highlights || '开发交付无积压'}</div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>⚠️ 项目卡点与异常预警 (包含预设立、已到节点未开票、已开票未回款等)</div>
+                  <Card size="small" style={{ marginBottom: 16, border: '1px solid #ffa39e' }} headStyle={{ background: '#fff1f0' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50, color: viewingCrmReport.delivery_blockers?.includes('1. 本周项目') ? 'inherit' : '#cf1322', fontWeight: viewingCrmReport.delivery_blockers?.includes('1. 本周项目') ? 'normal' : '500' }}>{viewingCrmReport.delivery_blockers || '无异常'}</div>
+                  </Card>
+                </>
+              )}
             </div>
           )}
         </Modal>

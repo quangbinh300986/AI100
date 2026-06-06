@@ -175,3 +175,31 @@ class WeeklyReportListResponse(BaseModel):
     total: int
     items: list[WeeklyReportResponse]
 
+
+class WeeklyCrmSummaryItem(BaseModel):
+    """个人周度 CRM 数据汇总单条记录"""
+    user_id: int
+    user_name: str
+    third_class_bar: Optional[str] = None
+    team_name: Optional[str] = None
+    position_type: Optional[str] = None
+    role: str
+    
+    # 提取的 CRM 业务数据
+    delivery_actual: Optional[str] = None
+    sales_actual: Optional[str] = None
+    delivery_rate: Optional[str] = None
+    sales_rate: Optional[str] = None
+    delivery_highlights: Optional[str] = None
+    sales_highlights: Optional[str] = None
+    delivery_blockers: Optional[str] = None
+    sales_blockers: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WeeklyCrmSummaryListResponse(BaseModel):
+    """CRM 数据汇总列表分页返回Schema"""
+    total: int
+    items: list[WeeklyCrmSummaryItem]
+

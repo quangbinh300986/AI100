@@ -25,6 +25,8 @@ from app.schemas.report import (
     WeeklyReportUpdate,
     WeeklyReportResponse,
     WeeklyReportListResponse,
+    WeeklyCrmSummaryListResponse,
+    WeeklyCrmSummaryItem,
 )
 from fastapi import Request
 from app.api.deps import get_current_user, require_permission
@@ -1223,6 +1225,108 @@ async def get_weekly_reports_summary(
         ))
         
     return WeeklyReportListResponse(total=total, items=items)
+
+
+@router.get("/weekly/crm-summary", response_model=WeeklyCrmSummaryListResponse, summary="获取全员/小组成员 CRM 业务数据汇总")
+async def get_weekly_reports_crm_summary(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """
+    联动 CRM 系统，根据当前登录用户的角色，智能并发拉取可见范围内所有成员的当周 CRM 业绩与进度。
+    1. 系统管理员和目标官可看全员（支持按战队筛选）。
+    2. 战队长可看同三级巴的队员，以及同战队成员。
+    3. 普通员工可看同三级巴或同战队成员。
+    """
+    from sqlalchemy import or_, and_
+    from app.models.user import User as DbUser, PositionType
+    from app.models.organization import Team as DbTeam
+    from fastapi.concurrency import run_in_threadpool
+    import asyncio
+
+    # 1. 确定当前用户可看的人员范围
+    stmt = select(
+        DbUser.id,
+        DbUser.name,
+        DbUser.third_class_bar,
+        DbUser.position_type,
+        DbUser.role,
+        DbTeam.name.label("team_name")
+    ).outerjoin(DbTeam, DbUser.team_id == DbTeam.id).where(DbUser.is_active == True)
+
+    count_stmt = select(func.count(DbUser.id)).where(DbUser.is_active == True)
+
+    if current_user.role in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value]:
+        # 管理员和目标官：可看所有人。支持前端筛选 team_id
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+            count_stmt = count_stmt.where(DbUser.team_id == team_id)
+    else:
+        # 非全局角色（包括战队长、普通员工）：只能看同战队或同三级巴成员，以及当前用户自己
+        conditions = [DbUser.id == current_user.id]
+        if current_user.team_id is not None:
+            conditions.append(DbUser.team_id == current_user.team_id)
+        if current_user.third_class_bar:
+            conditions.append(and_(
+                DbUser.third_class_bar == current_user.third_class_bar,
+                DbUser.third_class_bar != None,
+                DbUser.third_class_bar != ""
+            ))
+        stmt = stmt.where(or_(*conditions))
+        count_stmt = count_stmt.where(or_(*conditions))
+        
+        # 即使非全局角色传入了 team_id，我们为了安全也可以再次过滤
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+            count_stmt = count_stmt.where(DbUser.team_id == team_id)
+
+    # 2. 统计总数
+    total_res = await db.execute(count_stmt)
+    total = total_res.scalar() or 0
+
+    # 3. 分页并按姓名排序
+    stmt = stmt.order_by(DbUser.name.asc()).offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    # 4. 线程池并发执行各个用户的 CRM 数据拉取
+    async def fetch_user_crm_data(user_row):
+        is_marketing = (
+            user_row.position_type == PositionType.MARKETING 
+            or user_row.role in [UserRole.TARGET_OFFICER, UserRole.MARKETING_STAFF, UserRole.TECH_MARKETING]
+        )
+        # 调用跨库查询函数
+        crm_data = await run_in_threadpool(
+            sync_extract_crm_data, 
+            user_row.name,
+            start_date, 
+            is_marketing
+        )
+        return WeeklyCrmSummaryItem(
+            user_id=user_row.id,
+            user_name=user_row.name,
+            third_class_bar=user_row.third_class_bar,
+            team_name=user_row.team_name,
+            position_type=user_row.position_type.value if user_row.position_type else None,
+            role=user_row.role.value if hasattr(user_row.role, "value") else str(user_row.role),
+            delivery_actual=crm_data.get("delivery_actual"),
+            sales_actual=crm_data.get("sales_actual"),
+            delivery_rate=crm_data.get("delivery_rate"),
+            sales_rate=crm_data.get("sales_rate"),
+            delivery_highlights=crm_data.get("delivery_highlights"),
+            sales_highlights=crm_data.get("sales_highlights"),
+            delivery_blockers=crm_data.get("delivery_blockers"),
+            sales_blockers=crm_data.get("sales_blockers")
+        )
+
+    tasks = [fetch_user_crm_data(row) for row in rows]
+    items = await asyncio.gather(*tasks) if tasks else []
+
+    return WeeklyCrmSummaryListResponse(total=total, items=items)
 
 
 @router.delete("/weekly/{report_id}", summary="删除指定周报")
