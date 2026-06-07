@@ -67,6 +67,7 @@ const EVENT_TYPE_OPTIONS = [
   { label: '已完成合同签订 (90%)', value: 'contract_signed' },
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
+  { label: '驻点快报', value: 'station_report' },
   { label: '自定义播报', value: 'custom' },
 ]
 
@@ -918,6 +919,13 @@ const Reports: React.FC = () => {
         payload.happiness_score = values.happiness_score
         payload.project_name = values.project_name || '未定'
       }
+      if (editEventType === 'station_report') {
+        payload.project_name = values.project_name
+        payload.station_location = values.station_location
+        payload.station_category = values.station_category
+        payload.summary = values.summary
+        payload.is_urgent = !!values.is_urgent
+      }
 
       if (['contract_signed', 'happiness', 'triangle'].includes(editEventType)) {
         payload.attachment_urls = attachment_urls.length > 0 ? attachment_urls : null
@@ -962,6 +970,9 @@ const Reports: React.FC = () => {
         } else if (val === 'happiness') {
           label = '客户幸福动作'
           color = 'purple'
+        } else if (val === 'station_report') {
+          label = '驻点快报'
+          color = 'cyan'
         }
         return <Tag color={color} style={{ fontWeight: 'bold', padding: '3px 8px', borderRadius: 4 }}>{label}</Tag>
       }
@@ -1165,12 +1176,17 @@ const Reports: React.FC = () => {
                 triangle_result: matchTriangleResult,
                 customer_feedback: matchCustomerFeedback,
                 // 幸福动作回填
-                project_name: record.project_name || '未定',
+                project_name: record.event_type === 'happiness' ? (record.project_name || '未定') : (record.project_name || ''),
                 happiness_score: matchHappinessScore,
                 selected_standards: initialSelectedStandards,
                 happiness_result: matchTriangleResult,
                 happiness_feedback: matchCustomerFeedback,
-                recommend_action: matchRecommendAction
+                recommend_action: matchRecommendAction,
+                // 驻点播报回填
+                station_location: (record as any).station_location || '',
+                station_category: (record as any).station_category || '',
+                summary: (record as any).summary || '',
+                is_urgent: (record as any).is_urgent || false
               })
               setEditVisible(true)
             }}
@@ -1927,6 +1943,62 @@ const Reports: React.FC = () => {
           >
             <Input.TextArea rows={4} />
           </Form.Item>
+
+          {/* 驻点人员播报的专属字段 */}
+          {editEventType === 'station_report' && (
+            <>
+              <Form.Item
+                name="project_name"
+                label="播报标题"
+                rules={[{ required: true, message: '请输入播报标题' }]}
+              >
+                <Input placeholder="请输入播报标题" />
+              </Form.Item>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="station_location"
+                    label="驻点地点"
+                    rules={[{ required: true, message: '请输入驻点地点' }]}
+                  >
+                    <Input placeholder="如: 广州/深圳/茂名" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="station_category"
+                    label="驻点播报分类"
+                    rules={[{ required: true, message: '请选择驻点播报分类' }]}
+                  >
+                    <Select placeholder="请选择分类">
+                      <Select.Option value="policy">🏛️ 最新政策</Select.Option>
+                      <Select.Option value="deployment">📋 重大会议部署</Select.Option>
+                      <Select.Option value="lead">🎯 潜在项目线索</Select.Option>
+                      <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item
+                name="summary"
+                label="内容摘要（选填，不填则根据正文自动生成前150字）"
+              >
+                <Input.TextArea rows={2} placeholder="用于钉钉消息推送预览，限150字以内" maxLength={150} />
+              </Form.Item>
+
+              <Form.Item
+                name="is_urgent"
+                label="是否紧急快报"
+                valuePropName="checked"
+              >
+                <Checkbox style={{ color: '#ff4d4f' }}>
+                  🚨 紧急播报（勾选后将通过钉钉群发并强提醒 @所有人 ！）
+                </Checkbox>
+              </Form.Item>
+            </>
+          )}
 
           {/* 前三种 (lead_25, lead_75, contract_signed) 显示和 CRM 潜力库选择下拉框 */}
           {['lead_25', 'lead_75', 'contract_signed'].includes(editEventType) && (

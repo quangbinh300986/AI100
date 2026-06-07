@@ -423,6 +423,12 @@ class BroadcastUpdate(BaseModel):
     project_name: Optional[str] = None
     copartners: Optional[list[str]] = None
     marketing_copartners: Optional[list[str]] = None
+    
+    # 驻点播报新增字段支持
+    station_category: Optional[str] = None
+    station_location: Optional[str] = None
+    summary: Optional[str] = None
+    is_urgent: Optional[bool] = None
 
 
 class BatchDeleteBroadcastRequest(BaseModel):
@@ -822,6 +828,14 @@ async def update_broadcast(
         event.push_channel = broadcast_in.push_channel
     if broadcast_in.project_name is not None:
         event.project_name = broadcast_in.project_name
+    if broadcast_in.station_category is not None:
+        event.station_category = broadcast_in.station_category
+    if broadcast_in.station_location is not None:
+        event.station_location = broadcast_in.station_location
+    if broadcast_in.summary is not None:
+        event.summary = broadcast_in.summary
+    if broadcast_in.is_urgent is not None:
+        event.is_urgent = broadcast_in.is_urgent
     
     # 前三种和 CRM 关联，后两种及自定义不关联
     if event.event_type in ["contract_signed", "lead_75", "lead_25"]:
