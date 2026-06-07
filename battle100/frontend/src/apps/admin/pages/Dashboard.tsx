@@ -14,6 +14,9 @@ import {
   UserOutlined,
   FileTextOutlined,
   PlusOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  LockOutlined,
   TrophyOutlined,
   SearchOutlined,
   TeamOutlined,
@@ -1558,9 +1561,70 @@ const Dashboard: React.FC = () => {
     loadUsersList()
   }, [])
 
+  const handleFetchPassword = async (id: number) => {
+    try {
+      const res = await get<any>(`/broadcast/${id}/password`)
+      const data = res?.data ? res.data : res
+      if (data && data.password) {
+        Modal.info({
+          title: '🔑 附件解压密码',
+          content: (
+            <div>
+              <p>解压密码为：<strong style={{ fontSize: 16, color: '#722ed1' }}>{data.password}</strong></p>
+              <p style={{ color: '#8c8c8c', fontSize: 12 }}>请复制密码并妥善保管，勿随意转发。</p>
+            </div>
+          ),
+          okText: '确定'
+        })
+      } else {
+        message.error('获取密码失败')
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || '权限不足或网络异常'
+      message.error(`获取密码失败: ${errMsg}`)
+    }
+  }
+
   // 真正执行发布广播的底层方法，所有注释采用中文
   const executePublishBroadcast = async (values: any) => {
     try {
+      if (values.actionType === 'station_report') {
+        const formData = new FormData()
+        formData.append('station_category', values.stationCategory)
+        formData.append('station_location', values.stationLocation)
+        formData.append('title', values.title)
+        formData.append('content', values.content)
+        if (values.summary) {
+          formData.append('summary', values.summary)
+        }
+        formData.append('is_urgent', String(!!values.isUrgent))
+        formData.append('push_channel', 'all')
+        
+        if (fileList && fileList.length > 0) {
+          fileList.forEach((file: any) => {
+            if (file.originFileObj) {
+              formData.append('files', file.originFileObj)
+            } else if (file.raw) {
+              formData.append('files', file.raw)
+            }
+          })
+        }
+        
+        const res = await post<any>('/broadcast/station-report', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        
+        if (res) {
+          message.success('驻点快报发布成功，大屏端与钉钉已同步推送且附件已加密！')
+          setBroadcastModalVisible(false)
+          setCurrentActionType('')
+          setFileList([])
+          broadcastForm.resetFields()
+          loadData()
+        }
+        return
+      }
+
       let deliveryAllocations: any[] = []
       let marketingAllocations: any[] = []
 
@@ -1696,6 +1760,11 @@ const Dashboard: React.FC = () => {
 
   // 提交战报广播的前置检测与拦截校验方法
   const handlePublishBroadcast = async (values: any) => {
+    if (values.actionType === 'station_report') {
+      await executePublishBroadcast(values)
+      return
+    }
+
     // 1. 进行业绩比例校验等前置校验，防止格式不正确时仍弹框
     if (values.actionType === 'contract') {
       const contractAmt = parseFloat(values.expectMoney || 0)
@@ -2673,7 +2742,8 @@ const Dashboard: React.FC = () => {
                         color={
                           item.type === 'contract' ? 'error' : 
                           item.type === 'achievement' ? 'success' : 
-                          item.type === 'milestone' ? 'warning' : 'processing'
+                          item.type === 'milestone' ? 'warning' : 
+                          item.type === 'station_report' ? 'magenta' : 'processing'
                         }
                         style={{ 
                           whiteSpace: 'normal', 
@@ -2690,13 +2760,37 @@ const Dashboard: React.FC = () => {
                         {
                           item.type === 'contract' ? '合同新签' : 
                           item.type === 'achievement' ? '有效线索' : 
-                          item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : '售前铁三角联动'
+                          item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : 
+                          item.type === 'station_report' ? '驻点快报' : '售前铁三角联动'
                         }
                       </Tag>
                     </div>
                     {/* 正文文本，支持长文字自动折行 */}
                     <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                       <Text style={{ fontSize: 13, wordBreak: 'break-all', lineHeight: '1.5' }}>{item.content}</Text>
+                      {item.attachment_urls && item.attachment_urls.length > 0 && (
+                        <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <Button 
+                            type="link" 
+                            size="small" 
+                            icon={<DownloadOutlined />}
+                            href={item.attachment_urls[0].url} 
+                            target="_blank"
+                            style={{ padding: 0 }}
+                          >
+                            下载加密附件
+                          </Button>
+                          <Button 
+                            type="link" 
+                            size="small" 
+                            icon={<LockOutlined />}
+                            onClick={() => handleFetchPassword(item.id)}
+                            style={{ padding: 0, color: '#722ed1' }}
+                          >
+                            获取解压密码
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {/* 右侧时间，确保绝对不折行 */}
@@ -2736,8 +2830,88 @@ const Dashboard: React.FC = () => {
               <Select.Option value="contract">已完成合同签订（双方盖章）</Select.Option>
               <Select.Option value="triangle">铁三角联动</Select.Option>
               <Select.Option value="happiness">客户幸福动作</Select.Option>
+              <Select.Option value="station_report">驻点人员播报</Select.Option>
             </Select>
           </Form.Item>
+
+          {currentActionType === 'station_report' && (
+            <>
+              <Form.Item
+                name="stationLocation"
+                label="驻点地点"
+                rules={[{ required: true, message: '请输入驻点地点（如：广州、茂名）' }]}
+              >
+                <Input placeholder="请输入驻点地点，例如：茂名、湛江、广州" />
+              </Form.Item>
+
+              <Form.Item
+                name="stationCategory"
+                label="驻点播报分类"
+                rules={[{ required: true, message: '请选择驻点播报分类' }]}
+              >
+                <Select placeholder="请选择分类">
+                  <Select.Option value="policy">🏛️ 最新政策</Select.Option>
+                  <Select.Option value="deployment">📋 重大会议部署</Select.Option>
+                  <Select.Option value="lead">🎯 潜在项目线索</Select.Option>
+                  <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
+                </Select>
+              </Form.Item>
+
+              <Form.Item
+                name="title"
+                label="播报标题"
+                rules={[{ required: true, message: '请输入播报标题' }]}
+              >
+                <Input placeholder="请输入播报标题" />
+              </Form.Item>
+
+              <Form.Item
+                name="content"
+                label="正文内容"
+                rules={[{ required: true, message: '请输入正文内容' }]}
+              >
+                <Input.TextArea rows={4} placeholder="请输入具体的播报正文内容..." />
+              </Form.Item>
+
+              <Form.Item
+                name="summary"
+                label="内容摘要（选填，不填则根据正文自动生成前150字）"
+              >
+                <Input.TextArea rows={2} placeholder="用于钉钉消息推送预览，限150字以内" maxLength={150} />
+              </Form.Item>
+
+              <Form.Item
+                name="isUrgent"
+                label="是否紧急快报"
+                valuePropName="checked"
+              >
+                <Checkbox style={{ color: '#ff4d4f' }}>
+                  🚨 紧急播报（勾选后将通过钉钉群发并强提醒 @所有人 ！）
+                </Checkbox>
+              </Form.Item>
+
+              <Form.Item label="📎 上传附件文件（支持多文件，单次上传及打包后总大小限 50MB 以内）">
+                <Upload
+                  beforeUpload={() => false}
+                  fileList={fileList}
+                  onChange={({ fileList }) => {
+                    const totalSize = fileList.reduce((acc, f) => acc + (f.size || 0), 0)
+                    if (totalSize > 50 * 1024 * 1024) {
+                      message.error('文件总大小不能超过 50MB！')
+                      fileList.pop()
+                    }
+                    setFileList([...fileList])
+                  }}
+                  multiple
+                >
+                  <Button icon={<UploadOutlined />}>选择文件（Word/PDF/ZIP/图片等）</Button>
+                </Upload>
+                <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                  注意：Supabase 免费版单文件限制 50MB，文件将通过 AES-256 安全加密打包
+                </div>
+              </Form.Item>
+            </>
+          )}
 
           {['lead_25', 'lead_75', 'contract'].includes(currentActionType) && (
             <Form.Item
@@ -3213,13 +3387,15 @@ const Dashboard: React.FC = () => {
             </Form.Item>
           )}
 
-          <Form.Item
-            name="content"
-            label="最终生成战报文本"
-            rules={[{ required: true, message: '战报内容不能为空' }, { max: 1000, message: '战报文本不能多于1000字' }]}
-          >
-            <Input.TextArea rows={4} placeholder="选择动作填入要素后自动生成，也可在此手动微调" />
-          </Form.Item>
+          {currentActionType !== 'station_report' && (
+            <Form.Item
+              name="content"
+              label="最终生成战报文本"
+              rules={[{ required: true, message: '战报内容不能为空' }, { max: 1000, message: '战报文本不能多于1000字' }]}
+            >
+              <Input.TextArea rows={4} placeholder="选择动作填入要素后自动生成，也可在此手动微调" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 

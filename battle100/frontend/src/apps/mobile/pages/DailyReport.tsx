@@ -15,6 +15,7 @@ const ACTION_TYPE_OPTIONS = [
   { label: '已完成合同签订 (90%)', value: 'contract' },
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
+  { label: '驻点人员播报', value: 'station_report' },
 ]
 
 export default function DailyReport() {
@@ -93,6 +94,9 @@ export default function DailyReport() {
 
   // 合同/幸福动作照片附件
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>([])
+
+  // 驻点播报专用附件文件状态
+  const [stationFiles, setStationFiles] = useState<File[]>([])
 
   const customerSearchTimerRef = useRef<any>(null)
   
@@ -215,6 +219,8 @@ export default function DailyReport() {
       loadCrmProjects(25)
     } else if (val === 'happiness') {
       loadCrmProjectsSearch()
+    } else if (val === 'station_report') {
+      setStationFiles([])
     }
   }
 
@@ -420,6 +426,60 @@ export default function DailyReport() {
 
   // 提交接口
   const handleSubmit = async () => {
+    if (actionType === 'station_report') {
+      if (!formData.projectName?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入标题' })
+        return
+      }
+      if (!formData.content?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入正文内容' })
+        return
+      }
+      if (!formData.customerName?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入驻点地点' })
+        return
+      }
+      if (!formData.actionDescription?.trim()) {
+        Toast.show({ icon: 'fail', content: '请选择驻点播报分类' })
+        return
+      }
+      
+      setSubmitting(true)
+      try {
+        const formDataPayload = new FormData()
+        formDataPayload.append('station_category', formData.actionDescription)
+        formDataPayload.append('station_location', formData.customerName)
+        formDataPayload.append('title', formData.projectName)
+        formDataPayload.append('content', formData.content)
+        if (formData.recommendAction) {
+          formDataPayload.append('summary', formData.recommendAction)
+        }
+        formDataPayload.append('is_urgent', String(formData.happinessScore === 100))
+        formDataPayload.append('push_channel', 'all')
+        
+        if (stationFiles && stationFiles.length > 0) {
+          stationFiles.forEach((file) => {
+            formDataPayload.append('files', file)
+          })
+        }
+        
+        const res = await post<any>('/broadcast/station-report', formDataPayload, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        if (res) {
+          setSubmitted(true)
+          Toast.show({ icon: 'success', content: '驻点快报发布成功！' })
+        }
+      } catch (err: any) {
+        console.error(err)
+        const detail = err?.response?.data?.detail || '网络异常'
+        Toast.show({ icon: 'fail', content: `发布失败: ${detail}` })
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
     if (!formData.content.trim()) {
       Toast.show({ icon: 'fail', content: '请填写战报播报内容' })
       return
@@ -636,6 +696,145 @@ export default function DailyReport() {
 
       {/* 动态表单区域 */}
       <Card style={{ marginBottom: 12, borderRadius: 12, padding: '4px' }}>
+        {/* 驻点人员播报 */}
+        {actionType === 'station_report' && (
+          <div style={{ padding: '8px' }}>
+            <div style={{ borderBottom: '1px solid #eee', paddingBottom: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 'bold', color: '#1677ff' }}>
+                🏛️ 驻点人员播报内容填报
+              </span>
+            </div>
+            
+            <Form layout="vertical">
+              <Form.Item label="驻点地点 (必填)">
+                <Input
+                  value={formData.customerName}
+                  onChange={(val) => setFormData(prev => ({ ...prev, customerName: val }))}
+                  placeholder="请输入驻点地点，例如：茂名、广州"
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#fff'
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item label="驻点播报分类 (必填)">
+                <Selector
+                  options={[
+                    { label: '🏛️ 最新政策', value: 'policy' },
+                    { label: '📋 会议部署', value: 'deployment' },
+                    { label: '🎯 项目线索', value: 'lead' },
+                    { label: '🔍 情报信息', value: 'intelligence' }
+                  ]}
+                  value={[formData.actionDescription]}
+                  onChange={(arr) => setFormData(prev => ({ ...prev, actionDescription: arr[0] || '' }))}
+                  style={{
+                    '--font-size': '12px',
+                    '--active-background-color': '#e6f7ff',
+                    '--active-border-color': '#1677ff'
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item label="播报标题 (必填)">
+                <Input
+                  value={formData.projectName}
+                  onChange={(val) => setFormData(prev => ({ ...prev, projectName: val }))}
+                  placeholder="请在此输入简要的标题"
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#fff'
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item label="正文内容 (必填)">
+                <TextArea
+                  value={formData.content}
+                  onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
+                  placeholder="请输入具体政策或线索等播报正文内容..."
+                  rows={4}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#fff'
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item label="内容摘要 (选填，不填则自动生成)">
+                <TextArea
+                  value={formData.recommendAction}
+                  onChange={(val) => setFormData(prev => ({ ...prev, recommendAction: val }))}
+                  placeholder="用于钉钉推送预览摘要，限150字以内"
+                  rows={2}
+                  maxLength={150}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#fff'
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item label="紧急程度">
+                <Checkbox
+                  checked={formData.happinessScore === 100}
+                  onChange={(val) => setFormData(prev => ({ ...prev, happinessScore: val ? 100 : 20 }))}
+                  style={{ fontSize: 13, color: '#ff4d4f' }}
+                >
+                  🚨 紧急播报（群内强提醒 @所有人 ！）
+                </Checkbox>
+              </Form.Item>
+
+              <Form.Item label="📎 上传附件（可多选，单次及打包总大小不能超过 50MB）">
+                <div style={{ padding: '12px 4px', border: '1px dashed #ccc', borderRadius: 6, textAlign: 'center', background: '#fff', cursor: 'pointer', position: 'relative' }}>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || [])
+                      const totalSize = files.reduce((acc, f) => acc + f.size, 0)
+                      if (totalSize > 50 * 1024 * 1024) {
+                        Toast.show({ icon: 'fail', content: '所选文件总大小不能超过 50MB！' })
+                        e.target.value = ''
+                        return
+                      }
+                      setStationFiles(files)
+                    }}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 13, color: '#666' }}>
+                    {stationFiles.length > 0 ? `已选中 ${stationFiles.length} 个文件` : '点击选择文件（支持Word、PDF、ZIP等）'}
+                  </span>
+                </div>
+                {stationFiles.length > 0 && (
+                  <div style={{ marginTop: 8, maxHeight: 100, overflowY: 'auto', background: '#fff', borderRadius: 6, padding: '4px 8px' }}>
+                    {stationFiles.map((f, i) => (
+                      <div key={i} style={{ fontSize: 11, color: '#666', padding: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        📄 {f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
+                  注意：附件包将使用 AES-256 强加密，密码直接发布在群里
+                </div>
+              </Form.Item>
+            </Form>
+          </div>
+        )}
+
         {/* 前三种动作 (商机联动) */}
         {['lead_25', 'lead_75', 'contract'].includes(actionType) && (
           <div>
@@ -1466,24 +1665,26 @@ export default function DailyReport() {
       </Card>
 
       {/* 战报内容审核修改 */}
-      <Card style={{ marginBottom: 16, borderRadius: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
-          📣 实时战报广播文本（可做微调）
-        </div>
-        <TextArea
-          placeholder="关联选择相应商机或客户后将自动生成广播战报词..."
-          rows={3}
-          value={formData.content}
-          onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
-          style={{
-            fontSize: 13,
-            background: '#fafafa',
-            borderRadius: 8,
-            padding: 8,
-            border: '1px solid #f0f0f0'
-          }}
-        />
-      </Card>
+      {actionType !== 'station_report' && (
+        <Card style={{ marginBottom: 16, borderRadius: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+            📣 实时战报广播文本（可做微调）
+          </div>
+          <TextArea
+            placeholder="关联选择相应商机或客户后将自动生成广播战报词..."
+            rows={3}
+            value={formData.content}
+            onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
+            style={{
+              fontSize: 13,
+              background: '#fafafa',
+              borderRadius: 8,
+              padding: 8,
+              border: '1px solid #f0f0f0'
+            }}
+          />
+        </Card>
+      )}
 
       {/* 提交按钮 */}
       <Button

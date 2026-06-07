@@ -411,6 +411,115 @@ class DingTalkClient:
                 
         return None
 
+    async def send_station_report_actioncard(
+        self,
+        title: str,
+        category: str,
+        location: str,
+        summary: str,
+        download_url: Optional[str],
+        password: Optional[str],
+        is_urgent: bool = False,
+        detail_url: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        发送驻点播报的 ActionCard 消息到钉钉群，支持加签验证和紧急@所有人
+        """
+        webhook_url = settings.DINGTALK_WEBHOOK_URL
+        if not webhook_url:
+            return None
+
+        import logging
+        import time
+        import hmac
+        import hashlib
+        import base64
+        import urllib.parse
+        
+        logger = logging.getLogger("battle100")
+        try:
+            # 子分类名称映射
+            category_names = {
+                "policy": "🏛️ 最新政策",
+                "deployment": "📋 重大会议部署",
+                "lead": "🎯 潜在项目线索",
+                "intelligence": "🔍 重大情报信息",
+            }
+            category_label = category_names.get(category, "📢 驻点人员播报")
+            
+            urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
+            at_text = " @所有人" if is_urgent else ""
+            
+            # 构建文本内容，将解压密码直接展示在群消息中
+            markdown_text = f"### {urgent_tag}{category_label}{at_text}\n\n"
+            markdown_text += f"---\n"
+            markdown_text += f"* **驻点地点**：{location}\n"
+            markdown_text += f"* **播报标题**：{title}\n"
+            markdown_text += f"---\n\n"
+            markdown_text += f"> {summary.replace('\n', '  \n> ')}\n\n"
+            markdown_text += f"---\n"
+            
+            if download_url:
+                markdown_text += f"* **附件状态**：🔑 已进行 AES-256 安全加密打包\n"
+                markdown_text += f"* **解压密码**：**{password}** (下载后使用密码解压)\n"
+            else:
+                markdown_text += f"* **附件状态**：无附件\n"
+
+            # 签名逻辑
+            secret = settings.DINGTALK_WEBHOOK_SECRET
+            url = webhook_url
+            if secret:
+                timestamp = str(round(time.time() * 1000))
+                secret_enc = secret.encode('utf-8')
+                string_to_sign = f"{timestamp}\n{secret}"
+                string_to_sign_enc = string_to_sign.encode('utf-8')
+                hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
+                sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+                if "?" in url:
+                    url = f"{url}&timestamp={timestamp}&sign={sign}"
+                else:
+                    url = f"{url}?timestamp={timestamp}&sign={sign}"
+
+            btns = []
+            if download_url:
+                btns.append({
+                    "title": "📥 下载加密附件",
+                    "actionURL": download_url
+                })
+            if detail_url:
+                btns.append({
+                    "title": "📄 查看网页详情",
+                    "actionURL": detail_url
+                })
+
+            json_data = {
+                "msgtype": "actionCard",
+                "actionCard": {
+                    "title": f"{urgent_tag}{title}",
+                    "text": markdown_text,
+                    "btnOrientation": "1",
+                    "btns": btns
+                }
+            }
+            
+            if is_urgent:
+                json_data["at"] = {
+                    "isAtAll": True
+                }
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=json_data)
+                data = response.json()
+                
+            if data.get("errcode") == 0 or data.get("status") == "ok":
+                return "webhook_success"
+            else:
+                logger.error(f"发送 ActionCard Webhook 失败: {data.get('errmsg') or data}")
+                return None
+        except Exception as e:
+            logger.error(f"send_station_report_actioncard 发生异常: {e}")
+            return None
+
     async def get_department_users(self, dept_id: int = 1) -> list[dict]:
         """
         获取部门用户列表

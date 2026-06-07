@@ -45,6 +45,13 @@ async def init_db():
         # 自愈式升级：自动在 report_details 和 broadcast_events 中补充 project_name 字段列
         await conn.execute(text("ALTER TABLE report_details ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
         await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
+        # 自愈式升级：自动在 broadcast_events 中补充驻点播报字段列
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS station_category VARCHAR(50);"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS station_location VARCHAR(100);"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS summary TEXT;"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS attachment_urls JSON;"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS attachment_password VARCHAR(50);"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE;"))
         # 自愈式升级：为 agent_routes 自动添加自定义名称描述及提示词系统/用户模板列
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_name VARCHAR(100);"))
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_description VARCHAR(500);"))

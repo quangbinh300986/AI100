@@ -44,6 +44,8 @@ class LiveFeedItem(BaseModel):
     content: str = Field(..., description="播报内容")
     time: str = Field(..., description="播报时间（例如：10分钟前 / 09:30）")
     type: str = Field(default="info", description="播报类型(contract/achievement/milestone/info)")
+    attachment_urls: Optional[list] = Field(default=None, description="附件列表")
+    is_urgent: Optional[bool] = Field(default=None, description="是否紧急")
 
 
 class WeeklyTrendData(BaseModel):

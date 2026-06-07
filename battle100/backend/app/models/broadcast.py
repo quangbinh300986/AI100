@@ -5,7 +5,7 @@
 
 import enum
 from datetime import datetime
-from sqlalchemy import String, Integer, ForeignKey, Enum, Text, DateTime
+from sqlalchemy import String, Integer, ForeignKey, Enum, Text, DateTime, JSON, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel
 
@@ -18,6 +18,7 @@ class EventType(str, enum.Enum):
     TRIANGLE = "triangle"                  # 铁三角联动
     HAPPINESS = "happiness"                # 客户幸福动作
     CUSTOM = "custom"                      # 自定义播报
+    STATION_REPORT = "station_report"      # 驻点人员播报
     
     # 兼容历史数据类型
     GOAL_ACHIEVED = "goal_achieved"
@@ -79,6 +80,24 @@ class BroadcastEvent(BaseModel):
     )
     project_name: Mapped[str | None] = mapped_column(
         String(200), nullable=True, comment="项目名称"
+    )
+    station_category: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="驻点播报子分类: policy/deployment/lead/intelligence"
+    )
+    station_location: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, comment="驻点地点(如:广州/深圳/茂名)"
+    )
+    summary: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="内容摘要(用于钉钉消息预览)"
+    )
+    attachment_urls: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, comment="附件URL列表(加密ZIP+原始文件)"
+    )
+    attachment_password: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, comment="附件解压密码"
+    )
+    is_urgent: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否紧急快报"
     )
 
     # ===== 关联关系 =====

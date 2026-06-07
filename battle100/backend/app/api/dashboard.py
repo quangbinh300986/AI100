@@ -841,77 +841,114 @@ async def get_dashboard_overview(
     )
     feed_details = feed_details_res.scalars().all()
 
-    live_feed = []
+    # 查询近期的驻点人员播报，免审核，直接展示在大屏和大盘中
+    from app.models.broadcast import BroadcastEvent
+    station_events_res = await db.execute(
+        select(BroadcastEvent)
+        .where(BroadcastEvent.event_type == 'station_report')
+        .order_by(BroadcastEvent.created_at.desc())
+        .limit(10)
+    )
+    station_events = station_events_res.scalars().all()
+
+    # 合并两类数据并按时间倒序排列，取最新的10条
+    items_to_sort = []
     for d in feed_details:
-        u = d.report.user if d.report else None
-        t = u.team if u else None
-        team_name = t.name if t else "冲刺大本营"
-        user_name = u.name if u else "冲刺队员"
-        
-        if d.report and d.report.reviewed_at:
-            # reviewed_at 储存为 UTC 时间，加 8 小时转换为东八区中国时间
-            local_time = d.report.reviewed_at + timedelta(hours=8)
-            time_str = local_time.strftime("%H:%M")
-        else:
-            time_str = "刚刚"
+        ts = d.report.reviewed_at if (d.report and d.report.reviewed_at) else datetime.now(timezone.utc)
+        items_to_sort.append(("detail", d, ts))
+    for ev in station_events:
+        ts = ev.created_at if ev.created_at else datetime.now(timezone.utc)
+        items_to_sort.append(("event", ev, ts))
+
+    items_to_sort.sort(key=lambda x: x[2], reverse=True)
+    sorted_items = items_to_sort[:10]
+
+    live_feed = []
+    for item_type, obj, ts in sorted_items:
+        local_time = ts + timedelta(hours=8)
+        time_str = local_time.strftime("%H:%M")
         content = ""
         feed_type = "info"
-        
-        # 1. 有效线索确定 (10% -> 25%)
-        if d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
-            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
-                content = d.description
-            else:
-                content = f"奋战一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
-            feed_type = "achievement"
-            
-        # 2. 中标确定 (50% -> 75%)
-        elif d.detail_type == DetailType.LEAD and (d.lead_progress == "75%" or "75" in str(d.lead_progress or "")):
-            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
-                content = d.description
-            else:
-                content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
-            feed_type = "milestone"
-            
-        # 3. 已完成合同签订（双方盖章）(75% -> 90%)
-        elif d.detail_type == DetailType.CONTRACT:
-            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
-                content = d.description
-            else:
-                content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
-            feed_type = "contract"
-            
-        # 4. 铁三角联动
-        elif d.detail_type == DetailType.TRIANGLE:
-            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
-                content = d.description
-            else:
-                content = f"奋战一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
-            feed_type = "info"
-            
-        # 5. 客户幸福动作
-        elif d.detail_type == DetailType.HAPPINESS:
-            score = d.happiness_level if d.happiness_level is not None else 20
-            if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
-                content = d.description
-            else:
-                content = f"奋战一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
-            feed_type = "milestone"
-            
+        att_urls = None
+        is_urg = False
+        obj_id = obj.id
+
+        if item_type == "event":
+            # 驻点播报
+            category_names = {
+                "policy": "🏛️最新政策",
+                "deployment": "📋会议部署",
+                "lead": "🎯项目线索",
+                "intelligence": "🔍情报信息",
+            }
+            cat_label = category_names.get(obj.station_category, "驻点播报")
+            content = f"【驻点播报】我司在【{obj.station_location}】发布了『{cat_label}』：{obj.project_name}。正文：{obj.content}"
+            feed_type = "station_report"
+            att_urls = obj.attachment_urls
+            is_urg = obj.is_urgent
         else:
-            content = f"奋战一百天，亮剑破六千！【{team_name}】{user_name} 完成了 {d.detail_type.value} 项攻坚突破，赢战百日！"
-            feed_type = "info"
+            d = obj
+            u = d.report.user if d.report else None
+            user_name = u.name if u else "冲刺队员"
+            team_name = u.team.name if (u and u.team) else "冲刺大本营"
             
-        # 剔除内容中的关联战报标识 \n[broadcast_id:xx]
-        if content and "\n[broadcast_id:" in content:
-            content = content.split("\n[broadcast_id:")[0]
-            
+            # 1. 有效线索确定 (10% -> 25%)
+            if d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日确定有效线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                feed_type = "achievement"
+                
+            # 2. 中标确定 (50% -> 75%)
+            elif d.detail_type == DetailType.LEAD and (d.lead_progress == "75%" or "75" in str(d.lead_progress or "")):
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目中地承接，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                feed_type = "milestone"
+                
+            # 3. 已完成合同签订（双方盖章）(75% -> 90%)
+            elif d.detail_type == DetailType.CONTRACT:
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日确定{d.description or '中地服务'}项目走完合同流程，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                feed_type = "contract"
+                
+            # 4. 铁三角联动
+            elif d.detail_type == DetailType.TRIANGLE:
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日售前铁三角现场联动，客户分别为{d.customer_name or 'XX'}，为客户幸福而奋斗，赢战百日！"
+                feed_type = "info"
+                
+            # 5. 客户幸福动作
+            elif d.detail_type == DetailType.HAPPINESS:
+                score = d.happiness_level if d.happiness_level is not None else 20
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日{user_name}做到客户幸福标准{score}分{d.description or '关怀与拜访'}动作，收到客户正反馈，为客户幸福而奋斗，赢战百日！"
+                feed_type = "milestone"
+                
+            else:
+                content = f"奋战一百天，亮剑破六千！【{team_name}】{user_name} 完成了 {d.detail_type.value} 项攻坚突破，赢战百日！"
+                feed_type = "info"
+                
+            # 剔除内容中的关联战报标识 \n[broadcast_id:xx]
+            if content and "\n[broadcast_id:" in content:
+                content = content.split("\n[broadcast_id:")[0]
+
         live_feed.append(
             LiveFeedItem(
-                id=d.id,
+                id=obj_id,
                 content=content,
                 time=time_str,
-                type=feed_type
+                type=feed_type,
+                attachment_urls=att_urls,
+                is_urgent=is_urg
             )
         )
 

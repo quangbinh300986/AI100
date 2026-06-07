@@ -88,13 +88,34 @@ async def trigger_broadcast_push(broadcast_id: int):
             dingtalk_users = [user_dingtalk_id] if user_dingtalk_id else []
             
             # 3. 调用推送
-            msg_id = await dingtalk_client.push_broadcast_message(
-                event_type=event.event_type,
-                content=event.content,
-                user_name=user_name,
-                team_name=team_name,
-                dingtalk_users=dingtalk_users
-            )
+            if event.event_type == EventType.STATION_REPORT.value:
+                download_url = None
+                if event.attachment_urls and len(event.attachment_urls) > 0:
+                    download_url = event.attachment_urls[0].get("url")
+                
+                # 网页详情链接，默认通过 settings.CORS_ORIGINS 获取前端 URL
+                detail_url = None
+                if settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
+                    detail_url = f"{settings.CORS_ORIGINS[0]}/admin/dashboard"
+                    
+                msg_id = await dingtalk_client.send_station_report_actioncard(
+                    title=event.project_name or "驻点快报",
+                    category=event.station_category,
+                    location=event.station_location,
+                    summary=event.summary or event.content or "",
+                    download_url=download_url,
+                    password=event.attachment_password,
+                    is_urgent=event.is_urgent,
+                    detail_url=detail_url
+                )
+            else:
+                msg_id = await dingtalk_client.push_broadcast_message(
+                    event_type=event.event_type,
+                    content=event.content,
+                    user_name=user_name,
+                    team_name=team_name,
+                    dingtalk_users=dingtalk_users
+                )
             
             # 4. 根据发送结果更新状态
             if msg_id:
@@ -817,6 +838,9 @@ async def update_broadcast(
     if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type in ["triangle", "happiness"]):
         report_date = get_business_report_date(event.created_at if event.created_at else datetime.now(timezone.utc))
         
+        # 自动生成的日报提交与审核时间应与播报事件的实际发生时间/创建时间对齐，保证统计口径一致
+        target_time = event.event_time if event.event_time else (event.created_at if event.created_at else datetime.now(timezone.utc))
+        
         async def get_or_create_report(uid: int) -> DailyReport:
             r_stmt = select(DailyReport).where(
                 DailyReport.user_id == uid,
@@ -835,8 +859,8 @@ async def update_broadcast(
                     leads_count=0,
                     status=ReportStatus.REVIEWED,
                     reviewer_id=current_user.id,
-                    submitted_at=datetime.now(timezone.utc),
-                    reviewed_at=datetime.now(timezone.utc)
+                    submitted_at=target_time,
+                    reviewed_at=target_time
                 )
                 db.add(rep)
                 await db.flush()
@@ -844,8 +868,8 @@ async def update_broadcast(
                 if rep.status in [ReportStatus.DRAFT, ReportStatus.REJECTED, ReportStatus.SUBMITTED]:
                     rep.status = ReportStatus.REVIEWED
                     rep.reviewer_id = current_user.id
-                    rep.submitted_at = rep.submitted_at or datetime.now(timezone.utc)
-                    rep.reviewed_at = datetime.now(timezone.utc)
+                    rep.submitted_at = rep.submitted_at or target_time
+                    rep.reviewed_at = target_time
             return rep
 
         c_name = broadcast_in.customer_name or "关联客户单位"
@@ -1179,6 +1203,9 @@ async def create_broadcast(
     if broadcast_in.action_type:
         report_date = get_business_report_date(event.event_time if event.event_time else datetime.now(timezone.utc))
 
+        # 自动生成的日报提交与审核时间应与播报事件的实际发生时间对齐，保证统计口径一致
+        target_time = event.event_time if event.event_time else datetime.now(timezone.utc)
+
         async def get_or_create_report(uid: int) -> DailyReport:
             report_stmt = select(DailyReport).where(
                 DailyReport.user_id == uid,
@@ -1198,8 +1225,8 @@ async def create_broadcast(
                     leads_count=0,
                     status=ReportStatus.REVIEWED,  # 默认自动审核通过
                     reviewer_id=current_user.id,
-                    submitted_at=datetime.now(timezone.utc),
-                    reviewed_at=datetime.now(timezone.utc)
+                    submitted_at=target_time,
+                    reviewed_at=target_time
                 )
                 db.add(rep)
                 await db.flush()  # 获得 rep.id
@@ -1208,8 +1235,8 @@ async def create_broadcast(
                 if rep.status in [ReportStatus.DRAFT, ReportStatus.REJECTED, ReportStatus.SUBMITTED]:
                     rep.status = ReportStatus.REVIEWED
                     rep.reviewer_id = current_user.id
-                    rep.submitted_at = rep.submitted_at or datetime.now(timezone.utc)
-                    rep.reviewed_at = datetime.now(timezone.utc)
+                    rep.submitted_at = rep.submitted_at or target_time
+                    rep.reviewed_at = target_time
             return rep
 
         # A. 确定目标员工 ID
@@ -1498,8 +1525,8 @@ async def crm_webhook_broadcast(
                 leads_count=0,
                 status=ReportStatus.REVIEWED,  # 默认自动审核通过
                 reviewer_id=None,
-                submitted_at=datetime.now(timezone.utc),
-                reviewed_at=datetime.now(timezone.utc)
+                submitted_at=event.event_time,
+                reviewed_at=event.event_time
             )
             db.add(report)
             await db.flush()
@@ -1508,8 +1535,8 @@ async def crm_webhook_broadcast(
             if report.status in [ReportStatus.DRAFT, ReportStatus.REJECTED, ReportStatus.SUBMITTED]:
                 report.status = ReportStatus.REVIEWED
                 report.reviewer_id = None
-                report.submitted_at = report.submitted_at or datetime.now(timezone.utc)
-                report.reviewed_at = datetime.now(timezone.utc)
+                report.submitted_at = report.submitted_at or event.event_time
+                report.reviewed_at = event.event_time
         
         # 增加线索总数计数 (中标确定不作为新增线索计数，只有25%有效商机线索才计数)
         if event_type == "lead_25":
@@ -1789,5 +1816,215 @@ async def export_broadcasts(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers
     )
+
+
+# ==========================================
+#              驻点人员播报相关 API
+# ==========================================
+
+from fastapi import Form, File, UploadFile
+from app.services.file_encryption import FileEncryptionService
+
+@router.post("/station-report", summary="创建驻点人员播报")
+async def create_station_report(
+    station_category: str = Form(..., description="policy/deployment/lead/intelligence"),
+    station_location: str = Form(..., description="驻点地点"),
+    title: str = Form(..., description="标题"),
+    content: str = Form(..., description="正文内容"),
+    summary: Optional[str] = Form(None, description="摘要"),
+    is_urgent: bool = Form(False, description="是否紧急快报"),
+    push_channel: str = Form("all", description="推送渠道: dingtalk/system/all"),
+    files: list[UploadFile] = File(None, description="附件列表"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
+    """
+    创建驻点人员播报并免审核发布
+    1. 接收文件，判断并限制总大小在 50MB 以内
+    2. 用 pyzipper 进行 AES-256 加密打包，生成 12 位解压密码
+    3. 上传到 Supabase 存储
+    4. 创建 BroadcastEvent
+    5. 后台触发钉钉 ActionCard 推送，解压密码直接包含在推送消息里
+    6. WebSocket 广播到大屏
+    """
+    import uuid
+    import httpx
+    from app.config import settings
+
+    total_size = 0
+    file_list = []
+    if files:
+        # 过滤无效空文件
+        valid_files = [f for f in files if f.filename and f.filename.strip()]
+        for f in valid_files:
+            file_bytes = await f.read()
+            total_size += len(file_bytes)
+            file_list.append((f.filename, file_bytes))
+            
+        if total_size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="上传附件总大小不能超过 50MB")
+
+    zip_url = None
+    password = None
+    if file_list:
+        zip_bytes, password = await FileEncryptionService.create_encrypted_zip(file_list)
+        if len(zip_bytes) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="加密打包后的压缩包大小超过 50MB 限制")
+            
+        # 上传到 Supabase Storage
+        zip_filename = f"{uuid.uuid4().hex}.zip"
+        upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/photos/station_reports/{zip_filename}"
+        
+        headers = {
+            "Authorization": f"Bearer {settings.SERVICE_ROLE_KEY}",
+            "Content-Type": "application/zip"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(upload_url, content=zip_bytes, headers=headers, timeout=30.0)
+                if resp.status_code not in [200, 201]:
+                    raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
+                
+        zip_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{zip_filename}"
+
+    attachment_urls = [{"name": "encrypted_attachments.zip", "url": zip_url}] if zip_url else []
+    
+    # 确定关联战队
+    team_id = current_user.team_id
+    
+    event = BroadcastEvent(
+        event_type=EventType.STATION_REPORT.value,
+        user_id=current_user.id,
+        team_id=team_id,
+        content=content,
+        project_name=title,  # 用作标题
+        push_status=PushStatus.PENDING,
+        push_channel=push_channel,
+        event_time=datetime.now(timezone.utc),
+        station_category=station_category,
+        station_location=station_location,
+        summary=summary or content[:150],
+        attachment_urls=attachment_urls,
+        attachment_password=password,
+        is_urgent=is_urgent,
+    )
+    
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+
+    # 触发后台钉钉推送
+    if push_channel in ["dingtalk", "all"]:
+        background_tasks.add_task(trigger_broadcast_push, event.id)
+
+    # 广播大屏 WebSocket 通知
+    try:
+        from app.services.websocket import ws_manager
+        await ws_manager.broadcast({"type": "update", "event_type": "report_submitted"})
+    except Exception:
+        pass
+
+    # 记录审计日志
+    await log_action(
+        db, current_user, "CREATE", "broadcast", str(event.id),
+        f"创建了驻点人员播报: {title}，驻点地点: {station_location}",
+        before_state=None,
+        after_state=to_dict(event)
+    )
+
+    return event
+
+
+@router.get("/station-reports", summary="获取驻点播报列表")
+async def list_station_reports(
+    category: Optional[str] = Query(None, description="按子分类过滤: policy/deployment/lead/intelligence"),
+    location: Optional[str] = Query(None, description="按驻点地点过滤"),
+    is_urgent: Optional[bool] = Query(None, description="按紧急程度过滤"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="页大小"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    查询驻点播报列表，对普通用户隐藏附件解压密码
+    """
+    from sqlalchemy import func
+    
+    query = select(BroadcastEvent).where(BroadcastEvent.event_type == EventType.STATION_REPORT.value)
+    
+    if category:
+        query = query.where(BroadcastEvent.station_category == category)
+    if location:
+        query = query.where(BroadcastEvent.station_location.like(f"%{location}%"))
+    if is_urgent is not None:
+        query = query.where(BroadcastEvent.is_urgent == is_urgent)
+        
+    query = query.order_by(BroadcastEvent.created_at.desc())
+    
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+    
+    # 分页
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(query)
+    events = res.scalars().all()
+    
+    items = []
+    for ev in events:
+        item = {
+            "id": ev.id,
+            "event_type": ev.event_type,
+            "user_id": ev.user_id,
+            "team_id": ev.team_id,
+            "title": ev.project_name,  # 用作标题
+            "content": ev.content,
+            "station_category": ev.station_category,
+            "station_location": ev.station_location,
+            "summary": ev.summary,
+            "attachment_urls": ev.attachment_urls,
+            "is_urgent": ev.is_urgent,
+            "created_at": ev.created_at,
+            "push_status": ev.push_status,
+            "push_channel": ev.push_channel,
+        }
+        items.append(item)
+        
+    return {"total": total, "items": items}
+
+
+@router.get("/{broadcast_id}/password", summary="获取驻点播报附件密码")
+async def get_attachment_password(
+    broadcast_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取驻点播报解压密码
+    权限控制: 仅管理员、目标官、战队长或播报创建者本人口允许获取
+    """
+    stmt = select(BroadcastEvent).where(BroadcastEvent.id == broadcast_id)
+    res = await db.execute(stmt)
+    event = res.scalar_one_or_none()
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="播报不存在")
+        
+    if event.event_type != EventType.STATION_REPORT.value:
+        raise HTTPException(status_code=400, detail="该播报不是驻点播报")
+        
+    is_owner = event.user_id == current_user.id
+    is_privileged = current_user.role in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value]
+    
+    if not (is_owner or is_privileged):
+        raise HTTPException(status_code=403, detail="您无权查看此附件密码")
+        
+    return {"password": event.attachment_password}
+
 
 
