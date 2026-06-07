@@ -45,6 +45,7 @@ async def trigger_broadcast_push(broadcast_id: int):
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
     from app.integrations.dingtalk import dingtalk_client
+    from app.config import settings
     from sqlalchemy import select
     from datetime import datetime, timezone
     import logging
