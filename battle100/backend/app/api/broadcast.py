@@ -445,6 +445,7 @@ class BroadcastUpdate(BaseModel):
     station_location: Optional[str] = None
     summary: Optional[str] = None
     is_urgent: Optional[bool] = None
+    attachment_urls: Optional[list] = None
 
 
 class BatchDeleteBroadcastRequest(BaseModel):
@@ -862,6 +863,8 @@ async def update_broadcast(
         event.summary = broadcast_in.summary
     if broadcast_in.is_urgent is not None:
         event.is_urgent = broadcast_in.is_urgent
+    if broadcast_in.attachment_urls is not None:
+        event.attachment_urls = broadcast_in.attachment_urls
     
     # 前三种和 CRM 关联，后两种及自定义不关联
     if event.event_type in ["contract_signed", "lead_75", "lead_25"]:
