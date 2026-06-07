@@ -1311,7 +1311,7 @@ const Dashboard: React.FC = () => {
         employeeName: allValues.employeeName || user?.name || '',
         happinessScore: 20,
         actionDescription: '',
-        content: type ? '奋战一百天，亮剑破六千！今日' : ''
+        content: type === 'station_report' ? '' : (type ? '奋战一百天，亮剑破六千！今日' : '')
       })
       if (type === 'happiness') {
         loadCrmProjectsSearch()
@@ -1401,7 +1401,7 @@ const Dashboard: React.FC = () => {
 
     // C. 重新计算生成捷报文字
     const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback, happinessResult, happinessFeedback, recommendAction } = allValues
-    if (!actionType) return
+    if (!actionType || actionType === 'station_report') return
     
     const prefix = '奋战一百天，亮剑破六千！今日'
     let generated = ''
