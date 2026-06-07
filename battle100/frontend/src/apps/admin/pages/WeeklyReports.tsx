@@ -57,17 +57,23 @@ const adjustPageBreaks = (containerId: string) => {
     'h1, h2, h3, p, table, blockquote, ul, ol, .ant-card, .ant-descriptions, .ant-row'
   )) as HTMLElement[]
 
-  // 按 OffsetTop 升序排序，从上往下处理
-  elements.sort((a, b) => a.offsetTop - b.offsetTop)
+  const containerRect = container.getBoundingClientRect()
 
-  let currentPageStartOffset = container.offsetTop
+  // 按照在容器中的绝对 top 坐标对元素进行升序排序，从上往下处理
+  elements.sort((a, b) => {
+    const aTop = a.getBoundingClientRect().top - containerRect.top
+    const bTop = b.getBoundingClientRect().top - containerRect.top
+    return aTop - bTop
+  })
+
+  let currentPageStartOffset = 0 // 距离容器顶部的绝对相对Y坐标，初始为0
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i]
     if (!container.contains(el)) continue
 
     const elHeight = el.offsetHeight
-    const elTop = el.offsetTop
+    const elTop = el.getBoundingClientRect().top - containerRect.top
     const relativeTop = elTop - currentPageStartOffset
 
     // 如果该元素在当前页的相对位置 + 其自身高度超出了单页高度限制
@@ -83,8 +89,8 @@ const adjustPageBreaks = (containerId: string) => {
         spacer.style.backgroundColor = '#ffffff'
         
         el.parentNode?.insertBefore(spacer, el)
-        // 下一页的起点被更新为 el 被推进后最新的真实位置
-        currentPageStartOffset = el.offsetTop
+        // 插入 spacer 导致整体排版向下推后，重新获取 el 相对 container 的绝对位置作为下一页起点
+        currentPageStartOffset = el.getBoundingClientRect().top - containerRect.top
       }
     }
   }
