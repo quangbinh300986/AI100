@@ -425,7 +425,13 @@ class DingTalkClient:
         """
         发送驻点播报的 ActionCard 消息到钉钉群，支持加签验证和紧急@所有人
         """
-        webhook_url = settings.DINGTALK_WEBHOOK_URL
+        if category == "policy":
+            webhook_url = "https://oapi.dingtalk.com/robot/send?access_token=5bd92dbee70063fe2033d880524ecb7c78cbcfcc58a659a98cf7d9d0f1e0e516"
+            secret = "SEC8c0ac0f5f3a6e65ddbfa23ee98c1bb00ceee149d251d7e3325315e038d0ae6dd"
+        else:
+            webhook_url = settings.DINGTALK_WEBHOOK_URL
+            secret = settings.DINGTALK_WEBHOOK_SECRET
+
         if not webhook_url:
             return None
 
@@ -449,9 +455,10 @@ class DingTalkClient:
             
             urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
             at_text = " @所有人" if is_urgent else ""
+            keyword_tag = "【政策文件播报】" if category == "policy" else ""
             
             # 构建文本内容，将解压密码直接展示在群消息中
-            markdown_text = f"### {urgent_tag}{category_label}{at_text}\n\n"
+            markdown_text = f"### {keyword_tag}{urgent_tag}{category_label}{at_text}\n\n"
             markdown_text += f"---\n"
             markdown_text += f"* **驻点地点**：{location}\n"
             markdown_text += f"* **播报标题**：{title}\n"
@@ -460,13 +467,15 @@ class DingTalkClient:
             markdown_text += f"---\n"
             
             if download_url:
-                markdown_text += f"* **附件状态**：🔑 已进行 AES-256 安全加密打包\n"
-                markdown_text += f"* **解压密码**：**{password}** (下载后使用密码解压)\n"
+                if category == "policy":
+                    markdown_text += f"* **附件状态**：🔑 已进行 AES-256 安全加密打包\n"
+                    markdown_text += f"* **解压密码**：**{password}** (下载后使用密码解压)\n"
+                else:
+                    markdown_text += f"* **附件状态**：常规附件包 (无解压密码，可直接解压)\n"
             else:
                 markdown_text += f"* **附件状态**：无附件\n"
 
             # 签名逻辑
-            secret = settings.DINGTALK_WEBHOOK_SECRET
             url = webhook_url
             if secret:
                 timestamp = str(round(time.time() * 1000))
@@ -482,8 +491,9 @@ class DingTalkClient:
 
             btns = []
             if download_url:
+                btn_title = "📥 下载加密附件" if category == "policy" else "📥 下载附件包"
                 btns.append({
-                    "title": "📥 下载加密附件",
+                    "title": btn_title,
                     "actionURL": download_url
                 })
             if detail_url:
@@ -495,7 +505,7 @@ class DingTalkClient:
             json_data = {
                 "msgtype": "actionCard",
                 "actionCard": {
-                    "title": f"{urgent_tag}{title}",
+                    "title": f"{keyword_tag}{urgent_tag}{title}",
                     "text": markdown_text,
                     "btnOrientation": "1",
                     "btns": btns

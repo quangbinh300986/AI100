@@ -1868,9 +1868,13 @@ async def create_station_report(
     zip_url = None
     password = None
     if file_list:
-        zip_bytes, password = await FileEncryptionService.create_encrypted_zip(file_list)
+        is_policy = (station_category == "policy")
+        zip_bytes, password = await FileEncryptionService.create_encrypted_zip(
+            file_list,
+            encrypt=is_policy
+        )
         if len(zip_bytes) > 50 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="加密打包后的压缩包大小超过 50MB 限制")
+            raise HTTPException(status_code=400, detail="打包后的压缩包大小超过 50MB 限制")
             
         # 上传到 Supabase Storage
         zip_filename = f"{uuid.uuid4().hex}.zip"

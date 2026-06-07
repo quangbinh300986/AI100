@@ -43,29 +43,41 @@ class FileEncryptionService:
     @staticmethod
     async def create_encrypted_zip(
         files: list[tuple[str, bytes]],  # 格式: [(文件名, 文件二进制内容), ...]
-        password: str = None
-    ) -> tuple[bytes, str]:
+        password: str = None,
+        encrypt: bool = True
+    ) -> tuple[bytes, str | None]:
         """
-        创建 AES-256 加密的 ZIP 压缩包
-        返回: (zip字节内容, 解压密码)
+        创建 ZIP 压缩包，支持 AES-256 加密与普通不加密打包
+        返回: (zip字节内容, 解压密码或None)
         """
-        if not password:
-            password = FileEncryptionService.generate_password()
+        if encrypt:
+            if not password:
+                password = FileEncryptionService.generate_password()
+        else:
+            password = None
 
         # 使用临时文件写入打包内容，以避免大文件在内存中占用过多空间
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = tmp.name
 
         try:
-            with pyzipper.AESZipFile(
-                tmp_path, "w",
-                compression=pyzipper.ZIP_DEFLATED,
-                encryption=pyzipper.WZ_AES
-            ) as zf:
-                # 设置密码
-                zf.setpassword(password.encode("utf-8"))
-                for filename, content in files:
-                    zf.writestr(filename, content)
+            if encrypt:
+                with pyzipper.AESZipFile(
+                    tmp_path, "w",
+                    compression=pyzipper.ZIP_DEFLATED,
+                    encryption=pyzipper.WZ_AES
+                ) as zf:
+                    # 设置密码
+                    zf.setpassword(password.encode("utf-8"))
+                    for filename, content in files:
+                        zf.writestr(filename, content)
+            else:
+                with pyzipper.AESZipFile(
+                    tmp_path, "w",
+                    compression=pyzipper.ZIP_DEFLATED
+                ) as zf:
+                    for filename, content in files:
+                        zf.writestr(filename, content)
 
             # 读取打包好的二进制数据
             zip_content = Path(tmp_path).read_bytes()
