@@ -334,13 +334,23 @@ export default function Profile() {
           >
             个人周复盘填报
           </List.Item>
-          {['admin', 'digital_specialist', 'target_officer'].includes(user?.role || '') && (
+          {/* 只有管理员、数字专员、目标官和战队长有权生成团队今日日报与团队周报 */}
+          {['admin', 'digital_specialist', 'target_officer', 'team_leader'].includes(user?.role || '') && (
             <List.Item
               prefix={<FileOutline style={{ fontSize: 20, color: '#9f22c6' }} />}
               arrow
               onClick={handleOpenDailyReportModal}
             >
               生成今日日报
+            </List.Item>
+          )}
+          {['admin', 'digital_specialist', 'target_officer', 'team_leader'].includes(user?.role || '') && (
+            <List.Item
+              prefix={<FileOutline style={{ fontSize: 20, color: '#1677ff' }} />}
+              arrow
+              onClick={() => navigate('/m/group-weekly-report')}
+            >
+              团队周报 AI 生成
             </List.Item>
           )}
           <List.Item

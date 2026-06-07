@@ -10,6 +10,7 @@ import MyGoals from './pages/MyGoals'
 import TeamRanking from './pages/TeamRanking'
 import Profile from './pages/Profile'
 import WeeklyReport from './pages/WeeklyReport'
+import GroupWeeklyReport from './pages/GroupWeeklyReport'
 
 export default function App() {
   return (
@@ -18,8 +19,11 @@ export default function App() {
         {/* 登录页 - 无底部导航 */}
         <Route path="/m/login" element={<Login />} />
         
-        {/* 周报填报页 - 无底部导航 */}
+        {/* 个人周报填报页 - 无底部导航 */}
         <Route path="/m/weekly-report" element={<WeeklyReport />} />
+        
+        {/* 团队整体周报AI生成页 - 无底部导航 */}
+        <Route path="/m/group-weekly-report" element={<GroupWeeklyReport />} />
         
         {/* 主布局 - 带底部TabBar */}
         <Route path="/m" element={<MobileLayout />}>
