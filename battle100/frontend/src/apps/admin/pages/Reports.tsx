@@ -190,6 +190,7 @@ const Reports: React.FC = () => {
 
   const [createFileList, setCreateFileList] = useState<any[]>([])
   const [editFileList, setEditFileList] = useState<any[]>([])
+  const [editPassword, setEditPassword] = useState<string>('')
 
   const [crmProjectsSearch, setCrmProjectsSearch] = useState<string[]>([])
   const projectSearchTimerRef = React.useRef<any>(null)
@@ -937,6 +938,7 @@ const Reports: React.FC = () => {
         message.success('战报修改成功，已联动级联同步重算业绩数据')
         setEditVisible(false)
         setEditFileList([])
+        setEditPassword('')
         loadBroadcasts()
         loadSummaryStats()
       }
@@ -1150,13 +1152,29 @@ const Reports: React.FC = () => {
               const matchCustomerFeedback = (record as any).customer_feedback || record.content.match(/客户反馈：\s*([^。\n]+)/)?.[1] || '';
               const matchRecommendAction = (record as any).recommend_action || record.content.match(/内部可推广复制的做法：\s*([^。\n]+)/)?.[1] || '';
 
-              const initialFileList = (record.attachment_urls || []).map((url: string, index: number) => ({
-                uid: `-${index}`,
-                name: `image-${index}.png`,
-                status: 'done',
-                url: url
-              }))
+              const initialFileList = (record.attachment_urls || []).map((item: any, index: number) => {
+                const urlStr = typeof item === 'string' ? item : (item?.url || '');
+                const nameStr = typeof item === 'string' ? `image-${index}.png` : (item?.name || `file-${index}`);
+                return {
+                  uid: `-${index}`,
+                  name: nameStr,
+                  status: 'done',
+                  url: urlStr
+                };
+              })
               setEditFileList(initialFileList)
+
+              // 异步获取最新政策解压密码
+              if (record.event_type === 'station_report' && record.station_category === 'policy') {
+                get<any>(`/broadcast/${record.id}/password`).then(res => {
+                  const pwd = res?.password || res?.data?.password || '';
+                  setEditPassword(pwd);
+                }).catch(() => {
+                  setEditPassword('');
+                });
+              } else {
+                setEditPassword('');
+              }
 
               editForm.setFieldsValue({
                 content: record.content,
@@ -1923,7 +1941,7 @@ const Reports: React.FC = () => {
       <Modal
         title={<strong>✏️ 编辑战报播报内容与实绩关联</strong>}
         open={editVisible}
-        onCancel={() => setEditVisible(false)}
+        onCancel={() => { setEditVisible(false); setEditFileList([]); setEditPassword(''); }}
         onOk={() => editForm.submit()}
         destroyOnClose
         width={editEventType === 'contract_signed' ? 720 : 520}
@@ -2396,22 +2414,49 @@ const Reports: React.FC = () => {
           )}
 
           {editEventType === 'station_report' && editFileList.length > 0 && (
-            <Form.Item label="📎 已上传的附件压缩包">
-              <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: '#555' }}>
-                  📦 encrypted_attachments.zip
-                </span>
-                <Button 
-                  type="link" 
-                  size="small" 
-                  icon={<DownloadOutlined />}
-                  href={editFileList[0]?.url}
-                  target="_blank"
-                >
-                  下载附件
-                </Button>
-              </div>
-            </Form.Item>
+            <>
+              <Form.Item label="📎 已上传的附件压缩包">
+                <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#555' }}>
+                    📦 {editFileList[0]?.name || 'encrypted_attachments.zip'}
+                  </span>
+                  <Button 
+                    type="link" 
+                    size="small" 
+                    icon={<DownloadOutlined />}
+                    href={editFileList[0]?.url}
+                    target="_blank"
+                  >
+                    下载附件
+                  </Button>
+                </div>
+              </Form.Item>
+
+              {editForm.getFieldValue('station_category') === 'policy' && (
+                <Form.Item label="🔑 压缩包解压密码">
+                  <Input 
+                    value={editPassword || '加载中...'} 
+                    disabled 
+                    addonAfter={
+                      <Button 
+                        type="text" 
+                        size="small" 
+                        style={{ height: '22px', padding: '0 4px', color: '#1890ff' }}
+                        disabled={!editPassword}
+                        onClick={() => {
+                          if (editPassword) {
+                            navigator.clipboard.writeText(editPassword);
+                            message.success('解压密码已成功复制到剪贴板！');
+                          }
+                        }}
+                      >
+                        复制密码
+                      </Button>
+                    }
+                  />
+                </Form.Item>
+              )}
+            </>
           )}
 
           {['contract_signed', 'happiness', 'triangle'].includes(editEventType) && (
