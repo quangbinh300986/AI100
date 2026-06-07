@@ -534,6 +534,18 @@ const Reports: React.FC = () => {
     }
   }
 
+  // 一键清空回收站 (物理清空)
+  const handleClearRecycleBin = async () => {
+    try {
+      const res = await del<any>('/broadcast/recycle-bin/clear')
+      const msg = res?.message || '回收站已成功清空！'
+      message.success(msg)
+      loadRecycleBinList(1)
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '清空回收站失败')
+    }
+  }
+
   // 计算看板指标统计
   const loadSummaryStats = async () => {
     try {
@@ -2615,6 +2627,24 @@ const Reports: React.FC = () => {
         width={1000}
         style={{ top: 40 }}
       >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <Popconfirm
+            title="确定要一键清空回收站吗？这将物理删除回收站内的所有战报，此操作不可逆！"
+            onConfirm={handleClearRecycleBin}
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              type="primary"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={recycleList.length === 0}
+            >
+              清空回收站
+            </Button>
+          </Popconfirm>
+        </div>
         <Table
           dataSource={recycleList}
           loading={recycleLoading}

@@ -2261,6 +2261,35 @@ async def list_recycle_bin(
     }
 
 
+@router.delete("/recycle-bin/clear", summary="清空回收站")
+async def clear_recycle_bin(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """回收站中将所有已软删除的战报一键物理清空"""
+    stmt = select(BroadcastEvent).where(BroadcastEvent.is_deleted == True)
+    res = await db.execute(stmt)
+    events = res.scalars().all()
+    
+    count = len(events)
+    if count == 0:
+        return {"message": "回收站已为空，无需清空"}
+        
+    for event in events:
+        await db.delete(event)
+        
+    # 记录操作审计日志（在 commit 前执行）
+    await log_action(
+        db, current_user, "CLEAR_RECYCLE_BIN", "broadcast", None,
+        f"清空了回收站，共彻底物理删除了 {count} 条战报记录",
+        before_state=None,
+        after_state=None
+    )
+    
+    await db.commit()
+    return {"message": f"成功清空回收站，共物理删除 {count} 条战报"}
+
+
 @router.delete("/{id}/hard", summary="彻底删除战报")
 async def hard_delete_broadcast(
     id: int,
