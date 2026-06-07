@@ -926,7 +926,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
             if is_marketing:
                 # 2. 营销岗：新签合同 actual
                 contract_sql = text("""
-                    SELECT contract_name, contract_money_wy 
+                    SELECT contract_name, contract_money 
                     FROM contract 
                     WHERE signer = :real_name 
                       AND signing_date BETWEEN :start_date AND :end_date 
@@ -943,7 +943,9 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 if contracts:
                     sales_list.append("本周正式签约合同项目如下：")
                     for c in contracts:
-                        sales_list.append(f"  {c_idx}) 【{c['contract_name']}】签署成功，金额：{float(c['contract_money_wy']):.2f} 万元")
+                        # 原始单位为“元”，需除以10000转换为“万元”
+                        c_money_val = float(c['contract_money']) / 10000.0 if c['contract_money'] is not None else 0.0
+                        sales_list.append(f"  {c_idx}) 【{c['contract_name']}】签署成功，金额：{c_money_val:.2f} 万元")
                         c_idx += 1
                 
                 # 3. 营销岗：实际回款 actual
@@ -1005,8 +1007,10 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 # 如果有大额签约
                 h_idx = 1
                 for c in contracts:
-                    if float(c['contract_money_wy']) >= 50.0:
-                        highlight_list.append(f"  {h_idx}) 成功签订大额合同：【{c['contract_name']}】（金额：{float(c['contract_money_wy']):.2f}万元）")
+                    # 原始单位为“元”，需除以10000转换为“万元”
+                    c_money_val = float(c['contract_money']) / 10000.0 if c['contract_money'] is not None else 0.0
+                    if c_money_val >= 50.0:
+                        highlight_list.append(f"  {h_idx}) 成功签订大额合同：【{c['contract_name']}】（金额：{c_money_val:.2f}万元）")
                         h_idx += 1
                 
                 if len(visits) >= 3:
@@ -1155,7 +1159,9 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 unbilled_projects = conn.execute(unbilled_node_sql, {"real_name": real_name}).mappings().all()
                 if unbilled_projects:
                     for up in unbilled_projects:
-                        money_str = f"{float(up['installment_money']):,.2f}" if up['installment_money'] is not None else "—"
+                        # 原始单位为“元”，需除以10000转换为“万元”
+                        money_val = float(up['installment_money']) / 10000.0 if up['installment_money'] is not None else None
+                        money_str = f"{money_val:,.2f}" if money_val is not None else "—"
                         blocker_list.append(
                             f"  {b_idx}) 交付卡点：项目【{up['project_name']}】进度已达 {float(up['project_progress'] or 0):.1f}%"
                             f"（已达收付款触发节点 {float(up['project_progress_trigger'] or 0):.1f}%），"
@@ -1706,10 +1712,12 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                 if unbilled:
                     detail_texts.append("\n【交付卡点预警（已达交付触发节点但尚未开票）】:")
                     for idx, ub in enumerate(unbilled, 1):
+                        # 原始单位为“元”，需除以10000转换为“万元”
+                        money_val = float(ub['installment_money']) / 10000.0 if ub['installment_money'] is not None else 0.0
                         detail_texts.append(
                             f"  {idx}) 项目【{ub['project_name']}】(负责人: {ub['project_manager']}) "
                             f"当前进度已达 {float(ub['project_progress']):.1f}% (已触发节点 {float(ub['project_progress_trigger']):.1f}%)，"
-                            f"但未开具发票，影响后续收款回款。对应阶段款项金额: {float(ub['installment_money']):.2f} 万元。"
+                            f"但未开具发票，影响后续收款回款。对应阶段款项金额: {money_val:.2f} 万元。"
                         )
                 
                 # 本周活跃正在实施项目清单 (用于 AI 诊断成员工作饱和度与项目空仓/断粮风险)
