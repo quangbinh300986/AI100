@@ -258,28 +258,6 @@ async def list_reports(
     return ReportListResponse(total=total, items=reports)
 
 
-@router.get("/{report_id}", response_model=DailyReportResponse, summary="获取填报详情")
-async def get_report(
-    report_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """获取指定填报的详细信息"""
-    result = await db.execute(
-        select(DailyReport)
-        .options(selectinload(DailyReport.details))
-        .where(DailyReport.id == report_id)
-    )
-    report = result.scalar_one_or_none()
-    if report is None:
-        raise HTTPException(status_code=404, detail="填报记录不存在")
-
-    # 权限检查
-    if current_user.role == UserRole.STAFF.value and report.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权查看他人的填报记录")
-
-    return report
-
 
 @router.put("/{report_id}", response_model=DailyReportResponse, summary="更新填报")
 async def update_report(
@@ -2320,3 +2298,25 @@ async def export_weekly_report_to_docx_api(
         logging.getLogger("battle100").error(f"导出 Word 文档出错: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Word 导出失败: {str(e)}")
 
+
+@router.get("/{report_id}", response_model=DailyReportResponse, summary="获取填报详情")
+async def get_report(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取指定填报的详细信息"""
+    result = await db.execute(
+        select(DailyReport)
+        .options(selectinload(DailyReport.details))
+        .where(DailyReport.id == report_id)
+    )
+    report = result.scalar_one_or_none()
+    if report is None:
+        raise HTTPException(status_code=404, detail="填报记录不存在")
+
+    # 权限检查
+    if current_user.role == UserRole.STAFF.value and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看他人的填报记录")
+
+    return report
