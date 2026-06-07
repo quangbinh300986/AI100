@@ -786,7 +786,103 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
     try:
         from app.database import get_crm_db
         with get_crm_db() as conn:
-            # 1. 提取计划达成率说明 (根据 responsible_person_alias 匹配当前人在当月的目标)
+            # 1. 统计个人当周产值与回款（排除重置虚高账期影响）
+            month_start_date = monday.replace(day=1)
+            prev_month_start_date = (month_start_date - timedelta(days=15)).replace(day=1)
+            
+            prod_sql = text("""
+                SELECT COALESCE(SUM(dp.money), 0) as total_prod
+                FROM dashboard_production dp
+                JOIN project p ON dp.project_id = p.id
+                WHERE p.project_manager = :real_name
+                  AND dp.createDate BETWEEN :start AND :end
+                  AND dp.account_date IN (:prev_month_start, :month_start)
+                  AND dp.isDel = '0'
+            """)
+            prod_val = conn.execute(prod_sql, {
+                "real_name": real_name,
+                "start": start_date_str + " 00:00:00",
+                "end": end_date_str,
+                "prev_month_start": prev_month_start_date.strftime('%Y-%m-%d'),
+                "month_start": month_start_date.strftime('%Y-%m-%d')
+            }).scalar() or 0.0
+            personal_production = float(prod_val) / 10000.0 # 元转万元
+            
+            recv_sql = text("""
+                SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
+                FROM zdcrm_contract_receive_money_view r
+                INNER JOIN contract c ON r.contract_id = c.id
+                WHERE c.signer = :real_name
+                  AND r.receive_date BETWEEN :start_date AND :end_date
+            """)
+            recv_val = conn.execute(recv_sql, {
+                "real_name": real_name,
+                "start_date": start_date_str,
+                "end_date": sunday.strftime('%Y-%m-%d')
+            }).scalar() or 0.0
+            personal_receive = float(recv_val) # 万元
+            
+            # 2. 统计个人名下在研项目并诊断饱和度预警
+            active_projects_sql = text("""
+                SELECT project_name, project_progress, project_status
+                FROM project
+                WHERE project_manager = :real_name
+                  AND project_progress < 100.0
+                  AND (project_status IS NULL OR (project_status != '已归档' AND project_status != '已结项' AND project_status != '3'))
+            """)
+            active_projects = conn.execute(active_projects_sql, {"real_name": real_name}).mappings().all()
+            
+            personal_warnings = []
+            active_count = len(active_projects)
+            
+            if active_count == 0:
+                personal_warnings.append("🚨 红色警报：您目前名下无任何活跃在研的交付项目，需立即核实饱和度并协调新项目分配！")
+            else:
+                # 检查项目本周是否进度停滞（无任何异动）
+                p_change_sql = text("""
+                    SELECT COUNT(*)
+                    FROM dashboard_production dp
+                    JOIN project p ON dp.project_id = p.id
+                    WHERE p.project_manager = :real_name
+                      AND dp.createDate BETWEEN :start AND :end
+                      AND dp.account_date IN (:prev_month_start, :month_start)
+                      AND dp.isDel = '0'
+                """)
+                change_count = conn.execute(p_change_sql, {
+                    "real_name": real_name,
+                    "start": start_date_str + " 00:00:00",
+                    "end": end_date_str,
+                    "prev_month_start": prev_month_start_date.strftime('%Y-%m-%d'),
+                    "month_start": month_start_date.strftime('%Y-%m-%d')
+                }).scalar() or 0
+                
+                if change_count == 0 and not is_marketing:
+                    personal_warnings.append("⚠️ 黄色预警：名下在研项目本周进度停滞（无任何进度条推进记录），请在下方补充卡点或原因说明！")
+                
+                # 检查空仓风险
+                all_near_complete = True
+                for ap in active_projects:
+                    progress_val = ap['project_progress']
+                    try:
+                        progress_val_float = float(progress_val) if progress_val is not None else 0.0
+                    except Exception:
+                        progress_val_float = 0.0
+                    if progress_val_float < 90.0:
+                        all_near_complete = False
+                        break
+                
+                if active_count <= 2 and all_near_complete:
+                    personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个在研项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
+
+            # 业绩快照与预警文本前缀准备
+            perf_snapshot = (
+                f"【📊 CRM 本周业绩快照】：累计确认产值 {personal_production:.2f} 万元，实际到账回款 {personal_receive:.2f} 万元。\n\n"
+            )
+            warning_text = ""
+            if personal_warnings:
+                warning_text = "【🚨 个人工作饱和度与项目健康度诊断】：\n" + "\n".join([f"  * {w}" for w in personal_warnings]) + "\n\n"
+
+            # 3. 提取计划达成率说明 (根据 responsible_person_alias 匹配当前人在当月的目标)
             target_sql = text("""
                 SELECT 
                     SUM(new_sign_target_amount) as target_sign, 
@@ -898,7 +994,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         sales_list.append(f"  {c_idx}) 【{t_str}】对接拜访【{v['customer_name']}】(工作记录：{v['remark'] or '未填'})")
                         c_idx += 1
                 
-                formatted_sales = "\n".join(sales_list) if sales_list else "1. 本周暂无相关的合同新签、到账回款与客户拜访登记。"
+                formatted_sales = perf_snapshot + ("\n".join(sales_list) if sales_list else "1. 本周暂无相关的合同新签、到账回款与客户拜访登记。")
                 result["sales_actual"] = formatted_sales
                 result["delivery_actual"] = ""
                 
@@ -938,7 +1034,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         b_idx += 1
                 
                 result["sales_highlights"] = "\n".join(highlight_list) if highlight_list else "1. 本周销售签约及商务拓展平稳推进。"
-                result["sales_blockers"] = "\n".join(blocker_list) if blocker_list else "1. 目前名下意向商机及收款合同暂无重大异常阻碍。"
+                result["sales_blockers"] = warning_text + ("\n".join(blocker_list) if blocker_list else "1. 目前名下意向商机及收款合同暂无重大异常阻碍。")
                 result["delivery_highlights"] = ""
                 result["delivery_blockers"] = ""
                 
@@ -992,7 +1088,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         delivery_list.append(f"  {d_idx}) {m_tag}完成项目【{t['project_name']}】下的任务节点：【{t['task_name']}】")
                         d_idx += 1
                 
-                formatted_delivery = "\n".join(delivery_list) if delivery_list else "1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。"
+                formatted_delivery = perf_snapshot + ("\n".join(delivery_list) if delivery_list else "1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。")
                 result["delivery_actual"] = formatted_delivery
                 result["sales_actual"] = ""
                 
@@ -1090,7 +1186,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         b_idx += 1
                 
                 result["delivery_highlights"] = "\n".join(highlight_list) if highlight_list else "1. 交付工作处于正常开发推进中，开发交付无积压。"
-                result["delivery_blockers"] = "\n".join(blocker_list) if blocker_list else "1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。"
+                result["delivery_blockers"] = warning_text + ("\n".join(blocker_list) if blocker_list else "1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。")
                 result["sales_highlights"] = ""
                 result["sales_blockers"] = ""
                 
