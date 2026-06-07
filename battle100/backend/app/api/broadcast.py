@@ -2257,7 +2257,7 @@ async def list_recycle_bin(
 
     return {
         "items": results,
-        "total_count": total
+        "total": total
     }
 
 

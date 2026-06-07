@@ -493,7 +493,7 @@ const Reports: React.FC = () => {
       const data = res?.data ? res.data : res
       if (data && data.items) {
         setRecycleList(data.items)
-        setRecycleTotal(data.total_count || 0)
+        setRecycleTotal(data.total || 0)
       } else {
         setRecycleList([])
         setRecycleTotal(0)
