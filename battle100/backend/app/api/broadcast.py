@@ -214,7 +214,7 @@ class BroadcastResponse(BaseModel):
     station_category: Optional[str] = None
     station_location: Optional[str] = None
     summary: Optional[str] = None
-    attachment_urls: Optional[list[dict]] = None
+    attachment_urls: Optional[list] = None
     is_urgent: Optional[bool] = None
 
     model_config = {"from_attributes": True}
