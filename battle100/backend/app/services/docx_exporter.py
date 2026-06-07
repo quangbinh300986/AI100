@@ -85,12 +85,104 @@ def add_metrics_table(doc, metrics):
         set_cell_background(cell, "F2F2F2")
 
 
+def flush_table_to_docx(doc, table_rows):
+    """将收集到的 Markdown 表格行转换为 Word 表格"""
+    if not table_rows:
+        return
+
+    # 解析每一行，提取单元格内容（去除两端空格和管道符）
+    parsed_rows = []
+    for row_text in table_rows:
+        # 去掉行首行尾的 | 符号后按 | 分割
+        stripped = row_text.strip()
+        if stripped.startswith('|'):
+            stripped = stripped[1:]
+        if stripped.endswith('|'):
+            stripped = stripped[:-1]
+        cells = [c.strip() for c in stripped.split('|')]
+        parsed_rows.append(cells)
+
+    if not parsed_rows:
+        return
+
+    # 过滤掉分隔行（如 |---|---|---| 或 |:---:|:---:|）
+    data_rows = []
+    for cells in parsed_rows:
+        # 检测是否是分隔行：所有单元格都只包含 -、: 和空格
+        is_separator = all(
+            all(ch in '-: ' for ch in cell) and len(cell.replace(' ', '')) > 0
+            for cell in cells
+        )
+        if not is_separator:
+            data_rows.append(cells)
+
+    if not data_rows:
+        return
+
+    # 确定列数（取最大列数，不足的用空字符串补齐）
+    num_cols = max(len(row) for row in data_rows)
+    for row in data_rows:
+        while len(row) < num_cols:
+            row.append('')
+
+    num_rows = len(data_rows)
+
+    # 创建 Word 表格
+    table = doc.add_table(rows=num_rows, cols=num_cols)
+    table.style = 'Table Grid'
+
+    for row_idx, cells in enumerate(data_rows):
+        for col_idx, cell_text in enumerate(cells):
+            cell = table.cell(row_idx, col_idx)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(3)
+            p.paragraph_format.space_after = Pt(3)
+
+            if row_idx == 0:
+                # 表头行：加粗 + 浅灰底
+                run = p.add_run(cell_text)
+                set_font(run, font_name="微软雅黑", size_pt=9.5, bold=True, color_rgb=RGBColor(38, 38, 38))
+                set_cell_background(cell, "F2F2F2")
+            else:
+                # 数据行：支持内联加粗语法
+                add_formatted_text(p, cell_text)
+
+    # 表格后增加一个空段落隔开后续内容
+    p_space = doc.add_paragraph()
+    p_space.paragraph_format.space_before = Pt(4)
+    p_space.paragraph_format.space_after = Pt(4)
+
+
 def parse_markdown_to_docx(doc, content):
-    """解析 Markdown 各级大纲、列表、粗体并转换为 Word 排版段落"""
+    """解析 Markdown 各级大纲、列表、表格、粗体并转换为 Word 排版段落"""
     lines = content.split('\n')
-    
+
+    # 用于聚合连续的表格行
+    table_buffer = []
+
+    def try_flush_table():
+        """如果缓冲区有表格行，刷出为 Word 表格"""
+        nonlocal table_buffer
+        if table_buffer:
+            flush_table_to_docx(doc, table_buffer)
+            table_buffer = []
+
     for line in lines:
         stripped = line.strip()
+
+        # 判断是否为表格行（包含管道符 | 的行）
+        is_table_line = '|' in stripped and (
+            stripped.startswith('|') or 
+            stripped.count('|') >= 2
+        )
+
+        if is_table_line:
+            table_buffer.append(stripped)
+            continue
+        else:
+            # 遇到非表格行时，先刷出已缓存的表格
+            try_flush_table()
+
         if not stripped:
             continue
             
@@ -179,6 +271,9 @@ def parse_markdown_to_docx(doc, content):
             set_font(run_quote_end, font_name="微软雅黑", size_pt=10.5, bold=True, color_rgb=RGBColor(128, 128, 128))
         else:
             add_formatted_text(p, stripped)
+
+    # 循环结束后，刷出可能残留的最后一个表格
+    try_flush_table()
 
 
 def export_markdown_to_docx(title: str, metrics: dict | None, content: str) -> BytesIO:

@@ -39,62 +39,7 @@ import { jsPDF } from 'jspdf'
 
 const { Text } = Typography
 
-// PDF自适应防折断占位符计算算法 (根据 A4 页面比例 1.414 进行元素边界检测与空白规避)
-const adjustPageBreaks = (containerId: string) => {
-  const container = document.getElementById(containerId)
-  if (!container) return
 
-  // 1. 清除旧占位符
-  const existingSpacers = container.querySelectorAll('.pdf-page-break-spacer')
-  existingSpacers.forEach(el => el.remove())
-
-  // A4 宽高比例 1.414，在容器宽度下的单页高度像素值
-  const containerWidth = container.offsetWidth || 794
-  const pageHeightPx = Math.floor(containerWidth * 1.414)
-
-  // 2. 收集需要做整体保护、防页面切线折断的子节点 (只选择最小块展示项或表)
-  const elements = Array.from(container.querySelectorAll(
-    'h1, h2, h3, p, table, blockquote, ul, ol, .ant-card, .ant-descriptions, .ant-row'
-  )) as HTMLElement[]
-
-  const containerRect = container.getBoundingClientRect()
-
-  // 按照在容器中的绝对 top 坐标对元素进行升序排序，从上往下处理
-  elements.sort((a, b) => {
-    const aTop = a.getBoundingClientRect().top - containerRect.top
-    const bTop = b.getBoundingClientRect().top - containerRect.top
-    return aTop - bTop
-  })
-
-  let currentPageStartOffset = 0 // 距离容器顶部的绝对相对Y坐标，初始为0
-
-  for (let i = 0; i < elements.length; i++) {
-    const el = elements[i]
-    if (!container.contains(el)) continue
-
-    const elHeight = el.offsetHeight
-    const elTop = el.getBoundingClientRect().top - containerRect.top
-    const relativeTop = elTop - currentPageStartOffset
-
-    // 如果该元素在当前页的相对位置 + 其自身高度超出了单页高度限制，且该元素自身高度小于单页高度时才进行防折断处理 (防止单元素高度超标引起死循环或巨幅空白)
-    if (relativeTop + elHeight > pageHeightPx && elHeight < pageHeightPx) {
-      const spacerHeight = pageHeightPx - relativeTop
-      
-      // 只有剩余高度合适时才进行顶页处理
-      if (spacerHeight > 5 && spacerHeight < pageHeightPx) {
-        const spacer = document.createElement('div')
-        spacer.className = 'pdf-page-break-spacer'
-        spacer.style.height = `${spacerHeight}px`
-        spacer.style.width = '100%'
-        spacer.style.backgroundColor = '#ffffff'
-        
-        el.parentNode?.insertBefore(spacer, el)
-        // 插入 spacer 导致整体排版向下推后，重新获取 el 相对 container 的绝对位置作为下一页起点
-        currentPageStartOffset = el.getBoundingClientRect().top - containerRect.top
-      }
-    }
-  }
-}
 
 // 战队选项定义 (与本地数据库同步)
 const TEAM_OPTIONS = [
@@ -525,7 +470,7 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
-  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF + Canvas像素精准切割自适应防折断算法)
+  // 统一的 PDF 导出逻辑 (基于 DOM 元素边界映射的智能分页，从 DOM 语义结构层面杜绝跨页断裂)
   const handleExportPDF = async (elementId: string, filename: string, setLoader: (loading: boolean) => void) => {
     const element = document.getElementById(elementId)
     if (!element) {
@@ -535,62 +480,112 @@ const WeeklyReports: React.FC = () => {
     
     setLoader(true)
     try {
-      // 1. 在截图前，动态调整子元素排版，在超出边界的块级元素前插入空白占位符防折断
-      adjustPageBreaks(elementId)
+      const scale = 2 // 与 html2canvas scale 保持一致
 
+      // ===== 第一步：截图前扫描 DOM 结构，收集所有安全分页断点 =====
+      const containerRect = element.getBoundingClientRect()
+      const breakCandidatesSet = new Set<number>()
+
+      // 收集所有代表自然内容边界的元素底部位置（表格行、段落、列表项、卡片、标题等）
+      const breakableElements = element.querySelectorAll(
+        'h1, h2, h3, h4, h5, h6, p, tr, li, hr, blockquote, ' +
+        'table, ul, ol, .ant-card, .ant-descriptions, .ant-descriptions-row, .ant-row'
+      )
+      breakableElements.forEach(el => {
+        const rect = (el as HTMLElement).getBoundingClientRect()
+        // 元素底部相对容器顶部的像素距离，乘以 scale 映射到 canvas 坐标系，+4px 确保切在元素外边距区域
+        const bottomPx = Math.round((rect.bottom - containerRect.top) * scale) + 4
+        if (bottomPx > 0) breakCandidatesSet.add(bottomPx)
+      })
+
+      // 同时收集容器直接子元素的底部边界（覆盖未被上方选择器匹配到的自定义 div 容器）
+      Array.from(element.children).forEach(child => {
+        const rect = (child as HTMLElement).getBoundingClientRect()
+        const bottomPx = Math.round((rect.bottom - containerRect.top) * scale) + 4
+        if (bottomPx > 0) breakCandidatesSet.add(bottomPx)
+      })
+
+      // 排序构建安全分页点有序数组
+      const breakPoints = Array.from(breakCandidatesSet).sort((a, b) => a - b)
+
+      // ===== 第二步：高清截图 =====
       const canvas = await html2canvas(element, {
-        scale: 2, // 双倍清晰度
+        scale,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff'
       })
-      
-      // 2. 截图完成后，立即将插入的防折断占位符清理掉，保持DOM树原样
-      const existingSpacers = element.querySelectorAll('.pdf-page-break-spacer')
-      existingSpacers.forEach(el => el.remove())
 
-      // 3. 基于生成的 Canvas 宽度按照 A4 比例进行像素级多页切割，实现绝对 0 偏移误差
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
-      const canvasPageHeight = Math.floor(canvasWidth * 1.414) // 严格符合 A4 1.414 高宽比
-      
+      const a4Ratio = 297 / 210 // A4 标准高宽比
+      const idealPageHeight = Math.floor(canvasWidth * a4Ratio)
+
       const pdf = new jsPDF('p', 'mm', 'a4')
-      
-      // 计算得出总页数
-      const totalPages = Math.ceil(canvasHeight / canvasPageHeight)
-      
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) {
-          pdf.addPage()
+
+      // ===== 第三步：基于断点地图进行智能分页 =====
+      let currentY = 0
+      let pageIndex = 0
+
+      while (currentY < canvasHeight) {
+        if (pageIndex > 0) pdf.addPage()
+
+        let sliceEndY: number
+
+        if (currentY + idealPageHeight >= canvasHeight) {
+          // 最后一页：取剩余所有内容
+          sliceEndY = canvasHeight
+        } else {
+          const idealCut = currentY + idealPageHeight
+          // 搜索范围：理想线向上回退 50%，向下前探 10%
+          const minCut = currentY + Math.floor(idealPageHeight * 0.5)
+          const maxCut = Math.min(idealCut + Math.floor(idealPageHeight * 0.1), canvasHeight)
+
+          // 在断点列表中找最接近理想切割线的安全位置
+          let bestBreak = -1
+          let bestDistance = Infinity
+
+          for (const bp of breakPoints) {
+            if (bp <= currentY) continue     // 已经在当前页之前，跳过
+            if (bp < minCut) continue         // 太靠上，页面会太短
+            if (bp > maxCut) break            // 超出最大范围，后续更大不用看了
+            const distance = Math.abs(bp - idealCut)
+            if (distance < bestDistance) {
+              bestDistance = distance
+              bestBreak = bp
+            }
+          }
+
+          sliceEndY = bestBreak > currentY ? bestBreak : idealCut
         }
-        
-        // 创建独立的单页 Canvas 容纳被裁剪出的局部图像，防止长图越界重叠
+
+        const sliceHeight = sliceEndY - currentY
+
+        // 创建当前页的独立 Canvas，固定为 A4 比例尺寸
         const pageCanvas = document.createElement('canvas')
         pageCanvas.width = canvasWidth
-        pageCanvas.height = canvasPageHeight
-        const ctx = pageCanvas.getContext('2d')
-        
-        if (ctx) {
-          // 渲染白色背景兜底
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(0, 0, canvasWidth, canvasPageHeight)
-          
-          // 从超长长图中复制出当前页的区域坐标
-          const srcY = i * canvasPageHeight
-          const srcHeight = Math.min(canvasPageHeight, canvasHeight - srcY)
-          
-          ctx.drawImage(
+        pageCanvas.height = idealPageHeight // 始终保持 A4 比例高度
+        const pageCtx = pageCanvas.getContext('2d')
+
+        if (pageCtx) {
+          // 先填满白色底色
+          pageCtx.fillStyle = '#ffffff'
+          pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+          // 将从长图裁剪出的当前页内容绘制到页面顶部（下方自然留白）
+          pageCtx.drawImage(
             canvas,
-            0, srcY, canvasWidth, srcHeight, // 裁剪源位置
-            0, 0, canvasWidth, srcHeight     // 绘制到目标单页Canvas
+            0, currentY, canvasWidth, sliceHeight, // 源图裁剪区域
+            0, 0, canvasWidth, sliceHeight          // 目标页面顶部对齐
           )
         }
-        
-        // 将独立单页 Canvas 转化为图片数据完美放入当前 PDF 页
-        const pageData = pageCanvas.toDataURL('image/jpeg', 1.0)
-        pdf.addImage(pageData, 'JPEG', 0, 0, 210, 297) // 填满 210mm x 297mm 的 A4 页面
+
+        const pageData = pageCanvas.toDataURL('image/jpeg', 0.95)
+        pdf.addImage(pageData, 'JPEG', 0, 0, 210, 297) // 填满 A4 页面 210mm × 297mm
+
+        currentY = sliceEndY
+        pageIndex++
       }
-      
+
       pdf.save(filename)
       message.success('PDF 战报下载成功！')
     } catch (err: any) {
