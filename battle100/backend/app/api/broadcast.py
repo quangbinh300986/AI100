@@ -1882,7 +1882,7 @@ async def create_station_report(
         
         headers = {
             "Authorization": f"Bearer {settings.SERVICE_ROLE_KEY}",
-            "Content-Type": "application/zip"
+            "Content-Type": "image/png"
         }
         
         async with httpx.AsyncClient() as client:
