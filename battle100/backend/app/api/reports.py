@@ -2267,3 +2267,48 @@ async def send_group_report_to_dingtalk_api(
         
     return {"message": "已成功推送至钉钉群机器人"}
 
+
+class ExportDocxRequest(BaseModel):
+    title: str
+    metrics: dict | None = None
+    content: str
+
+
+@router.post("/weekly/export-docx", summary="导出周报为 Word (.docx) 文件")
+async def export_weekly_report_to_docx_api(
+    req: ExportDocxRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    接收 Markdown 周报正文及指标看板数据，在后端动态生成排版精美的 Word 二进制文档并输出下载流
+    """
+    from app.services.docx_exporter import export_markdown_to_docx
+    from fastapi.responses import StreamingResponse
+    import urllib.parse
+    
+    try:
+        # 1. 转换并生成 Word 字节流
+        file_stream = export_markdown_to_docx(
+            title=req.title,
+            metrics=req.metrics,
+            content=req.content
+        )
+        
+        # 2. 对文件名进行 URL 编码以支持中文字符集
+        safe_filename = urllib.parse.quote(f"{req.title}.docx")
+        
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+        
+        return StreamingResponse(
+            file_stream,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger("battle100").error(f"导出 Word 文档出错: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Word 导出失败: {str(e)}")
+

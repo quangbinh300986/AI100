@@ -34,6 +34,8 @@ import {
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import dayjs from 'dayjs'
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
 
 const { Text } = Typography
 
@@ -193,6 +195,11 @@ const WeeklyReports: React.FC = () => {
     production_value: 0,
     receive_value: 0
   })
+
+  const [groupPdfExporting, setGroupPdfExporting] = useState(false)
+  const [groupDocxExporting, setGroupDocxExporting] = useState(false)
+  const [userPdfExporting, setUserPdfExporting] = useState(false)
+  const [userDocxExporting, setUserDocxExporting] = useState(false)
 
   const handleAiOptimizeWeekly = async () => {
     const values = weeklyForm.getFieldsValue()
@@ -458,6 +465,135 @@ const WeeklyReports: React.FC = () => {
     } catch (err) {
       console.error(err)
       message.error('导出文件失败')
+    }
+  }
+
+  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF 纯前端高保真图片 PDF 分页)
+  const handleExportPDF = async (elementId: string, filename: string, setLoader: (loading: boolean) => void) => {
+    const element = document.getElementById(elementId)
+    if (!element) {
+      message.error('未找到可导出的页面节点')
+      return
+    }
+    
+    setLoader(true)
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2, // 双倍清晰度
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      })
+      
+      const imgData = canvas.toDataURL('image/jpeg', 1.0)
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 297
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      let position = 0
+      
+      // 写入第一页
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      // 循环分页处理
+      while (heightLeft > 0) {
+        position -= pageHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      pdf.save(filename)
+      message.success('PDF 战报下载成功！')
+    } catch (err: any) {
+      console.error('导出 PDF 异常:', err)
+      message.error('导出 PDF 战报失败')
+    } finally {
+      setLoader(false)
+    }
+  }
+
+  // 团队整体周报的 Word 导出 (调用后端 docx_exporter)
+  const handleExportGroupDocx = async () => {
+    const groupName = getGroupNameText()
+    const [mon] = getMondayAndSunday(weeklyDate)
+    const dateStr = mon.format('YYYY-MM-DD')
+    const title = `${groupName || '团队'}_${dateStr}_整体复盘周报`
+    
+    setGroupDocxExporting(true)
+    try {
+      const res = await post<any>('/reports/weekly/export-docx', {
+        title: title,
+        metrics: groupMetrics,
+        content: groupReportContent
+      }, {
+        responseType: 'blob'
+      })
+      
+      const blob = res as unknown as Blob
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `${title}.docx`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      message.success('Word 文档导出成功！')
+    } catch (err: any) {
+      console.error('导出 Word 异常:', err)
+      message.error(err?.response?.data?.detail || '导出 Word 文档失败')
+    } finally {
+      setGroupDocxExporting(false)
+    }
+  }
+
+  // 个人周报的 Word 导出 (拼接 Markdown 内容后调用后端接口)
+  const handleExportUserDocx = async () => {
+    if (!viewingWeeklyReport) return
+    
+    const isMarketingUser = viewingWeeklyReport.user_position_type === 'marketing' ||
+      ['target_officer', 'marketing_staff', 'tech_marketing'].includes(viewingWeeklyReport.user_role || '')
+      
+    const userName = viewingWeeklyReport.user_name
+    const title = `${userName}_${selectedMonday}_个人周复盘`
+    
+    let mdContent = ''
+    mdContent += `# 🎯 本周目标计划\n${isMarketingUser ? (viewingWeeklyReport.sales_plan || '—') : (viewingWeeklyReport.delivery_plan || '—')}\n\n`
+    mdContent += `# 🔥 本周实际完成\n${isMarketingUser ? (viewingWeeklyReport.sales_actual || '—') : (viewingWeeklyReport.delivery_actual || '—')}\n\n`
+    mdContent += `# 📊 计划达成率说明\n${isMarketingUser ? (viewingWeeklyReport.sales_rate || '—') : (viewingWeeklyReport.delivery_rate || '—')}\n\n`
+    mdContent += `# 🏆 本周工作亮点\n${isMarketingUser ? (viewingWeeklyReport.sales_highlights || '—') : (viewingWeeklyReport.delivery_highlights || '—')}\n\n`
+    mdContent += `# 🚧 本周工作卡点/难点\n${isMarketingUser ? (viewingWeeklyReport.sales_blockers || '—') : (viewingWeeklyReport.delivery_blockers || '—')}\n\n`
+    mdContent += `# 🤝 需要支持协调\n${isMarketingUser ? (viewingWeeklyReport.sales_support || '—') : (viewingWeeklyReport.delivery_support || '—')}\n\n`
+    mdContent += `# 🚀 下周工作目标\n${isMarketingUser ? (viewingWeeklyReport.next_sales_plan || '—') : (viewingWeeklyReport.next_delivery_plan || '—')}\n`
+
+    setUserDocxExporting(true)
+    try {
+      const res = await post<any>('/reports/weekly/export-docx', {
+        title: title,
+        metrics: null, // 个人周报不单独拼装 metrics 表
+        content: mdContent
+      }, {
+        responseType: 'blob'
+      })
+      
+      const blob = res as unknown as Blob
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `${title}.docx`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      message.success('Word 文档导出成功！')
+    } catch (err: any) {
+      console.error('导出 Word 异常:', err)
+      message.error(err?.response?.data?.detail || '导出 Word 文档失败')
+    } finally {
+      setUserDocxExporting(false)
     }
   }
 
@@ -1564,6 +1700,22 @@ const WeeklyReports: React.FC = () => {
           open={weeklyViewVisible}
           onCancel={() => setWeeklyViewVisible(false)}
           footer={[
+            <Button
+              key="export-pdf"
+              icon={<DownloadOutlined />}
+              loading={userPdfExporting}
+              onClick={() => handleExportPDF('user-report-modal-content', `${viewingWeeklyReport?.user_name}_${selectedMonday}_个人周复盘.pdf`, setUserPdfExporting)}
+            >
+              导出PDF
+            </Button>,
+            <Button
+              key="export-docx"
+              icon={<DownloadOutlined />}
+              loading={userDocxExporting}
+              onClick={handleExportUserDocx}
+            >
+              导出Word
+            </Button>,
             <Button key="close" type="primary" onClick={() => setWeeklyViewVisible(false)}>
               关闭
             </Button>
@@ -1574,7 +1726,8 @@ const WeeklyReports: React.FC = () => {
         >
           {viewingWeeklyReport && (
             <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '8px' }}>
-              <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
+              <div id="user-report-modal-content" style={{ padding: '16px', backgroundColor: '#ffffff' }}>
+                <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
                 <Descriptions.Item label="成员姓名"><strong>{viewingWeeklyReport.user_name}</strong></Descriptions.Item>
                 <Descriptions.Item label="岗位类别">
                   <Tag color="cyan">
@@ -1720,6 +1873,7 @@ const WeeklyReports: React.FC = () => {
                   </Col>
                 )}
               </Row>
+              </div>
             </div>
           )}
         </Modal>
@@ -2321,6 +2475,22 @@ const WeeklyReports: React.FC = () => {
               导出为 .md 文件
             </Button>,
             <Button 
+              key="export-pdf" 
+              icon={<DownloadOutlined />} 
+              loading={groupPdfExporting}
+              onClick={() => handleExportPDF('group-report-modal-content', `${getGroupNameText()}_${mon.format('YYYY-MM-DD')}_整体复盘周报.pdf`, setGroupPdfExporting)}
+            >
+              导出PDF
+            </Button>,
+            <Button 
+              key="export-docx" 
+              icon={<DownloadOutlined />} 
+              loading={groupDocxExporting}
+              onClick={handleExportGroupDocx}
+            >
+              导出Word
+            </Button>,
+            <Button 
               key="save" 
               type="primary" 
               loading={groupReportLoading}
@@ -2337,6 +2507,7 @@ const WeeklyReports: React.FC = () => {
           ]}
         >
           <div style={{ maxHeight: '75vh', overflowY: 'auto', padding: '4px' }}>
+            <div id="group-report-modal-content" style={{ padding: '16px', backgroundColor: '#ffffff' }}>
             {/* 1. 存盘状态 Alert (小巧单行) */}
             <Alert
               message={
@@ -2443,6 +2614,7 @@ const WeeklyReports: React.FC = () => {
                 <MarkdownPreview text={groupReportContent} />
               </div>
             )}
+            </div>
           </div>
         </Modal>
       </div>
