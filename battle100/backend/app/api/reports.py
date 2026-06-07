@@ -822,7 +822,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
             }).scalar() or 0.0
             personal_receive = float(recv_val) # 万元
             
-            # 2. 统计个人名下在研项目并诊断饱和度预警
+            # 2. 统计个人名下正在实施项目并诊断饱和度预警
             active_projects_sql = text("""
                 SELECT project_name, project_progress, project_status
                 FROM project
@@ -836,7 +836,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
             active_count = len(active_projects)
             
             if active_count == 0:
-                personal_warnings.append("🚨 红色警报：您目前名下无任何活跃在研的交付项目，需立即核实饱和度并协调新项目分配！")
+                personal_warnings.append("🚨 红色警报：您目前名下无任何活跃正在实施的交付项目，需立即核实饱和度并协调新项目分配！")
             else:
                 # 检查项目本周是否进度停滞（无任何异动）
                 p_change_sql = text("""
@@ -857,7 +857,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 }).scalar() or 0
                 
                 if change_count == 0 and not is_marketing:
-                    personal_warnings.append("⚠️ 黄色预警：名下在研项目本周进度停滞（无任何进度条推进记录），请在下方补充卡点或原因说明！")
+                    personal_warnings.append("⚠️ 黄色预警：名下正在实施项目本周进度停滞（无任何进度条推进记录），请在下方补充卡点或原因说明！")
                 
                 # 检查空仓风险
                 all_near_complete = True
@@ -872,7 +872,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         break
                 
                 if active_count <= 2 and all_near_complete:
-                    personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个在研项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
+                    personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个正在实施项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
 
             # 业绩快照与预警文本前缀准备
             perf_snapshot = (
@@ -1057,7 +1057,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 delivery_list = []
                 d_idx = 1
                 if projects:
-                    delivery_list.append("目前负责跟进的在研项目进度情况如下：")
+                    delivery_list.append("目前负责跟进的正在实施项目进度情况如下：")
                     for p in projects:
                         delivery_list.append(f"  {d_idx}) 项目【{p['project_name']}】当前总体进度：{float(p['project_progress'] or 0):.1f}%")
                         d_idx += 1
@@ -1088,7 +1088,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         delivery_list.append(f"  {d_idx}) {m_tag}完成项目【{t['project_name']}】下的任务节点：【{t['task_name']}】")
                         d_idx += 1
                 
-                formatted_delivery = perf_snapshot + ("\n".join(delivery_list) if delivery_list else "1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。")
+                formatted_delivery = perf_snapshot + ("\n".join(delivery_list) if delivery_list else "1. 本周名下负责的正在实施项目推进平稳，无重大子任务或里程碑完成提交。")
                 result["delivery_actual"] = formatted_delivery
                 result["sales_actual"] = ""
                 
@@ -1208,7 +1208,7 @@ async def extract_weekly_crm_data(
     1. 新签合同与回款明细（营销岗）
     2. 客户拜访跟进频次（营销岗）
     3. 月度新签与回款目标的最新达成率说明（自动计算）
-    4. 正在进行的在研项目进度及本周攻克的里程碑子任务（交付岗）
+    4. 正在进行的正在实施项目进度及本周攻克的里程碑子任务（交付岗）
     并自动拼装排版为序号（1. 2. 3.）明细文本，提供一键拉取静默覆盖。
     """
     from fastapi.concurrency import run_in_threadpool
@@ -1242,7 +1242,6 @@ async def get_weekly_reports_summary(
     current_user: User = Depends(require_permission("view_weekly_reports")),
 ):
     """获取选定周时间段内，小组成员提交的周复盘数据大表（PC端汇总使用）"""
-    # 数据范围权限校验：非管理员和目标官，且有归属战队时，强制绑定为其所属战队
     from app.models.user import UserRole
     if current_user.role not in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value] and current_user.team_id is not None:
         team_id = current_user.team_id
@@ -1713,7 +1712,7 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                             f"但未开具发票，影响后续收款回款。对应阶段款项金额: {float(ub['installment_money']):.2f} 万元。"
                         )
                 
-                # 本周活跃在研项目清单 (用于 AI 诊断成员工作饱和度与项目空仓/断粮风险)
+                # 本周活跃正在实施项目清单 (用于 AI 诊断成员工作饱和度与项目空仓/断粮风险)
                 active_projects_sql = text(f"""
                     SELECT project_name, project_manager, project_progress, project_status
                     FROM project
@@ -1724,7 +1723,7 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                 """)
                 active_projects = conn.execute(active_projects_sql).mappings().all()
                 if active_projects:
-                    detail_texts.append("\n【全组各成员名下负责的所有活跃在研项目及当前最新进度清单】:")
+                    detail_texts.append("\n【全组各成员名下负责的所有活跃正在实施项目及当前最新进度清单】:")
                     for idx, ap in enumerate(active_projects, 1):
                         progress_val = ap['project_progress']
                         try:
@@ -2180,11 +2179,11 @@ async def generate_group_weekly_report(
             "   - **二、本周工作主要战果与亮点**（结合个人周报/日报及 CRM 沟通纪要，细致描述具体项目的推进、突破、大额签约或回款情况，提及具体负责人）；\n"
             "   - **三、交付卡点与重大业务预警**：\n"
             "     1. 深度分析团队面临的暂停/延期项目，特别是‘已到交付节点未开票’和‘已开票未回款’的项目；\n"
-            "     2. **必须依据【在研项目最新进度清单】与【项目进度异动记录】对所有团队成员的工作饱和度及项目健康度进行诊断，并以专门的子标题加粗高亮输出以下警报与提示：**\n"
-            "        - 🚨 **红色警报（无项目人员）**：若有成员名下没有任何当前活跃在研的项目（在在研清单中未出现），必须高亮列出，形式如：`🚨 红色警报：[姓名] 名下无任何在研项目，需立即核实并安排任务！`；\n"
+            "     2. **必须依据【正在实施项目最新进度清单】与【项目进度异动记录】对所有团队成员的工作饱和度及项目健康度进行诊断，并以专门的子标题加粗高亮输出以下警报与提示：**\n"
+            "        - 🚨 **红色警报（无项目人员）**：若有成员名下没有任何当前活跃正在实施的项目（在清单中未出现），必须高亮列出，形式如：`🚨 红色警报：[姓名] 名下无任何正在实施项目，需立即核实并安排任务！`；\n"
             "        - ⚠️ **黄色预警（项目停滞人员）**：若有成员名下有项目，但该项目本周没有任何进度异动推进（即进度变化为0%且无任何日报推进说明），必须高亮列出，形式如：`⚠️ 黄色预警：[姓名] 负责的项目本周进度停滞，无任何推进，需重点关注！`；\n"
-            "        - 💡 **风险提示（项目空仓人员）**：若有成员名下负责的项目极少（≤ 2 个）且所有在研项目的当前最新进度均已接近完成（最新进度均已 ≥ 90%，包含 100% 已完工的在研项目），说明其即将面临‘断粮’空仓风险，必须高亮列出，形式如：`💡 风险提示：[姓名] 名下仅有 [X] 个在研项目且均已接近完成（当前进度≥90%），面临项目断档风险，需尽快规划新项目接入。`；\n"
-            "        - **注意**：以上警报及提示项下，【仅列出符合该预警条件的成员】。正常推进、饱和度良好的成员【绝对不要】列入上述任何异常警报列表中。如果没有任何人符合某警报条件，则直接在该警报板块下输出肯定结论（如‘✅ 经核查，全员本周均有在研活跃项目，无无项目红色警报。’）。\n"
+            "        - 💡 **风险提示（项目空仓人员）**：若有成员名下负责的项目极少（≤ 2 个）且所有正在实施项目的当前最新进度均已接近完成（最新进度均已 ≥ 90%，包含 100% 已完工的项目），说明其即将面临‘断粮’空仓风险，必须高亮列出，形式如：`💡 风险提示：[姓名] 名下仅有 [X] 个正在实施项目且均已接近完成（当前进度≥90%），面临项目断档风险，需尽快规划新项目接入。`；\n"
+            "        - **注意**：以上警报及提示项下，【仅列出符合该预警条件的成员】。正常推进、饱和度良好的成员【绝对不要】列入上述任何异常警报列表中。如果没有任何人符合某警报条件，则直接在该警报板块下输出肯定结论（如‘✅ 经核查，全员本周均有正在实施的活跃项目，无无项目红色警报。’）。\n"
             "   - **四、下周重点攻坚方向与计划**（结合个人下周目标给出团队攻坚计划）；\n"
             "   - **五、需要协调与支持的事项**（明确指出当前阻碍交付或签约、回款的卡点，并点明需要上级或跨部门支持的具体事项）。\n"
             f"4. 你必须在 Markdown 文本的最后，用专门的一行渲染 `【本周未填报人员】：{unsubmitted_str}`。"
@@ -2193,8 +2192,8 @@ async def generate_group_weekly_report(
         db_system_prompt = route_obj.system_prompt if route_obj else None
         db_user_prompt = route_obj.user_prompt if route_obj else None
         
-        # 若数据库中已有配置，但尚未更新成员工作饱和度健康诊断逻辑，自动重设更新数据库中的 system_prompt 确保百分之百生效
-        if route_obj and route_obj.system_prompt and "仅列出符合该预警条件的成员" not in route_obj.system_prompt:
+        # 若数据库中已有配置，但尚未更新成员工作饱和度诊断逻辑，或提示词中仍包含旧的“在研项目”字样，自动重设更新数据库中的 system_prompt 确保百分之百生效
+        if route_obj and route_obj.system_prompt and ("仅列出符合该预警条件的成员" not in route_obj.system_prompt or "在研项目" in route_obj.system_prompt):
             route_obj.system_prompt = default_sys_prompt
             db.add(route_obj)
             await db.commit()

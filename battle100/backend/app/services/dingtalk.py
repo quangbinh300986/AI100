@@ -190,7 +190,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                 }).scalar() or 0.0
                 personal_receive = float(recv_val)
                 
-                # 2. 统计个人名下在研项目并诊断饱和度预警
+                # 2. 统计个人名下正在实施项目并诊断饱和度预警
                 active_projects_sql = text("""
                     SELECT project_name, project_progress, project_status
                     FROM project
@@ -203,7 +203,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                 active_count = len(active_projects)
                 
                 if active_count == 0:
-                    personal_warnings.append("🚨 红色警报：您目前名下无任何活跃在研的交付项目，需立即核实饱和度并协调新项目分配！")
+                    personal_warnings.append("🚨 红色警报：您目前名下无任何活跃正在实施的交付项目，需立即核实饱和度并协调新项目分配！")
                 else:
                     p_change_sql = text("""
                         SELECT COUNT(*)
@@ -223,7 +223,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                     }).scalar() or 0
                     
                     if change_count == 0 and not is_marketing:
-                        personal_warnings.append("⚠️ 黄色预警：名下在研项目本周进度停滞（无任何进度条推进记录），请补充卡点或原因说明！")
+                        personal_warnings.append("⚠️ 黄色预警：名下正在实施项目本周进度停滞（无任何进度条推进记录），请补充卡点或原因说明！")
                     
                     all_near_complete = True
                     for ap in active_projects:
@@ -237,7 +237,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                             break
                     
                     if active_count <= 2 and all_near_complete:
-                        personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个在研项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
+                        personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个正在实施项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
         except Exception as db_err:
             logger.error(f"个人钉钉推送时拉取 CRM 数据出错: {db_err}")
 
@@ -245,7 +245,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
         if personal_warnings:
             warning_status_desc = "\n" + "\n".join([f"  * {w}" for w in personal_warnings])
         else:
-            warning_status_desc = f"`✅ 状态良好` (名下共有 `{active_count}` 个活跃在研项目，推进正常)"
+            warning_status_desc = f"`✅ 状态良好` (名下共有 `{active_count}` 个活跃正在实施项目，推进正常)"
 
         # 拼接排版优美的 Markdown 文本
         # 注意：必须包含安全设置自定义关键词“百日奋战周报”

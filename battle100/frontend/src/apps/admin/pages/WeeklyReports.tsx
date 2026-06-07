@@ -80,7 +80,7 @@ const isDummyCrmActual = (text: string, isMarketing: boolean) => {
   if (isMarketing) {
     return clean === '1. 本周暂无相关的合同新签、到账回款与客户拜访登记。' || clean === ''
   } else {
-    return clean === '1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
+    return clean === '1. 本周名下负责的正在实施项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
   }
 }
 
@@ -1997,7 +1997,7 @@ const WeeklyReports: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="匹配分析岗位">
                 <Tag color={isMarketing ? 'blue' : 'green'}>
-                  {isMarketing ? '营销与销售线 (分析商机/合同/回款/拜访)' : '交付与技术线 (分析在研项目/子任务/里程碑)'}
+                  {isMarketing ? '营销与销售线 (分析商机/合同/回款/拜访)' : '交付与技术线 (分析正在实施项目/子任务/里程碑)'}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="数据库来源">

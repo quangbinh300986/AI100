@@ -56,7 +56,7 @@ const isDummyCrmActual = (text: string, isMarketing: boolean) => {
   if (isMarketing) {
     return clean === '1. 本周暂无相关的合同新签、到账回款与客户拜访登记。' || clean === ''
   } else {
-    return clean === '1. 本周名下负责的在研项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
+    return clean === '1. 本周名下负责的正在实施项目推进平稳，无重大子任务或里程碑完成提交。' || clean === ''
   }
 }
 
