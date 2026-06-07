@@ -38,7 +38,8 @@ import {
   DingtalkOutlined,
   GlobalOutlined,
   DesktopOutlined,
-  ExportOutlined
+  ExportOutlined,
+  DownloadOutlined
 } from '@ant-design/icons'
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -2392,6 +2393,25 @@ const Reports: React.FC = () => {
                 </Form.List>
               </div>
             </>
+          )}
+
+          {editEventType === 'station_report' && editFileList.length > 0 && (
+            <Form.Item label="📎 已上传的附件压缩包">
+              <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#555' }}>
+                  📦 encrypted_attachments.zip
+                </span>
+                <Button 
+                  type="link" 
+                  size="small" 
+                  icon={<DownloadOutlined />}
+                  href={editFileList[0]?.url}
+                  target="_blank"
+                >
+                  下载附件
+                </Button>
+              </div>
+            </Form.Item>
           )}
 
           {['contract_signed', 'happiness', 'triangle'].includes(editEventType) && (

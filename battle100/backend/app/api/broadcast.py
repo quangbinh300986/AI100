@@ -201,6 +201,13 @@ class BroadcastResponse(BaseModel):
     delivery_allocations: Optional[list[AllocationItem]] = None
     marketing_allocations: Optional[list[AllocationItem]] = None
 
+    # 驻点人员播报支持
+    station_category: Optional[str] = None
+    station_location: Optional[str] = None
+    summary: Optional[str] = None
+    attachment_urls: Optional[list[dict]] = None
+    is_urgent: Optional[bool] = None
+
     model_config = {"from_attributes": True}
 
 
@@ -621,6 +628,11 @@ async def list_broadcasts(
         BroadcastEvent.created_at,
         BroadcastEvent.crm_opportunity_id,
         BroadcastEvent.project_name,
+        BroadcastEvent.station_category,
+        BroadcastEvent.station_location,
+        BroadcastEvent.summary,
+        BroadcastEvent.attachment_urls,
+        BroadcastEvent.is_urgent,
         DbUser.name.label("user_name"),
         DbTeam.name.label("team_name")
     ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
@@ -765,7 +777,12 @@ async def list_broadcasts(
             user_name=row.user_name,
             team_name=row.team_name,
             delivery_allocations=allocs["delivery"] if allocs else None,
-            marketing_allocations=allocs["marketing"] if allocs else None
+            marketing_allocations=allocs["marketing"] if allocs else None,
+            station_category=row.station_category,
+            station_location=row.station_location,
+            summary=row.summary,
+            attachment_urls=row.attachment_urls,
+            is_urgent=row.is_urgent
         ))
         
     return BroadcastListResponse(total=total, items=items)
