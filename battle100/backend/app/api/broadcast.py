@@ -92,11 +92,19 @@ async def trigger_broadcast_push(broadcast_id: int):
             if event.event_type == EventType.STATION_REPORT.value:
                 download_url = None
                 if event.attachment_urls and len(event.attachment_urls) > 0:
-                    download_url = event.attachment_urls[0].get("url")
+                    raw_url = event.attachment_urls[0].get("url")
+                    name = event.attachment_urls[0].get("name", "encrypted_attachments.zip")
+                    if raw_url:
+                        # 优先使用配置的公网 Supabase 地址以支持 frp 穿透
+                        if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                            raw_url = raw_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                        download_url = f"{raw_url}?download={name}"
                 
-                # 网页详情链接，默认通过 settings.CORS_ORIGINS 获取前端 URL
+                # 网页详情链接，优先使用配置的公网前端 URL
                 detail_url = None
-                if settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
+                if getattr(settings, "EXTERNAL_FRONTEND_URL", None):
+                    detail_url = f"{settings.EXTERNAL_FRONTEND_URL.rstrip('/')}/admin/dashboard"
+                elif settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
                     detail_url = f"{settings.CORS_ORIGINS[0]}/admin/dashboard"
                     
                 msg_id = await dingtalk_client.send_station_report_actioncard(

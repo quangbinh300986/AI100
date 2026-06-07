@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = "http://localhost:8000"
     SERVICE_ROLE_KEY: str = ""
 
+    # ===== 公网映射配置 (用于钉钉等外部网络访问，可选) =====
+    EXTERNAL_SUPABASE_URL: Optional[str] = None
+    EXTERNAL_FRONTEND_URL: Optional[str] = None
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
