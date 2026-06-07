@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Toast, Card, NavBar, TextArea, Tag, DotLoading, Dialog } from 'antd-mobile'
-import { LeftOutline, RightOutline, CalendarOutline, FileOutline, SendOutline, CopyOutline, DownlandOutline } from 'antd-mobile-icons'
+import { LeftOutline, RightOutline, CalendarOutline, FileOutline, SendOutline } from 'antd-mobile-icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import { getMyStats } from '@shared/api/dashboard'
@@ -695,7 +695,7 @@ export default function GroupWeeklyReport() {
                   gap: 4
                 }}
               >
-                <CopyOutline /> 复制 Markdown
+                📋 复制 Markdown
               </Button>
               <Button
                 onClick={handleExportFile}
