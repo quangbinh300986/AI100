@@ -76,8 +76,8 @@ const adjustPageBreaks = (containerId: string) => {
     const elTop = el.getBoundingClientRect().top - containerRect.top
     const relativeTop = elTop - currentPageStartOffset
 
-    // 如果该元素在当前页的相对位置 + 其自身高度超出了单页高度限制
-    if (relativeTop + elHeight > pageHeightPx) {
+    // 如果该元素在当前页的相对位置 + 其自身高度超出了单页高度限制，且该元素自身高度小于单页高度时才进行防折断处理 (防止单元素高度超标引起死循环或巨幅空白)
+    if (relativeTop + elHeight > pageHeightPx && elHeight < pageHeightPx) {
       const spacerHeight = pageHeightPx - relativeTop
       
       // 只有剩余高度合适时才进行顶页处理
@@ -525,7 +525,7 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
-  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF 纯前端高保真图片 PDF 分页，支持自适应防折断算法)
+  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF + Canvas像素精准切割自适应防折断算法)
   const handleExportPDF = async (elementId: string, filename: string, setLoader: (loading: boolean) => void) => {
     const element = document.getElementById(elementId)
     if (!element) {
@@ -549,24 +549,46 @@ const WeeklyReports: React.FC = () => {
       const existingSpacers = element.querySelectorAll('.pdf-page-break-spacer')
       existingSpacers.forEach(el => el.remove())
 
-      const imgData = canvas.toDataURL('image/jpeg', 1.0)
+      // 3. 基于生成的 Canvas 宽度按照 A4 比例进行像素级多页切割，实现绝对 0 偏移误差
+      const canvasWidth = canvas.width
+      const canvasHeight = canvas.height
+      const canvasPageHeight = Math.floor(canvasWidth * 1.414) // 严格符合 A4 1.414 高宽比
+      
       const pdf = new jsPDF('p', 'mm', 'a4')
-      const imgWidth = 210
-      const pageHeight = 297
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
-      let position = 0
       
-      // 写入第一页
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+      // 计算得出总页数
+      const totalPages = Math.ceil(canvasHeight / canvasPageHeight)
       
-      // 循环分页处理
-      while (heightLeft > 0) {
-        position -= pageHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          pdf.addPage()
+        }
+        
+        // 创建独立的单页 Canvas 容纳被裁剪出的局部图像，防止长图越界重叠
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvasWidth
+        pageCanvas.height = canvasPageHeight
+        const ctx = pageCanvas.getContext('2d')
+        
+        if (ctx) {
+          // 渲染白色背景兜底
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, canvasWidth, canvasPageHeight)
+          
+          // 从超长长图中复制出当前页的区域坐标
+          const srcY = i * canvasPageHeight
+          const srcHeight = Math.min(canvasPageHeight, canvasHeight - srcY)
+          
+          ctx.drawImage(
+            canvas,
+            0, srcY, canvasWidth, srcHeight, // 裁剪源位置
+            0, 0, canvasWidth, srcHeight     // 绘制到目标单页Canvas
+          )
+        }
+        
+        // 将独立单页 Canvas 转化为图片数据完美放入当前 PDF 页
+        const pageData = pageCanvas.toDataURL('image/jpeg', 1.0)
+        pdf.addImage(pageData, 'JPEG', 0, 0, 210, 297) // 填满 210mm x 297mm 的 A4 页面
       }
       
       pdf.save(filename)
