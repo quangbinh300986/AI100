@@ -2774,7 +2774,7 @@ const Dashboard: React.FC = () => {
                             type="link" 
                             size="small" 
                             icon={<DownloadOutlined />}
-                            href={item.attachment_urls[0].url} 
+                            href={`${item.attachment_urls[0].url}?download=${item.attachment_urls[0].name || 'encrypted_attachments.zip'}`} 
                             target="_blank"
                             style={{ padding: 0 }}
                           >

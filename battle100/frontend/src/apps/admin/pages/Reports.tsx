@@ -2424,7 +2424,7 @@ const Reports: React.FC = () => {
                     type="link" 
                     size="small" 
                     icon={<DownloadOutlined />}
-                    href={editFileList[0]?.url}
+                    href={`${editFileList[0]?.url}?download=${editFileList[0]?.name || 'encrypted_attachments.zip'}`}
                     target="_blank"
                   >
                     下载附件
