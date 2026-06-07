@@ -211,7 +211,7 @@ app.include_router(llm_config_router, prefix=settings.API_PREFIX)
 
 @app.get("/")
 def read_root():
-    return {"message": f"欢迎使用{settings.APP_NAME}后端服务", "version": settings.APP_VERSION}
+    return {"message": f"欢迎使用{settings.APP_NAME}后端服务！", "version": settings.APP_VERSION}
 
 
 @app.websocket("/ws/screen")
