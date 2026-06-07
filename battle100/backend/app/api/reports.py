@@ -1617,6 +1617,31 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                             f"但未开具发票，影响后续收款回款。对应阶段款项金额: {float(ub['installment_money']):.2f} 万元。"
                         )
                 
+                # 本周活跃在研项目清单 (用于 AI 诊断成员工作饱和度与项目空仓/断粮风险)
+                active_projects_sql = text(f"""
+                    SELECT project_name, project_manager, project_progress, project_status
+                    FROM project
+                    WHERE project_manager IN ({names_str})
+                      AND project_progress < 100.0
+                      AND (project_status IS NULL OR (project_status != '已归档' AND project_status != '已结项' AND project_status != '3'))
+                    LIMIT 40
+                """)
+                active_projects = conn.execute(active_projects_sql).mappings().all()
+                if active_projects:
+                    detail_texts.append("\n【全组各成员名下负责的所有活跃在研项目及当前最新进度清单】:")
+                    for idx, ap in enumerate(active_projects, 1):
+                        progress_val = ap['project_progress']
+                        try:
+                            progress_val_float = float(progress_val) if progress_val is not None else 0.0
+                            progress_str = f"{progress_val_float:.1f}%"
+                        except Exception:
+                            progress_str = f"{progress_val or 0}%"
+                        
+                        detail_texts.append(
+                            f"  {idx}) 负责人[{ap['project_manager']}]负责的活跃项目【{ap['project_name']}】"
+                            f"(当前进度：{progress_str}，状态：{ap['project_status'] or '进行中'})"
+                        )
+                
                 if detail_texts:
                     res["crm_details_text"] = "\n".join(detail_texts)
                     
@@ -2047,9 +2072,6 @@ async def generate_group_weekly_report(
         route_res = await db.execute(route_stmt)
         route_obj = route_res.scalar_one_or_none()
         
-        db_system_prompt = route_obj.system_prompt if route_obj else None
-        db_user_prompt = route_obj.user_prompt if route_obj else None
-        
         # 默认强力 System Prompt 作为兜底
         default_sys_prompt = (
             "你是“百日奋战”战队及三级巴整体复盘的【战报及铁三角联动分析师】。\n"
@@ -2060,12 +2082,29 @@ async def generate_group_weekly_report(
             "3. 报告必须包含以下板块：\n"
             "   - **一、团队本周核心业绩看板**（用 Markdown 表格展示提供给你的所有汇总指标快照，包括产值、回款、签约等）；\n"
             "   - **二、本周工作主要战果与亮点**（结合个人周报/日报及 CRM 沟通纪要，细致描述具体项目的推进、突破、大额签约或回款情况，提及具体负责人）；\n"
-            "   - **三、交付卡点与重大业务预警**（分析团队面临的暂停/延期项目，特别是‘已到节点未开票’和‘已开票未回款’的项目，并给出分析）；\n"
+            "   - **三、交付卡点与重大业务预警**：\n"
+            "     1. 深度分析团队面临的暂停/延期项目，特别是‘已到交付节点未开票’和‘已开票未回款’的项目；\n"
+            "     2. **必须依据【在研项目最新进度清单】与【项目进度异动记录】对所有团队成员的工作饱和度及项目健康度进行诊断，并以专门的子标题加粗高亮输出以下警报与提示：**\n"
+            "        - 🚨 **红色警报（无项目人员）**：若有成员名下没有任何当前活跃在研的项目（在在研清单中未出现），必须高亮列出，形式如：`🚨 红色警报：[姓名] 名下无任何在研项目，需立即核实并安排任务！`；\n"
+            "        - ⚠️ **黄色预警（项目停滞人员）**：若有成员名下有项目，但该项目本周没有任何进度异动推进（即进度变化为0%且无任何日报推进说明），必须高亮列出，形式如：`⚠️ 黄色预警：[姓名] 负责的项目本周进度停滞，无任何推进，需重点关注！`；\n"
+            "        - 💡 **风险提示（项目空仓人员）**：若有成员名下负责的项目极少（≤ 2 个）且所有在研项目的当前最新进度均已接近完成（最新进度均已 ≥ 90%，包含 100% 已完工的在研项目），说明其即将面临‘断粮’空仓风险，必须高亮列出，形式如：`💡 风险提示：[姓名] 名下仅有 [X] 个在研项目且均已接近完成（当前进度≥90%），面临项目断档风险，需尽快规划新项目接入。`；\n"
+            "        - **注意**：以上警报及提示项下，【仅列出符合该预警条件的成员】。正常推进、饱和度良好的成员【绝对不要】列入上述任何异常警报列表中。如果没有任何人符合某警报条件，则直接在该警报板块下输出肯定结论（如‘✅ 经核查，全员本周均有在研活跃项目，无无项目红色警报。’）。\n"
             "   - **四、下周重点攻坚方向与计划**（结合个人下周目标给出团队攻坚计划）；\n"
             "   - **五、需要协调与支持的事项**（明确指出当前阻碍交付或签约、回款的卡点，并点明需要上级或跨部门支持的具体事项）。\n"
             f"4. 你必须在 Markdown 文本的最后，用专门的一行渲染 `【本周未填报人员】：{unsubmitted_str}`。"
         )
+
+        db_system_prompt = route_obj.system_prompt if route_obj else None
+        db_user_prompt = route_obj.user_prompt if route_obj else None
         
+        # 若数据库中已有配置，但尚未更新成员工作饱和度健康诊断逻辑，自动重设更新数据库中的 system_prompt 确保百分之百生效
+        if route_obj and route_obj.system_prompt and "仅列出符合该预警条件的成员" not in route_obj.system_prompt:
+            route_obj.system_prompt = default_sys_prompt
+            db.add(route_obj)
+            await db.commit()
+            await db.refresh(route_obj)
+            db_system_prompt = route_obj.system_prompt
+
         # 确定最终 prompt
         system_prompt = db_system_prompt if db_system_prompt else default_sys_prompt
         # 对用户提示词，如果系统配了，则以系统配的模板把 {report_data} 替换掉
