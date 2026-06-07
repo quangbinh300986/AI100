@@ -845,7 +845,10 @@ async def get_dashboard_overview(
     from app.models.broadcast import BroadcastEvent
     station_events_res = await db.execute(
         select(BroadcastEvent)
-        .where(BroadcastEvent.event_type == 'station_report')
+        .where(
+            BroadcastEvent.event_type == 'station_report',
+            BroadcastEvent.is_deleted == False
+        )
         .order_by(BroadcastEvent.created_at.desc())
         .limit(10)
     )
@@ -948,7 +951,8 @@ async def get_dashboard_overview(
                 time=time_str,
                 type=feed_type,
                 attachment_urls=att_urls,
-                is_urgent=is_urg
+                is_urgent=is_urg,
+                station_category=obj.station_category if item_type == "event" else None
             )
         )
 

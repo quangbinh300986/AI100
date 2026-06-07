@@ -52,6 +52,9 @@ async def init_db():
         await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS attachment_urls JSON;"))
         await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS attachment_password VARCHAR(50);"))
         await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE;"))
+        # 自愈式升级：自动在 broadcast_events 中补充回收站软删除及备份相关的列
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE broadcast_events ADD COLUMN IF NOT EXISTS allocations_backup JSONB DEFAULT NULL;"))
         # 自愈式升级：为 agent_routes 自动添加自定义名称描述及提示词系统/用户模板列
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_name VARCHAR(100);"))
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_description VARCHAR(500);"))

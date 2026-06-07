@@ -46,6 +46,7 @@ class LiveFeedItem(BaseModel):
     type: str = Field(default="info", description="播报类型(contract/achievement/milestone/info)")
     attachment_urls: Optional[list] = Field(default=None, description="附件列表")
     is_urgent: Optional[bool] = Field(default=None, description="是否紧急")
+    station_category: Optional[str] = Field(default=None, description="驻点快报的子分类")
 
 
 class WeeklyTrendData(BaseModel):

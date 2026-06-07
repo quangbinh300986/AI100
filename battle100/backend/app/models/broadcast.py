@@ -99,6 +99,12 @@ class BroadcastEvent(BaseModel):
     is_urgent: Mapped[bool] = mapped_column(
         Boolean, default=False, comment="是否紧急快报"
     )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否已被软删除进入回收站"
+    )
+    allocations_backup: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, comment="软删除时的业绩明细快照备份"
+    )
 
     # ===== 关联关系 =====
     user = relationship("User")

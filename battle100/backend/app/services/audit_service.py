@@ -25,10 +25,18 @@ def to_dict(model_instance) -> dict | None:
         return model_instance
         
     try:
+        from sqlalchemy import inspect
         res = {}
+        inspected = inspect(model_instance)
+        unloaded_cols = inspected.unloaded if inspected else set()
+        
         # 遍历所有表列并提取属性值
         for col in model_instance.__table__.columns:
-            val = getattr(model_instance, col.name)
+            if col.name in unloaded_cols:
+                # 处于 unloaded 或 expired 状态的列，直接从 __dict__ 中安全获取，不触发数据库懒加载和 autoflush
+                val = model_instance.__dict__.get(col.name, None)
+            else:
+                val = getattr(model_instance, col.name)
             
             # 日期时间序列化
             if isinstance(val, (datetime, date)):

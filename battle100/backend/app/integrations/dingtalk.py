@@ -455,7 +455,7 @@ class DingTalkClient:
             
             urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
             at_text = " @所有人" if is_urgent else ""
-            keyword_tag = "【政策文件播报】" if category == "policy" else ""
+            keyword_tag = "【政策文件播报】" if category == "policy" else "【战报播报 | 赢战百日】"
             
             # 构建文本内容，将解压密码直接展示在群消息中
             markdown_text = f"### {keyword_tag}{urgent_tag}{category_label}{at_text}\n\n"

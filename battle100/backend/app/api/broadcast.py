@@ -90,7 +90,10 @@ async def trigger_broadcast_push(broadcast_id: int):
             
             # 3. 调用推送
             if event.event_type == EventType.STATION_REPORT.value:
+                import urllib.parse
                 download_url = None
+                summary_text = event.summary or event.content or ""
+                
                 if event.attachment_urls and len(event.attachment_urls) > 0:
                     raw_url = event.attachment_urls[0].get("url")
                     name = event.attachment_urls[0].get("name", "encrypted_attachments.zip")
@@ -98,7 +101,20 @@ async def trigger_broadcast_push(broadcast_id: int):
                         # 优先使用配置的公网 Supabase 地址以支持 frp 穿透
                         if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
                             raw_url = raw_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
-                        download_url = f"{raw_url}?download={name}"
+                        quoted_name = urllib.parse.quote(name)
+                        download_url = f"{raw_url}?download={quoted_name}"
+                    
+                    # 优化：如果是多附件，则在消息摘要正文末尾追加全部附件的 markdown 下载链接
+                    if len(event.attachment_urls) > 1:
+                        summary_text += "\n\n---\n📎 **所有附件列表**：\n"
+                        for idx, att in enumerate(event.attachment_urls):
+                            att_name = att.get("name")
+                            att_url = att.get("url")
+                            if att_url:
+                                if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                                    att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                                quoted_att_name = urllib.parse.quote(att_name)
+                                summary_text += f"{idx+1}. [{att_name}]({att_url}?download={quoted_att_name}) \n"
                 
                 # 网页详情链接，优先使用配置的公网前端 URL
                 detail_url = None
@@ -111,7 +127,7 @@ async def trigger_broadcast_push(broadcast_id: int):
                     title=event.project_name or "驻点快报",
                     category=event.station_category,
                     location=event.station_location,
-                    summary=event.summary or event.content or "",
+                    summary=summary_text,
                     download_url=download_url,
                     password=event.attachment_password,
                     is_urgent=event.is_urgent,
@@ -586,20 +602,31 @@ async def get_broadcast_summary_stats(
     today_bj_start = datetime.combine(now_bj.date(), time.min).replace(tzinfo=bj_tz)
     utc_today_start = today_bj_start.astimezone(timezone.utc)
 
-    # 1. 今日播报数 (创建时间在今日北京零点以后的播报)
-    today_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.created_at >= utc_today_start)
+    # 1. 今日播报数 (创建时间在今日北京零点以后的播报，且未被删除)
+    today_stmt = select(func.count(BroadcastEvent.id)).where(
+        BroadcastEvent.created_at >= utc_today_start,
+        BroadcastEvent.is_deleted == False
+    )
     today_count = await db.scalar(today_stmt) or 0
 
-    # 2. 待推送消息 (push_status 为 pending)
-    pending_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.push_status == "pending")
+    # 2. 待推送消息 (push_status 为 pending，且未被删除)
+    pending_stmt = select(func.count(BroadcastEvent.id)).where(
+        BroadcastEvent.push_status == "pending",
+        BroadcastEvent.is_deleted == False
+    )
     pending_count = await db.scalar(pending_stmt) or 0
 
-    # 3. 成功已发送 (push_status 为 sent)
-    sent_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.push_status == "sent")
+    # 3. 成功已发送 (push_status 为 sent，且未被删除)
+    sent_stmt = select(func.count(BroadcastEvent.id)).where(
+        BroadcastEvent.push_status == "sent",
+        BroadcastEvent.is_deleted == False
+    )
     sent_count = await db.scalar(sent_stmt) or 0
 
-    # 4. 历史累计战报 (总记录数)
-    total_stmt = select(func.count(BroadcastEvent.id))
+    # 4. 历史累计战报 (总记录数，且未被删除)
+    total_stmt = select(func.count(BroadcastEvent.id)).where(
+        BroadcastEvent.is_deleted == False
+    )
     total_count = await db.scalar(total_stmt) or 0
 
     return {
@@ -649,7 +676,8 @@ async def list_broadcasts(
      .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
      .order_by(BroadcastEvent.created_at.desc())
 
-    # 过滤条件
+    # 过滤条件 (主列表默认过滤掉已删除/进入回收站的战报)
+    query = query.where(BroadcastEvent.is_deleted == False)
     if team_id:
         query = query.where(BroadcastEvent.team_id == team_id)
     if event_type:
@@ -658,7 +686,7 @@ async def list_broadcasts(
         query = query.where(BroadcastEvent.content.contains(keyword))
 
     # 计算总数
-    count_stmt = select(func.count(BroadcastEvent.id))
+    count_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.is_deleted == False)
     if team_id:
         count_stmt = count_stmt.where(BroadcastEvent.team_id == team_id)
     if event_type:
@@ -863,8 +891,10 @@ async def update_broadcast(
         event.summary = broadcast_in.summary
     if broadcast_in.is_urgent is not None:
         event.is_urgent = broadcast_in.is_urgent
-    if broadcast_in.attachment_urls is not None:
-        event.attachment_urls = broadcast_in.attachment_urls
+    # 覆盖式更新附件列表（支持设为 None/空以清空图片）
+    update_data = broadcast_in.dict(exclude_unset=True)
+    if "attachment_urls" in update_data:
+        event.attachment_urls = update_data["attachment_urls"]
     
     # 前三种和 CRM 关联，后两种及自定义不关联
     if event.event_type in ["contract_signed", "lead_75", "lead_25"]:
@@ -1052,16 +1082,17 @@ async def update_broadcast(
                 )
                 db.add(det)
 
-    await db.commit()
-    await db.refresh(event)
-
-    # 记录操作审计日志
+    # 记录操作审计日志（在 commit 前执行，避免 commit 后实例属性过期 lazy load 报错）
+    await db.flush()  # 确保 session 处于干净状态且 ID 已生成，避免 to_dict 隐式触发 autoflush 的 MissingGreenlet 错误
     await log_action(
         db, current_user, "UPDATE", "broadcast", str(event.id),
         f"修改了战报播报内容",
         before_state=before_state_dict,
         after_state=to_dict(event)
     )
+
+    await db.commit()
+    await db.refresh(event)
 
     # 异步触发钉钉播报推送
     if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
@@ -1099,12 +1130,30 @@ async def delete_broadcast(
     detail_res = await db.execute(detail_stmt)
     details = detail_res.scalars().all()
     
+    # 构造业绩明细数据快照备份，用于回收站还原
+    backup_list = []
     for detail in details:
-        # 找到对应的日报
+        # 找到对应的日报以获取 user_id
         report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
         report_res = await db.execute(report_stmt)
         report = report_res.scalar_one_or_none()
-        
+        user_id_val = report.user_id if report else None
+
+        detail_backup = {
+            "detail_type": detail.detail_type.value if detail.detail_type else None,
+            "customer_name": detail.customer_name,
+            "amount": detail.amount,
+            "lead_progress": detail.lead_progress,
+            "crm_opportunity_id": detail.crm_opportunity_id,
+            "happiness_level": detail.happiness_level,
+            "happiness_standard_id": detail.happiness_standard_id,
+            "project_name": detail.project_name,
+            "description": detail.description,
+            "partner_user_id": detail.partner_user_id,
+            "user_id": user_id_val
+        }
+        backup_list.append(detail_backup)
+
         if report:
             # 根据明细类型进行扣减
             if detail.detail_type == DetailType.CONTRACT:
@@ -1120,17 +1169,20 @@ async def delete_broadcast(
         # 删除明细
         await db.delete(detail)
             
-    # 删除战报事件本身
-    await db.delete(event)
-    await db.commit()
+    # 改为软删除并记录明细快照，不物理删除事件
+    event.is_deleted = True
+    event.allocations_backup = backup_list
+    db.add(event)
     
-    # 记录操作审计日志
+    # 记录操作审计日志（在 commit 前执行）
     await log_action(
         db, current_user, "DELETE", "broadcast", str(id),
         f"删除了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
         before_state=before_state,
         after_state=None
     )
+    
+    await db.commit()
     
     # 触发大屏 WebSocket 更新
     try:
@@ -1169,12 +1221,29 @@ async def batch_delete_broadcasts(
         detail_res = await db.execute(detail_stmt)
         details = detail_res.scalars().all()
         
+        backup_list = []
         for detail in details:
-            # 找到对应的日报
+            # 找到对应的日报以获取 user_id
             report_stmt = select(DailyReport).where(DailyReport.id == detail.report_id)
             report_res = await db.execute(report_stmt)
             report = report_res.scalar_one_or_none()
-            
+            user_id_val = report.user_id if report else None
+
+            detail_backup = {
+                "detail_type": detail.detail_type.value if detail.detail_type else None,
+                "customer_name": detail.customer_name,
+                "amount": detail.amount,
+                "lead_progress": detail.lead_progress,
+                "crm_opportunity_id": detail.crm_opportunity_id,
+                "happiness_level": detail.happiness_level,
+                "happiness_standard_id": detail.happiness_standard_id,
+                "project_name": detail.project_name,
+                "description": detail.description,
+                "partner_user_id": detail.partner_user_id,
+                "user_id": user_id_val
+            }
+            backup_list.append(detail_backup)
+
             if report:
                 # 根据明细类型进行扣减
                 if detail.detail_type == DetailType.CONTRACT:
@@ -1190,17 +1259,19 @@ async def batch_delete_broadcasts(
             # 删除明细
             await db.delete(detail)
                 
-        await db.delete(event)
+        event.is_deleted = True
+        event.allocations_backup = backup_list
+        db.add(event)
         
-    await db.commit()
-    
-    # 记录操作审计日志
+    # 记录操作审计日志（在 commit 前执行）
     await log_action(
         db, current_user, "DELETE", "broadcast", ",".join(map(str, req.ids)),
         f"批量删除了 {len(req.ids)} 条战报播报记录",
         before_state=before_state,
         after_state=None
     )
+    
+    await db.commit()
     
     # 触发大屏 WebSocket 更新
     try:
@@ -1238,6 +1309,7 @@ async def create_broadcast(
         event_time=datetime.now(timezone.utc),
         crm_opportunity_id=broadcast_in.crm_opportunity_id,
         project_name=broadcast_in.project_name or "未定" if event_type == "happiness" else broadcast_in.project_name,
+        attachment_urls=broadcast_in.attachment_urls,  # 补全新建播报事件时的附件保存
     )
     db.add(event)
     await db.flush()
@@ -1444,6 +1516,15 @@ async def create_broadcast(
                 db.add(detail)
                 await db.flush()
 
+        # 记录操作审计日志（在 commit 前执行）
+        await db.flush()  # 确保 session 处于干净状态，避免 to_dict 触发 MissingGreenlet 错误
+        await log_action(
+            db, current_user, "CREATE", "broadcast", str(event.id),
+            f"发布了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
+            before_state=None,
+            after_state=to_dict(event)
+        )
+
         # D. 触发大屏 WebSocket 实时更新推送
         try:
             from app.services.websocket import ws_manager
@@ -1453,14 +1534,6 @@ async def create_broadcast(
 
     await db.commit()
     await db.refresh(event)
-
-    # 记录操作审计日志
-    await log_action(
-        db, current_user, "CREATE", "broadcast", str(event.id),
-        f"发布了战报播报，类型：{event.event_type}，内容：{event.content[:50]}...",
-        before_state=None,
-        after_state=to_dict(event)
-    )
 
     # 异步触发钉钉播报推送
     if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
@@ -1598,16 +1671,17 @@ async def crm_webhook_broadcast(
         db.add(detail)
         await db.flush()
 
-    await db.commit()
-    await db.refresh(event)
-
-    # 5. 记录操作审计日志
+    # 5. 记录操作审计日志（在 commit 前执行）
+    await db.flush()  # 确保主键已生成且 session 干净，避免 to_dict 报错
     await log_action(
         db, None, "CREATE", "broadcast", str(event.id),
         f"接收 CRM/投标室 Webhook 推送自动发布战报，类型：{event.event_type}，内容：{event.content[:50]}...",
         before_state=None,
         after_state=to_dict(event)
     )
+
+    await db.commit()
+    await db.refresh(event)
 
     # 6. 异步触发钉钉推送
     background_tasks.add_task(trigger_broadcast_push, event.id)
@@ -1908,37 +1982,58 @@ async def create_station_report(
         if total_size > 50 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="上传附件总大小不能超过 50MB")
 
-    zip_url = None
+    attachment_urls = []
     password = None
     if file_list:
-        is_policy = (station_category == "policy")
-        zip_bytes, password = await FileEncryptionService.create_encrypted_zip(
-            file_list,
-            encrypt=is_policy
-        )
-        if len(zip_bytes) > 50 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="打包后的压缩包大小超过 50MB 限制")
-            
-        # 上传到 Supabase Storage
-        zip_filename = f"{uuid.uuid4().hex}.zip"
-        upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/photos/station_reports/{zip_filename}"
-        
-        headers = {
-            "Authorization": f"Bearer {settings.SERVICE_ROLE_KEY}",
-            "Content-Type": "image/png"
-        }
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(upload_url, content=zip_bytes, headers=headers, timeout=30.0)
-                if resp.status_code not in [200, 201]:
-                    raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
+        if station_category == "policy":
+            # 只有政策保留 ZIP 压缩并 AES-256 加密
+            zip_bytes, password = await FileEncryptionService.create_encrypted_zip(
+                file_list,
+                encrypt=True
+            )
+            if len(zip_bytes) > 50 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="打包后的压缩包大小超过 50MB 限制")
                 
-        zip_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{zip_filename}"
-
-    attachment_urls = [{"name": "encrypted_attachments.zip", "url": zip_url}] if zip_url else []
+            # 上传到 Supabase Storage
+            zip_filename = f"{uuid.uuid4().hex}.zip"
+            upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/photos/station_reports/{zip_filename}"
+            
+            headers = {
+                "Authorization": f"Bearer {settings.SERVICE_ROLE_KEY}",
+                "Content-Type": "image/png"  # 伪装 MIME 绕过限制
+            }
+            
+            async with httpx.AsyncClient() as client:
+                try:
+                    resp = await client.post(upload_url, content=zip_bytes, headers=headers, timeout=30.0)
+                    if resp.status_code not in [200, 201]:
+                        raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
+                    
+            zip_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{zip_filename}"
+            attachment_urls = [{"name": "encrypted_attachments.zip", "url": zip_url}]
+        else:
+            # 其他三种模式不压缩，直接逐个上传原始附件
+            async with httpx.AsyncClient() as client:
+                for original_name, file_bytes in file_list:
+                    ext = original_name.split(".")[-1] if "." in original_name else "bin"
+                    unique_name = f"{uuid.uuid4().hex}.{ext}"
+                    upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/photos/station_reports/{unique_name}"
+                    
+                    headers = {
+                        "Authorization": f"Bearer {settings.SERVICE_ROLE_KEY}",
+                        "Content-Type": "image/png"  # 伪装 MIME 绕过限制
+                    }
+                    try:
+                        resp = await client.post(upload_url, content=file_bytes, headers=headers, timeout=30.0)
+                        if resp.status_code not in [200, 201]:
+                            raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
+                    except Exception as e:
+                        raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
+                    
+                    public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{unique_name}"
+                    attachment_urls.append({"name": original_name, "url": public_url})
     
     # 确定关联战队
     team_id = current_user.team_id
@@ -1961,6 +2056,16 @@ async def create_station_report(
     )
     
     db.add(event)
+    
+    # 记录审计日志（在 commit 前执行）
+    await db.flush()  # 确保主键已生成，避免 to_dict 报错
+    await log_action(
+        db, current_user, "CREATE", "broadcast", str(event.id),
+        f"创建了驻点人员播报: {title}，驻点地点: {station_location}",
+        before_state=None,
+        after_state=to_dict(event)
+    )
+    
     await db.commit()
     await db.refresh(event)
 
@@ -1974,14 +2079,6 @@ async def create_station_report(
         await ws_manager.broadcast({"type": "update", "event_type": "report_submitted"})
     except Exception:
         pass
-
-    # 记录审计日志
-    await log_action(
-        db, current_user, "CREATE", "broadcast", str(event.id),
-        f"创建了驻点人员播报: {title}，驻点地点: {station_location}",
-        before_state=None,
-        after_state=to_dict(event)
-    )
 
     return event
 
@@ -2001,7 +2098,10 @@ async def list_station_reports(
     """
     from sqlalchemy import func
     
-    query = select(BroadcastEvent).where(BroadcastEvent.event_type == EventType.STATION_REPORT.value)
+    query = select(BroadcastEvent).where(
+        BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+        BroadcastEvent.is_deleted == False
+    )
     
     if category:
         query = query.where(BroadcastEvent.station_category == category)
@@ -2072,6 +2172,252 @@ async def get_attachment_password(
         raise HTTPException(status_code=403, detail="您无权查看此附件密码")
         
     return {"password": event.attachment_password}
+
+
+@router.get("/recycle-bin", response_model=BroadcastListResponse, summary="获取回收站战报列表")
+async def list_recycle_bin(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    event_type: str | None = Query(None, description="按事件类型筛选"),
+    keyword: str | None = Query(None, description="关键字检索"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """查询已被软删除的战报（回收站列表）"""
+    from sqlalchemy import func
+    from app.models.user import User as DbUser
+    from app.models.organization import Team as DbTeam
+
+    query = select(
+        BroadcastEvent.id,
+        BroadcastEvent.event_type,
+        BroadcastEvent.user_id,
+        BroadcastEvent.team_id,
+        BroadcastEvent.content,
+        BroadcastEvent.push_status,
+        BroadcastEvent.push_channel,
+        BroadcastEvent.event_time,
+        BroadcastEvent.created_at,
+        BroadcastEvent.crm_opportunity_id,
+        BroadcastEvent.project_name,
+        BroadcastEvent.station_category,
+        BroadcastEvent.station_location,
+        BroadcastEvent.summary,
+        BroadcastEvent.attachment_urls,
+        BroadcastEvent.is_urgent,
+        DbUser.name.label("user_name"),
+        DbTeam.name.label("team_name")
+    ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
+     .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+     .where(BroadcastEvent.is_deleted == True)\
+     .order_by(BroadcastEvent.updated_at.desc())  # 按删除/更新时间倒序
+
+    if event_type:
+        query = query.where(BroadcastEvent.event_type == event_type)
+    if keyword:
+        query = query.where(BroadcastEvent.content.contains(keyword))
+
+    # 计算总数
+    count_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.is_deleted == True)
+    if event_type:
+        count_stmt = count_stmt.where(BroadcastEvent.event_type == event_type)
+    if keyword:
+        count_stmt = count_stmt.where(BroadcastEvent.content.contains(keyword))
+    
+    total = await db.scalar(count_stmt) or 0
+
+    # 分页
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(query)
+    rows = res.all()
+
+    # 格式化输出
+    results = []
+    for r in rows:
+        results.append({
+            "id": r.id,
+            "event_type": r.event_type,
+            "user_id": r.user_id,
+            "team_id": r.team_id,
+            "content": r.content,
+            "push_status": r.push_status,
+            "push_channel": r.push_channel,
+            "event_time": r.event_time,
+            "created_at": r.created_at,
+            "crm_opportunity_id": r.crm_opportunity_id,
+            "project_name": r.project_name,
+            "station_category": r.station_category,
+            "station_location": r.station_location,
+            "summary": r.summary,
+            "attachment_urls": r.attachment_urls,
+            "is_urgent": r.is_urgent,
+            "user_name": r.user_name,
+            "team_name": r.team_name,
+        })
+
+    return {
+        "items": results,
+        "total_count": total
+    }
+
+
+@router.delete("/{id}/hard", summary="彻底删除战报")
+async def hard_delete_broadcast(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """回收站中将战报物理删除"""
+    stmt = select(BroadcastEvent).where(BroadcastEvent.id == id)
+    res = await db.execute(stmt)
+    event = res.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="战报不存在")
+        
+    before_state = to_dict(event)
+    
+    # 记录操作审计日志（在 commit/delete 前执行，获取属性）
+    await log_action(
+        db, current_user, "HARD_DELETE", "broadcast", str(id),
+        f"在回收站中彻底删除了战报，类型：{event.event_type}，标题：{event.project_name or (event.content[:30] if event.content else '')}",
+        before_state=before_state,
+        after_state=None
+    )
+    
+    # 物理删除播报本身
+    await db.delete(event)
+    await db.commit()
+    
+    return {"message": "彻底删除成功"}
+
+
+@router.post("/{id}/restore", summary="恢复已删除的战报")
+async def restore_broadcast(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """从回收站恢复战报，并无损重新向数据库计入对应的日报业绩明细"""
+    stmt = select(BroadcastEvent).where(BroadcastEvent.id == id)
+    res = await db.execute(stmt)
+    event = res.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="战报不存在")
+        
+    if not event.is_deleted:
+        raise HTTPException(status_code=400, detail="该战报未被删除，无需恢复")
+        
+    before_state = to_dict(event)
+    
+    # 1. 还原 is_deleted 状态
+    event.is_deleted = False
+    
+    # 2. 读取 allocations_backup 暂存明细
+    backup_list = event.allocations_backup or []
+    
+    # 自动获取或新建对应的日报 (日报提交和审核时间与发生时间对齐)
+    target_time = event.event_time if event.event_time else event.created_at
+    if not target_time:
+        from datetime import timezone
+        target_time = datetime.now(timezone.utc)
+        
+    report_date = get_business_report_date(target_time)
+    
+    from app.models.report import DailyReport, ReportDetail, DetailType, ReportStatus
+    
+    async def get_or_create_report(uid: int) -> DailyReport:
+        report_stmt = select(DailyReport).where(
+            DailyReport.user_id == uid,
+            DailyReport.report_date == report_date
+        )
+        report_res = await db.execute(report_stmt)
+        rep = report_res.scalar_one_or_none()
+        if not rep:
+            rep = DailyReport(
+                user_id=uid,
+                report_date=report_date,
+                contract_amount=0.0,
+                contract_count=0,
+                happiness_actions=0,
+                triangle_count=0,
+                leads_count=0,
+                status=ReportStatus.REVIEWED,
+                reviewer_id=current_user.id,
+                submitted_at=target_time,
+                reviewed_at=target_time
+            )
+            db.add(rep)
+            await db.flush()  # 获得 id
+        else:
+            if rep.status in [ReportStatus.DRAFT, ReportStatus.REJECTED, ReportStatus.SUBMITTED]:
+                rep.status = ReportStatus.REVIEWED
+                rep.reviewer_id = current_user.id
+                rep.submitted_at = rep.submitted_at or target_time
+                rep.reviewed_at = target_time
+        return rep
+
+    # 3. 逐条重新生成 ReportDetail 业绩并累加 DailyReport
+    for att in backup_list:
+        detail_type_str = att.get("detail_type")
+        user_id_val = att.get("user_id")
+        if not user_id_val:
+            user_id_val = event.user_id
+            
+        if not user_id_val:
+            continue
+            
+        report = await get_or_create_report(user_id_val)
+        
+        # 累加统计值
+        if detail_type_str == DetailType.CONTRACT.value:
+            report.contract_amount += float(att.get("amount") or 0.0)
+            report.contract_count += 1
+        elif detail_type_str == DetailType.LEAD.value and att.get("lead_progress") == "25%":
+            report.leads_count += 1
+        elif detail_type_str == DetailType.TRIANGLE.value:
+            report.triangle_count += 1
+        elif detail_type_str == DetailType.HAPPINESS.value:
+            report.happiness_actions += 1
+            
+        # 实例化重建 ReportDetail
+        detail = ReportDetail(
+            report_id=report.id,
+            detail_type=DetailType(detail_type_str) if detail_type_str else None,
+            customer_name=att.get("customer_name"),
+            amount=att.get("amount"),
+            lead_progress=att.get("lead_progress"),
+            crm_opportunity_id=att.get("crm_opportunity_id"),
+            happiness_level=att.get("happiness_level"),
+            happiness_standard_id=att.get("happiness_standard_id"),
+            project_name=att.get("project_name"),
+            description=att.get("description"),
+            partner_user_id=att.get("partner_user_id")
+        )
+        db.add(detail)
+        
+    # 重置暂存快照
+    event.allocations_backup = None
+    db.add(event)
+    
+    # 记录操作审计日志（在 commit 前执行）
+    await db.flush()  # 确保 session 处于干净状态，避免 to_dict 触发 MissingGreenlet 错误
+    await log_action(
+        db, current_user, "RESTORE", "broadcast", str(id),
+        f"恢复了已删除的战报播报，类型：{event.event_type}，业绩已无损重新加回",
+        before_state=before_state,
+        after_state=to_dict(event)
+    )
+    
+    await db.commit()
+    
+    # 触发大屏 WebSocket 更新
+    try:
+        from app.services.websocket import ws_manager
+        await ws_manager.broadcast({"type": "update", "event_type": "report_submitted"})
+    except Exception:
+        pass
+        
+    return {"message": "战报已成功从回收站中恢复，关联业绩已重算！"}
 
 
 

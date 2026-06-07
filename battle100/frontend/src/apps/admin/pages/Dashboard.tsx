@@ -2769,26 +2769,45 @@ const Dashboard: React.FC = () => {
                     <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                       <Text style={{ fontSize: 13, wordBreak: 'break-all', lineHeight: '1.5' }}>{item.content}</Text>
                       {item.attachment_urls && item.attachment_urls.length > 0 && (
-                        <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
-                          <Button 
-                            type="link" 
-                            size="small" 
-                            icon={<DownloadOutlined />}
-                            href={`${item.attachment_urls[0].url}?download=${item.attachment_urls[0].name || 'encrypted_attachments.zip'}`} 
-                            target="_blank"
-                            style={{ padding: 0 }}
-                          >
-                            下载加密附件
-                          </Button>
-                          <Button 
-                            type="link" 
-                            size="small" 
-                            icon={<LockOutlined />}
-                            onClick={() => handleFetchPassword(item.id)}
-                            style={{ padding: 0, color: '#722ed1' }}
-                          >
-                            获取解压密码
-                          </Button>
+                        <div style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {item.station_category === 'policy' ? (
+                            <>
+                              <Button 
+                                type="link" 
+                                size="small" 
+                                icon={<DownloadOutlined />}
+                                href={`${item.attachment_urls[0].url}?download=${item.attachment_urls[0].name || 'encrypted_attachments.zip'}`} 
+                                target="_blank"
+                                style={{ padding: 0 }}
+                              >
+                                下载加密附件
+                              </Button>
+                              <Button 
+                                type="link" 
+                                size="small" 
+                                icon={<LockOutlined />}
+                                onClick={() => handleFetchPassword(item.id)}
+                                style={{ padding: 0, color: '#722ed1' }}
+                              >
+                                获取解压密码
+                              </Button>
+                            </>
+                          ) : (
+                            // 非最新政策的普通快报附件原样逐个提供下载按钮，且无密码
+                            item.attachment_urls.map((att: any, attIdx: number) => (
+                              <Button 
+                                key={attIdx}
+                                type="link" 
+                                size="small" 
+                                icon={<DownloadOutlined />}
+                                href={`${att.url}?download=${att.name || 'attachment'}`} 
+                                target="_blank"
+                                style={{ padding: 0 }}
+                              >
+                                下载附件: {att.name || `附件-${attIdx + 1}`}
+                              </Button>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>

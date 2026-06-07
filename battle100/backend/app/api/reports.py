@@ -627,7 +627,8 @@ async def extract_weekly_broadcasts(
         BroadcastEvent.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.is_deleted == False
     )
     res_self = await db.execute(stmt_self)
     broadcasts_self = res_self.scalars().all()
@@ -643,7 +644,8 @@ async def extract_weekly_broadcasts(
         DailyReport.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.is_deleted == False
     )
     res_linked = await db.execute(stmt_linked)
     broadcasts_linked = res_linked.scalars().all()
@@ -652,7 +654,8 @@ async def extract_weekly_broadcasts(
     stmt_all = select(BroadcastEvent).where(
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"])
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.is_deleted == False
     )
     res_all = await db.execute(stmt_all)
     broadcasts_all = res_all.scalars().all()
@@ -1847,7 +1850,8 @@ async def get_group_weekly_metrics(
         BroadcastEvent.user_id.in_(user_ids),
         BroadcastEvent.event_type == "lead_75",
         BroadcastEvent.event_time >= start_datetime,
-        BroadcastEvent.event_time <= end_datetime
+        BroadcastEvent.event_time <= end_datetime,
+        BroadcastEvent.is_deleted == False
     )
     win_bids_res = await db.execute(win_bids_stmt)
     metrics["win_bids"] = int(win_bids_res.scalar() or 0)

@@ -181,6 +181,13 @@ const Reports: React.FC = () => {
   const [selectedBroadcast, setSelectedBroadcast] = useState<BroadcastItem | null>(null)
   const [editEventType, setEditEventType] = useState<string>('custom')
   
+  // 回收站状态
+  const [recycleVisible, setRecycleVisible] = useState(false)
+  const [recycleLoading, setRecycleLoading] = useState(false)
+  const [recycleList, setRecycleList] = useState<BroadcastItem[]>([])
+  const [recycleTotal, setRecycleTotal] = useState(0)
+  const [recyclePage, setRecyclePage] = useState(1)
+  
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
 
@@ -473,6 +480,57 @@ const Reports: React.FC = () => {
       message.error('加载战报列表失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 加载回收站战报数据
+  const loadRecycleBinList = async (targetPage: number = 1) => {
+    setRecycleLoading(true)
+    setRecyclePage(targetPage)
+    try {
+      let url = `/broadcast/recycle-bin?page=${targetPage}&page_size=10`
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        setRecycleList(data.items)
+        setRecycleTotal(data.total_count || 0)
+      } else {
+        setRecycleList([])
+        setRecycleTotal(0)
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('加载回收站战报失败')
+    } finally {
+      setRecycleLoading(false)
+    }
+  }
+
+  // 恢复已删除战报
+  const handleRestoreBroadcast = async (id: number) => {
+    try {
+      const res = await post<any>(`/broadcast/${id}/restore`)
+      if (res) {
+        message.success('战报已从回收站中成功恢复，日报分摊及大屏数据已重算加回！')
+        loadRecycleBinList(recyclePage)
+        loadBroadcasts()
+        loadSummaryStats()
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '恢复战报失败')
+    }
+  }
+
+  // 彻底删除战报
+  const handleHardDeleteBroadcast = async (id: number) => {
+    try {
+      const res = await del<any>(`/broadcast/${id}/hard`)
+      if (res) {
+        message.success('战报已在系统中彻底永久删除！')
+        loadRecycleBinList(recyclePage)
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '彻底删除失败')
     }
   }
 
@@ -1286,6 +1344,17 @@ const Reports: React.FC = () => {
               style={{ borderRadius: 4 }}
             >
               导出
+            </Button>
+            <Button
+              icon={<DeleteOutlined />}
+              disabled={!hasPermission('approve_report')}
+              onClick={() => {
+                setRecycleVisible(true)
+                loadRecycleBinList(1)
+              }}
+              style={{ borderRadius: 4, color: '#f5222d', borderColor: '#f5222d' }}
+            >
+              回收站
             </Button>
             <Button
               type="primary"
@@ -2415,21 +2484,45 @@ const Reports: React.FC = () => {
 
           {editEventType === 'station_report' && editFileList.length > 0 && (
             <>
-              <Form.Item label="📎 已上传的附件压缩包">
-                <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: '#555' }}>
-                    📦 {editFileList[0]?.name || 'encrypted_attachments.zip'}
-                  </span>
-                  <Button 
-                    type="link" 
-                    size="small" 
-                    icon={<DownloadOutlined />}
-                    href={`${editFileList[0]?.url}?download=${editFileList[0]?.name || 'encrypted_attachments.zip'}`}
-                    target="_blank"
-                  >
-                    下载附件
-                  </Button>
-                </div>
+              <Form.Item 
+                label={editForm.getFieldValue('station_category') === 'policy' ? "📎 已上传的附件压缩包" : "📎 已上传的原始附件列表"}
+              >
+                {editForm.getFieldValue('station_category') === 'policy' ? (
+                  <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, color: '#555' }}>
+                      📦 {editFileList[0]?.name || 'encrypted_attachments.zip'}
+                    </span>
+                    <Button 
+                      type="link" 
+                      size="small" 
+                      icon={<DownloadOutlined />}
+                      href={`${editFileList[0]?.url}?download=${editFileList[0]?.name || 'encrypted_attachments.zip'}`}
+                      target="_blank"
+                    >
+                      下载附件
+                    </Button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {editFileList.map((file: any, fileIdx: number) => (
+                      <div key={file.uid || fileIdx} style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 12 }}>
+                          📄 {file.name || `附件-${fileIdx + 1}`}
+                        </span>
+                        <Button 
+                          type="link" 
+                          size="small" 
+                          icon={<DownloadOutlined />}
+                          href={`${file.url}?download=${file.name || 'attachment'}`}
+                          target="_blank"
+                          style={{ flexShrink: 0 }}
+                        >
+                          下载
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Form.Item>
 
               {editForm.getFieldValue('station_category') === 'policy' && (
@@ -2503,6 +2596,133 @@ const Reports: React.FC = () => {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      {/* 回收站Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <DeleteOutlined style={{ color: '#f5222d' }} />
+            <span>战报回收站</span>
+            <span style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 'normal' }}>
+              （已被软删除的战报暂存于此，彻底删除后将永久抹去）
+            </span>
+          </div>
+        }
+        open={recycleVisible}
+        onCancel={() => setRecycleVisible(false)}
+        footer={null}
+        width={1000}
+        style={{ top: 40 }}
+      >
+        <Table
+          dataSource={recycleList}
+          loading={recycleLoading}
+          rowKey="id"
+          pagination={{
+            current: recyclePage,
+            pageSize: 10,
+            total: recycleTotal,
+            onChange: (p) => loadRecycleBinList(p),
+            showTotal: (total) => `共 ${total} 条已删战报`
+          }}
+          size="middle"
+          columns={[
+            {
+              title: '事件类型',
+              dataIndex: 'event_type',
+              key: 'event_type',
+              width: 140,
+              render: (type: string, record: any) => {
+                if (type === 'station_report') {
+                  const catMap: any = {
+                    policy: '🏛️ 最新政策',
+                    deployment: '📋 会议部署',
+                    lead: '🎯 项目线索',
+                    intelligence: '🔍 情报信息'
+                  }
+                  const label = catMap[record.station_category] || '驻点快报'
+                  return <Tag color="cyan">{label}</Tag>
+                }
+                const typeMap: any = {
+                  contract_signed: '已签合同',
+                  lead_75: '中标确定',
+                  lead_25: '有效线索',
+                  triangle: '铁三角联动',
+                  happiness: '客户幸福动作',
+                  custom: '自定义播报'
+                }
+                return <Tag color={
+                  type === 'contract_signed' ? 'red' : 
+                  type === 'lead_75' ? 'orange' : 
+                  type === 'lead_25' ? 'green' : 
+                  type === 'triangle' ? 'blue' : 'purple'
+                }>{typeMap[type] || type}</Tag>
+              }
+            },
+            {
+              title: '战报内容',
+              dataIndex: 'content',
+              key: 'content',
+              ellipsis: true,
+              render: (content: string, record: any) => {
+                return content || record.summary || record.project_name || '-'
+              }
+            },
+            {
+              title: '关联项目/驻地点',
+              key: 'project_info',
+              width: 220,
+              ellipsis: true,
+              render: (_: any, record: any) => {
+                if (record.event_type === 'station_report') {
+                  return `📍 ${record.station_location || '未知'} | ${record.project_name || '-'}`
+                }
+                return record.project_name || '-'
+              }
+            },
+            {
+              title: '发布人',
+              dataIndex: 'user_name',
+              key: 'user_name',
+              width: 100,
+              render: (name: string) => name || '-'
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 160,
+              render: (_: any, record: any) => (
+                <Space size="middle">
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ color: '#52c41a', padding: 0 }}
+                    onClick={() => handleRestoreBroadcast(record.id)}
+                  >
+                    恢复
+                  </Button>
+                  <Popconfirm
+                    title="确定要在系统中彻底物理删除此条战报及附件吗？此操作不可逆！"
+                    onConfirm={() => handleHardDeleteBroadcast(record.id)}
+                    okText="确定"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      style={{ padding: 0 }}
+                    >
+                      彻底删除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              )
+            }
+          ]}
+        />
       </Modal>
       </div>
     </div>
