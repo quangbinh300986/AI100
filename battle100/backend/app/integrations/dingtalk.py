@@ -292,7 +292,8 @@ class DingTalkClient:
         content: str,
         user_name: Optional[str] = None,
         team_name: Optional[str] = None,
-        dingtalk_users: Optional[list[str]] = None
+        dingtalk_users: Optional[list[str]] = None,
+        attachment_urls: Optional[list] = None
     ) -> Optional[str]:
         """
         统一的消息播报推送服务，支持 Webhook、自建群发及工作通知，并将战报排版成精美的 Markdown 卡片
@@ -385,6 +386,39 @@ class DingTalkClient:
         formatted_content = cleaned_content_stripped.replace("\n", "  \n> ")
         markdown_text += f"> {formatted_content}\n"
         
+        # 4. 解析并拼接图片附件缩略图（支持 photos 桶的直接展示）
+        if attachment_urls:
+            image_markdowns = []
+            for att in attachment_urls:
+                if isinstance(att, dict):
+                    att_name = att.get("name", "图片")
+                    att_url = att.get("url")
+                elif isinstance(att, str):
+                    att_url = att
+                    # 从 URL 提取文件名以正确判定后缀
+                    att_name = att_url.split("/")[-1].split("?")[0] if att_url else "图片"
+                else:
+                    continue
+                    
+                if att_url:
+                    # 公网穿透替换
+                    if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                        att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                    
+                    ext = att_name.split(".")[-1].lower() if "." in att_name else ""
+                    non_image_exts = ["txt", "pdf", "zip", "rar", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "mp3", "mp4", "mov", "avi", "html", "js", "css", "json"]
+                    is_image = False
+                    if ext in non_image_exts:
+                        is_image = False
+                    else:
+                        is_image = (ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]) or ("/storage/v1/object/public/photos/" in att_url)
+                        
+                    if is_image:
+                        image_markdowns.append(f"![{att_name}]({att_url})")
+                        
+            if image_markdowns:
+                markdown_text += "\n\n" + "\n".join(image_markdowns)
+        
         title = f"战报播报: {type_name}"
         msg_id = None
         
@@ -421,6 +455,7 @@ class DingTalkClient:
         password: Optional[str],
         is_urgent: bool = False,
         detail_url: Optional[str] = None,
+        attachment_urls: Optional[list] = None,
     ) -> Optional[str]:
         """
         发送驻点播报的 ActionCard 消息到钉钉群，支持加签验证和紧急@所有人
@@ -455,7 +490,7 @@ class DingTalkClient:
             
             urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
             at_text = " @所有人" if is_urgent else ""
-            keyword_tag = "【政策文件播报】" if category == "policy" else "【战报播报 | 赢战百日】"
+            keyword_tag = "【政策文件播报】" if category == "policy" else "【驻点播报 | 赢战百日】"
             
             # 构建文本内容，将解压密码直接展示在群消息中
             markdown_text = f"### {keyword_tag}{urgent_tag}{category_label}{at_text}\n\n"
@@ -464,6 +499,40 @@ class DingTalkClient:
             markdown_text += f"* **播报标题**：{title}\n"
             markdown_text += f"---\n\n"
             markdown_text += f"> {summary.replace('\n', '  \n> ')}\n\n"
+            
+            # 解析并拼接图片附件缩略图（支持公网穿透）
+            image_markdowns = []
+            if attachment_urls:
+                for att in attachment_urls:
+                    if isinstance(att, dict):
+                        att_name = att.get("name", "图片")
+                        att_url = att.get("url")
+                    elif isinstance(att, str):
+                        att_url = att
+                        # 从 URL 提取文件名以正确判定后缀
+                        att_name = att_url.split("/")[-1].split("?")[0] if att_url else "图片"
+                    else:
+                        continue
+                        
+                    if att_url:
+                        # 公网穿透替换
+                        if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                            att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                        
+                        ext = att_name.split(".")[-1].lower() if "." in att_name else ""
+                        non_image_exts = ["txt", "pdf", "zip", "rar", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "mp3", "mp4", "mov", "avi", "html", "js", "css", "json"]
+                        is_image = False
+                        if ext in non_image_exts:
+                            is_image = False
+                        else:
+                            is_image = (ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]) or ("/storage/v1/object/public/photos/" in att_url)
+                            
+                        if is_image:
+                            image_markdowns.append(f"![{att_name}]({att_url})")
+            
+            if image_markdowns:
+                markdown_text += "\n" + "\n".join(image_markdowns) + "\n\n"
+                
             markdown_text += f"---\n"
             
             if download_url:

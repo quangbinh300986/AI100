@@ -3395,6 +3395,7 @@ const Dashboard: React.FC = () => {
                 onChange={({ fileList }) => setFileList(fileList)}
                 maxCount={3}
                 accept="image/*"
+                multiple
               >
                 {fileList.length < 3 && (
                   <div>

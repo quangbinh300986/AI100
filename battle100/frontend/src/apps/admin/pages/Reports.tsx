@@ -1994,6 +1994,7 @@ const Reports: React.FC = () => {
                     onChange={({ fileList }) => setCreateFileList(fileList)}
                     maxCount={3}
                     accept="image/*"
+                    multiple
                   >
                     {createFileList.length < 3 && (
                       <div>
@@ -2573,6 +2574,7 @@ const Reports: React.FC = () => {
                 onChange={({ fileList }) => setEditFileList(fileList)}
                 maxCount={3}
                 accept="image/*"
+                multiple
               >
                 {editFileList.length < 3 && (
                   <div>

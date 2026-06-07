@@ -48,9 +48,11 @@ async def trigger_broadcast_push(broadcast_id: int):
     from app.config import settings
     from sqlalchemy import select
     from datetime import datetime, timezone
-    import logging
-    
     logger = logging.getLogger("battle100")
+    
+    # 延迟 0.5 秒，确保外层路由事务已完全 commit 且连接已释放，防范并发连接争抢
+    import asyncio
+    await asyncio.sleep(0.5)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -88,59 +90,72 @@ async def trigger_broadcast_push(broadcast_id: int):
             # 2. 收集接收工作通知的用户（作为个人兜底）
             dingtalk_users = [user_dingtalk_id] if user_dingtalk_id else []
             
-            # 3. 调用推送
-            if event.event_type == EventType.STATION_REPORT.value:
-                import urllib.parse
-                download_url = None
-                summary_text = event.summary or event.content or ""
-                
-                if event.attachment_urls and len(event.attachment_urls) > 0:
-                    raw_url = event.attachment_urls[0].get("url")
-                    name = event.attachment_urls[0].get("name", "encrypted_attachments.zip")
-                    if raw_url:
-                        # 优先使用配置的公网 Supabase 地址以支持 frp 穿透
-                        if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
-                            raw_url = raw_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
-                        quoted_name = urllib.parse.quote(name)
-                        download_url = f"{raw_url}?download={quoted_name}"
+            # 3. 调用推送（支持偶发抖动与超时的重试机制）
+            msg_id = None
+            retry_count = 2
+            for attempt in range(retry_count):
+                if event.event_type == EventType.STATION_REPORT.value:
+                    import urllib.parse
+                    download_url = None
+                    summary_text = event.summary or event.content or ""
                     
-                    # 优化：如果是多附件，则在消息摘要正文末尾追加全部附件的 markdown 下载链接
-                    if len(event.attachment_urls) > 1:
-                        summary_text += "\n\n---\n📎 **所有附件列表**：\n"
-                        for idx, att in enumerate(event.attachment_urls):
-                            att_name = att.get("name")
-                            att_url = att.get("url")
-                            if att_url:
-                                if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
-                                    att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
-                                quoted_att_name = urllib.parse.quote(att_name)
-                                summary_text += f"{idx+1}. [{att_name}]({att_url}?download={quoted_att_name}) \n"
-                
-                # 网页详情链接，优先使用配置的公网前端 URL
-                detail_url = None
-                if getattr(settings, "EXTERNAL_FRONTEND_URL", None):
-                    detail_url = f"{settings.EXTERNAL_FRONTEND_URL.rstrip('/')}/admin/dashboard"
-                elif settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
-                    detail_url = f"{settings.CORS_ORIGINS[0]}/admin/dashboard"
+                    if event.attachment_urls and len(event.attachment_urls) > 0:
+                        raw_url = event.attachment_urls[0].get("url")
+                        name = event.attachment_urls[0].get("name", "encrypted_attachments.zip")
+                        if raw_url:
+                            # 优先使用配置的公网 Supabase 地址以支持 frp 穿透
+                            if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                                raw_url = raw_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                            quoted_name = urllib.parse.quote(name)
+                            download_url = f"{raw_url}?download={quoted_name}"
+                        
+                        # 优化：如果是多附件，则在消息摘要正文末尾追加全部附件的 markdown 下载链接
+                        if len(event.attachment_urls) > 1:
+                            summary_text += "\n\n---\n📎 **所有附件列表**：\n"
+                            for idx, att in enumerate(event.attachment_urls):
+                                att_name = att.get("name")
+                                att_url = att.get("url")
+                                if att_url:
+                                    if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                                        att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
+                                    quoted_att_name = urllib.parse.quote(att_name)
+                                    summary_text += f"{idx+1}. [{att_name}]({att_url}?download={quoted_att_name}) \n"
                     
-                msg_id = await dingtalk_client.send_station_report_actioncard(
-                    title=event.project_name or "驻点快报",
-                    category=event.station_category,
-                    location=event.station_location,
-                    summary=summary_text,
-                    download_url=download_url,
-                    password=event.attachment_password,
-                    is_urgent=event.is_urgent,
-                    detail_url=detail_url
-                )
-            else:
-                msg_id = await dingtalk_client.push_broadcast_message(
-                    event_type=event.event_type,
-                    content=event.content,
-                    user_name=user_name,
-                    team_name=team_name,
-                    dingtalk_users=dingtalk_users
-                )
+                    # 网页详情链接，优先使用配置的公网前端 URL
+                    detail_url = None
+                    if getattr(settings, "EXTERNAL_FRONTEND_URL", None):
+                        detail_url = f"{settings.EXTERNAL_FRONTEND_URL.rstrip('/')}/admin/dashboard"
+                    elif settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
+                        detail_url = f"{settings.CORS_ORIGINS[0]}/admin/dashboard"
+                        
+                    msg_id = await dingtalk_client.send_station_report_actioncard(
+                        title=event.project_name or "驻点快报",
+                        category=event.station_category,
+                        location=event.station_location,
+                        summary=summary_text,
+                        download_url=download_url,
+                        password=event.attachment_password,
+                        is_urgent=event.is_urgent,
+                        detail_url=detail_url,
+                        attachment_urls=event.attachment_urls
+                    )
+                else:
+                    msg_id = await dingtalk_client.push_broadcast_message(
+                        event_type=event.event_type,
+                        content=event.content,
+                        user_name=user_name,
+                        team_name=team_name,
+                        dingtalk_users=dingtalk_users,
+                        attachment_urls=event.attachment_urls
+                    )
+                
+                if msg_id:
+                    # 推送成功，跳出重试
+                    break
+                
+                if attempt < retry_count - 1:
+                    logger.warning(f"战报ID {broadcast_id} 钉钉推送可能发生偶发抖动或失败，将在 2 秒后进行第 {attempt+2} 次重试...")
+                    await asyncio.sleep(2.0)
             
             # 4. 根据发送结果更新状态
             if msg_id:
@@ -2011,7 +2026,11 @@ async def create_station_report(
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
                     
-            zip_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{zip_filename}"
+            # 获取公开 URL，支持公网穿透域名替换
+            supabase_url = settings.SUPABASE_URL
+            if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                supabase_url = settings.EXTERNAL_SUPABASE_URL
+            zip_url = f"{supabase_url.rstrip('/')}/storage/v1/object/public/photos/station_reports/{zip_filename}"
             attachment_urls = [{"name": "encrypted_attachments.zip", "url": zip_url}]
         else:
             # 其他三种模式不压缩，直接逐个上传原始附件
@@ -2032,7 +2051,11 @@ async def create_station_report(
                     except Exception as e:
                         raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
                     
-                    public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/station_reports/{unique_name}"
+                    # 获取公开 URL，支持公网穿透域名替换
+                    supabase_url = settings.SUPABASE_URL
+                    if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+                        supabase_url = settings.EXTERNAL_SUPABASE_URL
+                    public_url = f"{supabase_url.rstrip('/')}/storage/v1/object/public/photos/station_reports/{unique_name}"
                     attachment_urls.append({"name": original_name, "url": public_url})
     
     # 确定关联战队

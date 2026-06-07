@@ -94,8 +94,11 @@ async def upload_photo(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
-    # 获取公开 URL
-    public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/photos/{filename}"
+    # 获取公开 URL，支持公网穿透域名替换
+    supabase_url = settings.SUPABASE_URL
+    if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
+        supabase_url = settings.EXTERNAL_SUPABASE_URL
+    public_url = f"{supabase_url.rstrip('/')}/storage/v1/object/public/photos/{filename}"
 
     return {"url": public_url, "filename": filename}
 

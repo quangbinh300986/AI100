@@ -309,26 +309,42 @@ export default function DailyReport() {
     }
   }
 
-  // 照片上传逻辑
+  // 照片上传逻辑（支持并发多选上传，限最多3张）
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+    const files = event.target.files
+    if (!files || files.length === 0) return
     
-    const data = new FormData()
-    data.append('file', file)
+    // 如果已有附件加新上传的超过3个，提示并限制
+    if (attachmentUrls.length + files.length > 3) {
+      Toast.show({ icon: 'fail', content: '照片总数最多限制为3张' })
+      return
+    }
+
+    Toast.show({ icon: 'loading', content: '照片上传中...', duration: 0 })
     try {
-      Toast.show({ icon: 'loading', content: '照片上传中...', duration: 0 })
-      const res = await post<any>('/reports/upload', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const uploadPromises = Array.from(files).map(async (file) => {
+        const data = new FormData()
+        data.append('file', file)
+        const res = await post<any>('/reports/upload', data, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        return res?.url || null
       })
+      
+      const urls = await Promise.all(uploadPromises)
       Toast.clear()
-      if (res?.url) {
-        setAttachmentUrls(prev => [...prev, res.url])
-        Toast.show({ icon: 'success', content: '照片上传成功' })
+      
+      const validUrls = urls.filter(Boolean) as string[]
+      if (validUrls.length > 0) {
+        setAttachmentUrls(prev => [...prev, ...validUrls])
+        Toast.show({ icon: 'success', content: `成功上传 ${validUrls.length} 张照片` })
       }
     } catch (e) {
       Toast.clear()
       Toast.show({ icon: 'fail', content: '照片上传失败，请重试' })
+    } finally {
+      // 重置 input 的 value 以便用户可以重复上传同一个文件
+      event.target.value = ''
     }
   }
 
@@ -1076,7 +1092,7 @@ export default function DailyReport() {
                     >
                       <AddOutline style={{ fontSize: 24, color: '#999' }} />
                       <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传照片</span>
-                      <input id="contract-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                      <input id="contract-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} multiple />
                     </div>
                   )}
                 </div>
@@ -1307,7 +1323,7 @@ export default function DailyReport() {
                   >
                     <AddOutline style={{ fontSize: 24, color: '#999' }} />
                     <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传照片</span>
-                    <input id="triangle-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                    <input id="triangle-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} multiple />
                   </div>
                 )}
               </div>
@@ -1655,7 +1671,7 @@ export default function DailyReport() {
                   >
                     <AddOutline style={{ fontSize: 24, color: '#999' }} />
                     <span style={{ fontSize: 10, color: '#999', marginTop: 4 }}>上传证明</span>
-                    <input id="happiness-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                    <input id="happiness-file-input" type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} multiple />
                   </div>
                 )}
               </div>
