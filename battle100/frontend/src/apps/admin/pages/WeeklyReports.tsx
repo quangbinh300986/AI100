@@ -1704,7 +1704,7 @@ const WeeklyReports: React.FC = () => {
               key="export-pdf"
               icon={<DownloadOutlined />}
               loading={userPdfExporting}
-              onClick={() => handleExportPDF('user-report-modal-content', `${viewingWeeklyReport?.user_name}_${selectedMonday}_个人周复盘.pdf`, setUserPdfExporting)}
+              onClick={() => handleExportPDF('user-report-pdf-export-temp', `${viewingWeeklyReport?.user_name}_${selectedMonday}_个人周复盘.pdf`, setUserPdfExporting)}
             >
               导出PDF
             </Button>,
@@ -2478,7 +2478,7 @@ const WeeklyReports: React.FC = () => {
               key="export-pdf" 
               icon={<DownloadOutlined />} 
               loading={groupPdfExporting}
-              onClick={() => handleExportPDF('group-report-modal-content', `${getGroupNameText()}_${mon.format('YYYY-MM-DD')}_整体复盘周报.pdf`, setGroupPdfExporting)}
+              onClick={() => handleExportPDF('group-report-pdf-export-temp', `${getGroupNameText()}_${mon.format('YYYY-MM-DD')}_整体复盘周报.pdf`, setGroupPdfExporting)}
             >
               导出PDF
             </Button>,
@@ -2617,6 +2617,168 @@ const WeeklyReports: React.FC = () => {
             </div>
           </div>
         </Modal>
+
+        {/* 隐藏的用于 PDF 导出的整体周报渲染模板，去除了maxHeight/滚动条限制且不带Alert与Radio切换杂质 */}
+        <div style={{ position: 'absolute', top: -9999, left: -9999, width: '794px', zIndex: -100 }}>
+          <div id="group-report-pdf-export-temp" style={{ padding: '32px', backgroundColor: '#ffffff', minHeight: '297mm' }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#102a4c', margin: '0 0 8px 0' }}>
+                📅 团队整体复盘周报（{getGroupNameText()}）
+              </h1>
+              <div style={{ fontSize: '13px', color: '#595959' }}>
+                时间跨度：{selectedMonday} ~ {selectedSunday}
+              </div>
+            </div>
+
+            {/* 九宫格数据看板 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
+              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>营销新签合同额</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#389e0d' }}>{groupMetrics.marketing_signed?.toFixed(2)} 万元</span>
+              </div>
+              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>交付新签合同额</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#389e0d' }}>{groupMetrics.delivery_signed?.toFixed(2)} 万元</span>
+              </div>
+              <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>中标项目个数</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#096dd9' }}>{groupMetrics.win_bids} 个</span>
+              </div>
+              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>幸福动作个数</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#d46b08' }}>{groupMetrics.happiness_count} 次</span>
+              </div>
+              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>铁三角联动次数</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#d46b08' }}>{groupMetrics.triangle_count} 次</span>
+              </div>
+              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>有效商机线索量</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1d39c4' }}>{groupMetrics.valid_leads} 个</span>
+              </div>
+              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>潜力商机线索量</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1d39c4' }}>{groupMetrics.potential_leads} 个</span>
+              </div>
+              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>CRM 累计产值</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#c41d7f' }}>{groupMetrics.production_value?.toFixed(2)} 万元</span>
+              </div>
+              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>CRM 到账回款额</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#c41d7f' }}>{groupMetrics.receive_value?.toFixed(2)} 万元</span>
+              </div>
+            </div>
+
+            {/* 周报 Markdown 正文，使用无高度限制且完全垂直展开的预览组件 */}
+            <div style={{ borderTop: '2px solid #f0f0f0', paddingTop: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#262626', marginBottom: '12px' }}>📝 团队整体周报正文</div>
+              <MarkdownPreview text={groupReportContent} />
+            </div>
+          </div>
+        </div>
+
+        {/* 隐藏的用于 PDF 导出的个人周复盘渲染模板 */}
+        <div style={{ position: 'absolute', top: -9999, left: -9999, width: '794px', zIndex: -100 }}>
+          {viewingWeeklyReport && (
+            <div id="user-report-pdf-export-temp" style={{ padding: '32px', backgroundColor: '#ffffff', minHeight: '297mm' }}>
+              <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#1677ff', margin: '0 0 8px 0' }}>
+                  🔍 员工周复盘详情
+                </h1>
+                <div style={{ fontSize: '13px', color: '#595959' }}>
+                  周范围：{selectedMonday} ~ {selectedSunday} - 成员：{viewingWeeklyReport.user_name}
+                </div>
+              </div>
+
+              <Descriptions bordered column={2} size="small" style={{ marginBottom: 20 }}>
+                <Descriptions.Item label="成员姓名"><strong>{viewingWeeklyReport.user_name}</strong></Descriptions.Item>
+                <Descriptions.Item label="岗位类别">
+                  <Tag color="cyan">
+                    {viewingWeeklyReport.user_position_type === 'marketing' ? '营销岗' : '交付及其他'}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="填报状态">
+                  {viewingWeeklyReport.status === 'submitted' ? (
+                    <Tag color="success">已提交</Tag>
+                  ) : (
+                    <Tag color="default">草稿</Tag>
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="提交时间">
+                  {viewingWeeklyReport.submitted_at 
+                    ? dayjs(viewingWeeklyReport.submitted_at).format('YYYY-MM-DD HH:mm:ss')
+                    : '—'}
+                </Descriptions.Item>
+              </Descriptions>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🎯 本周目标计划</div>
+                  <Card size="small" headStyle={{ background: '#f5f5f5' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_plan : viewingWeeklyReport.delivery_plan) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🔥 本周实际完成</div>
+                  <Card size="small" headStyle={{ background: '#f6ffed' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_actual : viewingWeeklyReport.delivery_actual) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>📊 计划达成率说明</div>
+                  <Card size="small" headStyle={{ background: '#e6f7ff' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_rate : viewingWeeklyReport.delivery_rate) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🏆 本周工作亮点</div>
+                  <Card size="small" headStyle={{ background: '#fffb8f' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_highlights : viewingWeeklyReport.delivery_highlights) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🚧 本周工作卡点/难点</div>
+                  <Card size="small" headStyle={{ background: '#fff2e8' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_blockers : viewingWeeklyReport.delivery_blockers) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🤝 需要支持协调</div>
+                  <Card size="small" headStyle={{ background: '#feffe6' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.sales_support : viewingWeeklyReport.delivery_support) || '—'}
+                    </div>
+                  </Card>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1677ff', marginBottom: '6px' }}>🚀 下周工作目标</div>
+                  <Card size="small" headStyle={{ background: '#f5f5f5' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#434343' }}>
+                      {(isViewingMarketing ? viewingWeeklyReport.next_sales_plan : viewingWeeklyReport.next_delivery_plan) || '—'}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
