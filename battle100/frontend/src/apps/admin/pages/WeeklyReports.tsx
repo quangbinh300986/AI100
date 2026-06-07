@@ -39,6 +39,57 @@ import { jsPDF } from 'jspdf'
 
 const { Text } = Typography
 
+// PDF自适应防折断占位符计算算法 (根据 A4 页面比例 1.414 进行元素边界检测与空白规避)
+const adjustPageBreaks = (containerId: string) => {
+  const container = document.getElementById(containerId)
+  if (!container) return
+
+  // 1. 清除旧占位符
+  const existingSpacers = container.querySelectorAll('.pdf-page-break-spacer')
+  existingSpacers.forEach(el => el.remove())
+
+  // A4 宽高比例 1.414，在容器宽度下的单页高度像素值
+  const containerWidth = container.offsetWidth || 794
+  const pageHeightPx = Math.floor(containerWidth * 1.414)
+
+  // 2. 收集需要做整体保护、防页面切线折断的子节点 (只选择最小块展示项或表)
+  const elements = Array.from(container.querySelectorAll(
+    'h1, h2, h3, p, table, blockquote, ul, ol, .ant-card, .ant-descriptions, .ant-row'
+  )) as HTMLElement[]
+
+  // 按 OffsetTop 升序排序，从上往下处理
+  elements.sort((a, b) => a.offsetTop - b.offsetTop)
+
+  let currentPageStartOffset = container.offsetTop
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i]
+    if (!container.contains(el)) continue
+
+    const elHeight = el.offsetHeight
+    const elTop = el.offsetTop
+    const relativeTop = elTop - currentPageStartOffset
+
+    // 如果该元素在当前页的相对位置 + 其自身高度超出了单页高度限制
+    if (relativeTop + elHeight > pageHeightPx) {
+      const spacerHeight = pageHeightPx - relativeTop
+      
+      // 只有剩余高度合适时才进行顶页处理
+      if (spacerHeight > 5 && spacerHeight < pageHeightPx) {
+        const spacer = document.createElement('div')
+        spacer.className = 'pdf-page-break-spacer'
+        spacer.style.height = `${spacerHeight}px`
+        spacer.style.width = '100%'
+        spacer.style.backgroundColor = '#ffffff'
+        
+        el.parentNode?.insertBefore(spacer, el)
+        // 下一页的起点被更新为 el 被推进后最新的真实位置
+        currentPageStartOffset = el.offsetTop
+      }
+    }
+  }
+}
+
 // 战队选项定义 (与本地数据库同步)
 const TEAM_OPTIONS = [
   { label: '全部战队', value: 'all' },
@@ -468,7 +519,7 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
-  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF 纯前端高保真图片 PDF 分页)
+  // 统一的 PDF 导出逻辑 (使用 html2canvas + jsPDF 纯前端高保真图片 PDF 分页，支持自适应防折断算法)
   const handleExportPDF = async (elementId: string, filename: string, setLoader: (loading: boolean) => void) => {
     const element = document.getElementById(elementId)
     if (!element) {
@@ -478,6 +529,9 @@ const WeeklyReports: React.FC = () => {
     
     setLoader(true)
     try {
+      // 1. 在截图前，动态调整子元素排版，在超出边界的块级元素前插入空白占位符防折断
+      adjustPageBreaks(elementId)
+
       const canvas = await html2canvas(element, {
         scale: 2, // 双倍清晰度
         useCORS: true,
@@ -485,6 +539,10 @@ const WeeklyReports: React.FC = () => {
         backgroundColor: '#ffffff'
       })
       
+      // 2. 截图完成后，立即将插入的防折断占位符清理掉，保持DOM树原样
+      const existingSpacers = element.querySelectorAll('.pdf-page-break-spacer')
+      existingSpacers.forEach(el => el.remove())
+
       const imgData = canvas.toDataURL('image/jpeg', 1.0)
       const pdf = new jsPDF('p', 'mm', 'a4')
       const imgWidth = 210
