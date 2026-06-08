@@ -1136,11 +1136,14 @@ const Goals: React.FC = () => {
   const loadPivotWeeklyData = async () => {
     setPivotLoading(true)
     try {
-      // 接口获取所有 WeeklyTarget 记录（不分页）
-      const res = await get<WeeklyTargetItem[]>('/goals/weekly')
-      if (res) {
+      // 并发拉取周分解和战队总奋斗目标
+      const [weeklyRes, teamGoalsRes] = await Promise.all([
+        get<WeeklyTargetItem[]>('/goals/weekly'),
+        get<TeamGoalItem[]>('/goals/team')
+      ])
+      if (weeklyRes && teamGoalsRes) {
         // 透视转换
-        const pivoted = pivotWeeklyTargets(res)
+        const pivoted = pivotWeeklyTargets(weeklyRes, teamGoalsRes)
         setPivotWeeklyData(pivoted)
       }
     } catch (err) {
@@ -1157,7 +1160,7 @@ const Goals: React.FC = () => {
     }
   }, [activeTab])
 
-  const pivotWeeklyTargets = (rawWeekly: WeeklyTargetItem[]): PivotRow[] => {
+  const pivotWeeklyTargets = (rawWeekly: WeeklyTargetItem[], teamGoals: TeamGoalItem[]): PivotRow[] => {
     const pivoted = PIVOT_ROWS_TEMPLATE.map(row => {
       const weeksData: Record<number, WeeklyTargetItem> = {}
       
@@ -1186,17 +1189,10 @@ const Goals: React.FC = () => {
         }
       }
 
-      let totalBase = 0
-      let totalChallenge = 0
-      Object.values(weeksData).forEach(w => {
-        if (row.category === 'marketing') {
-          totalBase += w.marketing_base_target
-          totalChallenge += w.marketing_challenge_target
-        } else {
-          totalBase += w.delivery_base_target
-          totalChallenge += w.delivery_challenge_target
-        }
-      })
+      // 直接匹配 TeamGoal 里的保底和挑战目标总额，不从周数据累加
+      const matchedGoal = teamGoals.find(g => g.team_id === row.team_id && g.category === row.category)
+      const totalBase = matchedGoal ? matchedGoal.base_target : 0
+      const totalChallenge = matchedGoal ? matchedGoal.red_line_target : 0
 
       return {
         key: `${row.team_id}_${row.category}`,
@@ -1247,15 +1243,13 @@ const Goals: React.FC = () => {
         }
       }
 
+      // 合计行总额为各战队独立目标的求和
       let totalBase = 0
       let totalChallenge = 0
-      Object.values(weeksData).forEach(w => {
-        if (cat === 'marketing') {
-          totalBase += w.marketing_base_target
-          totalChallenge += w.marketing_challenge_target
-        } else {
-          totalBase += w.delivery_base_target
-          totalChallenge += w.delivery_challenge_target
+      pivoted.forEach(p => {
+        if (p.category === cat) {
+          totalBase += p.total_base
+          totalChallenge += p.total_challenge
         }
       })
 
@@ -1283,9 +1277,9 @@ const Goals: React.FC = () => {
     
     // 初始化 15 周的表单值
     const formVals: Record<string, number> = {}
+    const isChallengeTab = activeTab === 'weekly_challenge'
     WEEK_RANGES.forEach(item => {
       const wData = record.weeks[item.week]
-      const isChallengeTab = activeTab === 'weekly_challenge'
       
       const val = record.category === 'marketing'
         ? (isChallengeTab ? wData.marketing_challenge_target : wData.marketing_base_target)
@@ -1293,6 +1287,10 @@ const Goals: React.FC = () => {
       
       formVals[`week_${item.week}`] = val
     })
+    
+    // 回填独立存储的战队目标总额
+    formVals['total_target'] = isChallengeTab ? record.total_challenge : record.total_base
+
     pivotEditForm.setFieldsValue(formVals)
   }
 
@@ -1336,10 +1334,19 @@ const Goals: React.FC = () => {
         })
       })
 
+      // 构建请求Payload，包含总额独立更新字段
+      const payload = {
+        records: recordsToUpdate,
+        team_id: editingPivotRow.team_id,
+        category: editingPivotRow.category,
+        is_challenge: isChallengeTab,
+        total_target: values.total_target
+      }
+
       // 提交到批量更新 API
-      const res = await post<any>('/goals/weekly/batch-update-records', recordsToUpdate)
+      const res = await post<any>('/goals/weekly/batch-update-records', payload)
       if (res) {
-        message.success('修改周目标成功，战队总目标额已级联自动重算刷新！')
+        message.success('修改周分解目标及总奋斗目标额成功！')
         setPivotEditModalVisible(false)
         setEditingPivotRow(null)
         loadPivotWeeklyData()
@@ -2719,7 +2726,7 @@ const Goals: React.FC = () => {
             <strong>{editingPivotRow?.team_name}</strong>
           </p>
           <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '12px' }}>
-            修改以下 15 周的目标值并保存后，系统将自动汇总并更新该战队作战大盘的总目标额。
+            修改以下 15 周的目标值并保存。下方的“总额”输入框可以供您直接修改战队在此维度下的目标总额，保存后将独立存入数据库中。
           </p>
         </div>
         <Form form={pivotEditForm} layout="vertical">
@@ -2735,6 +2742,24 @@ const Goals: React.FC = () => {
                 </Form.Item>
               </Col>
             ))}
+          </Row>
+          <Divider style={{ margin: '12px 0' }} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="total_target"
+                label={
+                  editingPivotRow
+                    ? `${editingPivotRow.category === 'marketing' ? '营销新签' : '交付新签'}${
+                        activeTab === 'weekly_challenge' ? '挑战' : '基础'
+                      }目标总额 (万元)`
+                    : '目标总额 (万元)'
+                }
+                rules={[{ required: true, message: '请输入目标总额' }]}
+              >
+                <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="万元" />
+              </Form.Item>
+            </Col>
           </Row>
         </Form>
       </Modal>

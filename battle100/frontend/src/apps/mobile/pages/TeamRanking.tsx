@@ -113,14 +113,15 @@ export default function TeamRanking() {
   const [filterTeamId, setFilterTeamId] = useState<number | undefined>(undefined)
   const [filterThirdClassBar, setFilterThirdClassBar] = useState<string | undefined>(undefined)
 
-  // 个人大盘 5 大分类的英雄榜列表
+  // 个人大盘 6 大分类的英雄榜列表
   const [marketingList, setMarketingList] = useState<any[]>([])
   const [deliveryList, setDeliveryList] = useState<any[]>([])
   const [leadsList, setLeadsList] = useState<any[]>([])
+  const [potentialLeadsList, setPotentialLeadsList] = useState<any[]>([])
   const [happinessList, setHappinessList] = useState<any[]>([])
   const [triangleList, setTriangleList] = useState<any[]>([])
 
-  const [personalActiveTab, setPersonalActiveTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'>('marketing_signing')
+  const [personalActiveTab, setPersonalActiveTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle'>('marketing_signing')
 
   // 明细弹窗 Popup 状态
   const [detailVisible, setDetailVisible] = useState(false)
@@ -183,6 +184,7 @@ export default function TeamRanking() {
         setMarketingList(mapHeroBoard((dRes as any).marketingHeroBoard))
         setDeliveryList(mapHeroBoard((dRes as any).deliveryHeroBoard))
         setLeadsList(mapHeroBoard((dRes as any).leadsBoard))
+        setPotentialLeadsList(mapHeroBoard((dRes as any).potentialLeadsBoard))
         setHappinessList(mapHeroBoard((dRes as any).happinessBoard))
         setTriangleList(mapHeroBoard((dRes as any).triangleBoard))
 
@@ -310,6 +312,7 @@ export default function TeamRanking() {
               { id: 'marketing_signing', label: '营销签单' },
               { id: 'delivery_signing', label: '交付签单' },
               { id: 'leads', label: '线索先锋' },
+              { id: 'potential_leads', label: '潜力先锋' },
               { id: 'happiness', label: '幸福卷王' },
               { id: 'triangle', label: '铁三角协作' }
             ].map(tab => {
@@ -399,6 +402,9 @@ export default function TeamRanking() {
           {personalActiveTab === 'leads' && (
             <RankList data={leadsList} showTeam unit="条" onScoreClick={(name) => handleViewDetail(name, 'leads')} />
           )}
+          {personalActiveTab === 'potential_leads' && (
+            <RankList data={potentialLeadsList} showTeam unit="条" onScoreClick={(name) => handleViewDetail(name, 'potential_leads')} />
+          )}
           {personalActiveTab === 'happiness' && (
             <RankList data={happinessList} showTeam unit="次" onScoreClick={(name) => handleViewDetail(name, 'happiness')} />
           )}
@@ -427,6 +433,7 @@ export default function TeamRanking() {
               detailCategory === 'marketing_signing' ? '营销新签' :
               detailCategory === 'delivery_signing' ? '交付新签' :
               detailCategory === 'leads' ? '有效线索' :
+              detailCategory === 'potential_leads' ? '潜力线索确定' :
               detailCategory === 'happiness' ? '客户幸福' :
               detailCategory === 'triangle' ? '铁三角联动' : ''
             }】明细

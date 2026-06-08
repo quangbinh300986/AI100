@@ -63,6 +63,7 @@ const TEAM_OPTIONS = [
 
 // 播报与动作类型定义 (严格限制为这 5 种核心动作 + 自定义文本播报)
 const EVENT_TYPE_OPTIONS = [
+  { label: '潜力线索确定 (5%-10%)', value: 'potential_lead' },
   { label: '有效线索确定 (25%)', value: 'lead_25' },
   { label: '中标确定 (75%)', value: 'lead_75' },
   { label: '已完成合同签订 (90%)', value: 'contract_signed' },
@@ -709,6 +710,8 @@ const Reports: React.FC = () => {
       fetchCRMProjects(75) // 已中标阶段为 75%
     } else if (type === 'lead_25') {
       fetchCRMProjects(25) // 有效线索阶段为 25%
+    } else if (type === 'potential_lead') {
+      fetchCRMProjects(10) // 潜力线索阶段为 5%-10%
     }
   }
 
@@ -757,6 +760,7 @@ const Reports: React.FC = () => {
     let progressText = '90%'
     if (actionType === 'lead_75') progressText = '75%'
     if (actionType === 'lead_25') progressText = '25%'
+    if (actionType === 'potential_lead') progressText = '5%-10%'
 
     const generatedContent = `【战报播报】恭喜【${user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
     createForm.setFieldsValue({ content: generatedContent })
@@ -807,6 +811,7 @@ const Reports: React.FC = () => {
     let progressText = '90%'
     if (editEventType === 'lead_75') progressText = '75%'
     if (editEventType === 'lead_25') progressText = '25%'
+    if (editEventType === 'potential_lead') progressText = '5%-10%'
 
     const generatedContent = `【战报播报】恭喜【${selectedBroadcast?.user_name || user?.name || '团队成员'}】成功推进项目《${proj.name}》至进度 ${progressText}！业主单位：${proj.customer_name}，合同估算价金额：${defaultAmount} 万元！`
     editForm.setFieldsValue({ content: generatedContent })
@@ -859,7 +864,7 @@ const Reports: React.FC = () => {
   // 提交创建新战报
   const handleCreateSubmit = async (values: any) => {
     // 校验比例和
-    if (withIndicator && (actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25')) {
+    if (withIndicator && (actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25' || actionType === 'potential_lead')) {
       const dAllocs = values.delivery_allocations || []
       if (dAllocs.length > 0) {
         const dSum = dAllocs.reduce((sum: number, item: any) => sum + (Number(item.ratio) || 0), 0)
@@ -913,7 +918,7 @@ const Reports: React.FC = () => {
         employee_name: withIndicator ? values.employee_name : null,
         copartners: withIndicator ? values.copartners : null,
         marketing_copartners: withIndicator ? values.marketing_copartners : null,
-        attachment_urls: withIndicator && ['contract', 'happiness', 'triangle'].includes(values.action_type) && attachment_urls.length > 0 ? attachment_urls : undefined
+        attachment_urls: withIndicator && ['contract', 'happiness', 'triangle', 'potential_lead'].includes(values.action_type) && attachment_urls.length > 0 ? attachment_urls : undefined
       }
 
       const res = await post<any>('/broadcast', payload)
@@ -970,7 +975,7 @@ const Reports: React.FC = () => {
       }
 
       // 如果是前三种(关联 CRM) 或 铁三角/幸福动作，将对应的客户名称、金额及分摊发送回写
-      if (editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25') {
+      if (editEventType === 'contract_signed' || editEventType === 'lead_75' || editEventType === 'lead_25' || editEventType === 'potential_lead') {
         payload.customer_name = values.customer_name
         payload.amount = Number(values.amount || 0)
       }
@@ -999,7 +1004,7 @@ const Reports: React.FC = () => {
         payload.is_urgent = !!values.is_urgent
       }
 
-      if (['contract_signed', 'happiness', 'triangle'].includes(editEventType)) {
+      if (['contract_signed', 'happiness', 'triangle', 'potential_lead'].includes(editEventType)) {
         payload.attachment_urls = attachment_urls.length > 0 ? attachment_urls : null
       }
 
@@ -1028,7 +1033,10 @@ const Reports: React.FC = () => {
       render: (val: string) => {
         let label = '自定义播报'
         let color = 'default'
-        if (val === 'contract_signed') {
+        if (val === 'potential_lead') {
+          label = '潜在线索确定'
+          color = 'magenta'
+        } else if (val === 'contract_signed') {
           label = '已完成合同签订'
           color = 'volcano'
         } else if (val === 'lead_75') {
@@ -1208,8 +1216,9 @@ const Reports: React.FC = () => {
               let progress = 90
               if (record.event_type === 'lead_75') progress = 75
               if (record.event_type === 'lead_25') progress = 25
+              if (record.event_type === 'potential_lead') progress = 10
 
-              if (['contract_signed', 'lead_75', 'lead_25'].includes(record.event_type)) {
+              if (['contract_signed', 'lead_75', 'lead_25', 'potential_lead'].includes(record.event_type)) {
                 fetchCRMProjects(progress, initialProj, record.crm_opportunity_id)
               }
 
@@ -1613,7 +1622,7 @@ const Reports: React.FC = () => {
                 </Col>
                 
                 {/* 25%/75%/90% 提供直连 CRM */}
-                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25') && (
+                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25' || actionType === 'potential_lead') && (
                   <Col span={12}>
                     <Form.Item
                       name="crm_opportunity_id"
@@ -1676,7 +1685,7 @@ const Reports: React.FC = () => {
                   </Form.Item>
                 </Col>
                 
-                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25') && (
+                {(actionType === 'contract' || actionType === 'lead_75' || actionType === 'lead_25' || actionType === 'potential_lead') && (
                   <Col span={12}>
                     <Form.Item
                       name="amount"
@@ -2075,7 +2084,6 @@ const Reports: React.FC = () => {
                     <Select placeholder="请选择分类">
                       <Select.Option value="policy">🏛️ 最新政策</Select.Option>
                       <Select.Option value="deployment">📋 重大会议部署</Select.Option>
-                      <Select.Option value="lead">🎯 潜在项目线索</Select.Option>
                       <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
                     </Select>
                   </Form.Item>
@@ -2101,8 +2109,8 @@ const Reports: React.FC = () => {
             </>
           )}
 
-          {/* 前三种 (lead_25, lead_75, contract_signed) 显示和 CRM 潜力库选择下拉框 */}
-          {['lead_25', 'lead_75', 'contract_signed'].includes(editEventType) && (
+          {/* 前三种 (lead_25, lead_75, contract_signed, potential_lead) 显示和 CRM 潜力库选择下拉框 */}
+          {['lead_25', 'lead_75', 'contract_signed', 'potential_lead'].includes(editEventType) && (
             <Form.Item
               name="crm_opportunity_id"
               label={
@@ -2110,6 +2118,8 @@ const Reports: React.FC = () => {
                   ? '从项目管理系统的合同表获取'
                   : editEventType === 'lead_75'
                   ? '从投标室确认标讯系统中标项目中获取'
+                  : editEventType === 'potential_lead'
+                  ? '选择对应 CRM 中进展阶段为 5%-10% 的项目'
                   : '选择对应 CRM 中进展阶段为 25% 的项目'
               }
               rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
@@ -2132,7 +2142,7 @@ const Reports: React.FC = () => {
           )}
 
           {/* 有效线索确定 (25%) / 中标确定 (75%) 的回填只读界面 */}
-          {(editEventType === 'lead_25' || editEventType === 'lead_75') && (
+          {(editEventType === 'lead_25' || editEventType === 'lead_75' || editEventType === 'potential_lead') && (
             <>
               <Form.Item name="customer_name" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
                 <Input disabled placeholder="选择项目后自动回填业主单位" />
@@ -2670,13 +2680,13 @@ const Reports: React.FC = () => {
                   const catMap: any = {
                     policy: '🏛️ 最新政策',
                     deployment: '📋 会议部署',
-                    lead: '🎯 项目线索',
                     intelligence: '🔍 情报信息'
                   }
                   const label = catMap[record.station_category] || '驻点快报'
                   return <Tag color="cyan">{label}</Tag>
                 }
                 const typeMap: any = {
+                  potential_lead: '潜力线索',
                   contract_signed: '已签合同',
                   lead_75: '中标确定',
                   lead_25: '有效线索',
@@ -2685,6 +2695,7 @@ const Reports: React.FC = () => {
                   custom: '自定义播报'
                 }
                 return <Tag color={
+                  type === 'potential_lead' ? 'magenta' :
                   type === 'contract_signed' ? 'red' : 
                   type === 'lead_75' ? 'orange' : 
                   type === 'lead_25' ? 'green' : 

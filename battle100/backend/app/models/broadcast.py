@@ -12,6 +12,7 @@ from app.models.base import BaseModel
 
 class EventType(str, enum.Enum):
     """事件类型枚举"""
+    POTENTIAL_LEAD = "potential_lead"      # 潜在线索确定（5%-10%）
     LEAD_25 = "lead_25"                    # 有效线索确定
     LEAD_75 = "lead_75"                    # 中标确定
     CONTRACT_SIGNED = "contract_signed"    # 已完成合同签订（双方盖章）
@@ -82,7 +83,7 @@ class BroadcastEvent(BaseModel):
         String(200), nullable=True, comment="项目名称"
     )
     station_category: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="驻点播报子分类: policy/deployment/lead/intelligence"
+        String(50), nullable=True, comment="驻点播报子分类: policy/deployment/intelligence"
     )
     station_location: Mapped[str | None] = mapped_column(
         String(100), nullable=True, comment="驻点地点(如:广州/深圳/茂名)"

@@ -9,9 +9,10 @@ interface HeroBoardProps {
   happinessBoard?: RankingItem[]
   triangleBoard?: RankingItem[]
   leadsBoard?: RankingItem[]
+  potentialLeadsBoard?: RankingItem[]
 }
 
-type TabType = 'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'
+type TabType = 'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle'
 
 const HeroBoard: React.FC<HeroBoardProps> = ({
   theme = 'theme-light-red',
@@ -20,7 +21,8 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
   deliveryHeroBoard = [],
   happinessBoard = [],
   triangleBoard = [],
-  leadsBoard = []
+  leadsBoard = [],
+  potentialLeadsBoard = []
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('marketing_signing')
   const timerRef = useRef<any>(null)
@@ -40,7 +42,8 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
       setActiveTab((prev) => {
         if (prev === 'marketing_signing') return 'delivery_signing'
         if (prev === 'delivery_signing') return 'leads'
-        if (prev === 'leads') return 'happiness'
+        if (prev === 'leads') return 'potential_leads'
+        if (prev === 'potential_leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
         return 'marketing_signing'
       })
@@ -70,6 +73,14 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           isFloat: false,
           list: leadsBoard.length > 0 ? leadsBoard : defaultLeads,
           color: '#1890ff'
+        }
+      case 'potential_leads':
+        return {
+          title: '🎯 周潜力线索先锋榜 (当周新增潜力线索)',
+          unit: '条',
+          isFloat: false,
+          list: potentialLeadsBoard.length > 0 ? potentialLeadsBoard : defaultLeads,
+          color: '#eb2f96'
         }
       case 'happiness':
         return {
@@ -148,6 +159,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
             { id: 'marketing_signing', label: '营销签单战将' },
             { id: 'delivery_signing', label: '交付签单战将' },
             { id: 'leads', label: '线索先锋' },
+            { id: 'potential_leads', label: '潜力线索战将' },
             { id: 'happiness', label: '幸福动作卷王' },
             { id: 'triangle', label: '铁三角协作' },
           ].map((tab) => {

@@ -949,14 +949,28 @@ const WeeklyReports: React.FC = () => {
       weeklyForm.resetFields()
       
       let data: any = null
+      let isNewReport = false
       try {
         const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
         data = res?.data ? res.data : res
       } catch (err: any) {
         if (err?.response?.status === 404) {
           console.log('该周尚未填写周报')
+          isNewReport = true
         } else {
           message.error('拉取历史周报失败')
+        }
+      }
+
+      // 如果是新填写的周报，尝试拉取上周的周报数据作为初始计划提取来源
+      let prevWeekData: any = null
+      if (isNewReport) {
+        try {
+          const prevMonday = mon.subtract(7, 'day').format('YYYY-MM-DD')
+          const prevRes = await get<any>(`/reports/weekly/mine?start_date=${prevMonday}`)
+          prevWeekData = prevRes?.data ? prevRes.data : prevRes
+        } catch (prevErr) {
+          console.log('未找到上一周的周报')
         }
       }
       
@@ -972,7 +986,14 @@ const WeeklyReports: React.FC = () => {
       ]
       
       fields.forEach(field => {
-        const val = data ? data[field] : null
+        let val = data ? data[field] : null
+        if (isNewReport && prevWeekData) {
+          if (field === 'delivery_plan') {
+            val = prevWeekData.next_delivery_plan
+          } else if (field === 'sales_plan') {
+            val = prevWeekData.next_sales_plan
+          }
+        }
         if (val !== null && val !== undefined && val !== '') {
           formValues[field] = val
         } else {

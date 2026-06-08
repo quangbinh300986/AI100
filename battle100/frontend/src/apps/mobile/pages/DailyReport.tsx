@@ -217,6 +217,8 @@ export default function DailyReport() {
       loadCrmProjects(75)
     } else if (val === 'lead_25') {
       loadCrmProjects(25)
+    } else if (val === 'potential_lead') {
+      loadCrmProjects(10)
     } else if (val === 'happiness') {
       loadCrmProjectsSearch()
     } else if (val === 'station_report') {
@@ -251,6 +253,7 @@ export default function DailyReport() {
     let progressText = '90%'
     if (actionType === 'lead_75') progressText = '75%'
     if (actionType === 'lead_25') progressText = '25%'
+    if (actionType === 'potential_lead') progressText = '5%-10%'
 
     const prefix = '奋战一百天，亮剑破六千！今日确定'
     let generatedContent = ''
@@ -501,7 +504,7 @@ export default function DailyReport() {
       return
     }
 
-    if (['lead_25', 'lead_75', 'contract'].includes(actionType) && !formData.crmOpportunityId) {
+    if (['potential_lead', 'lead_25', 'lead_75', 'contract'].includes(actionType) && !formData.crmOpportunityId) {
       Toast.show({ icon: 'fail', content: '请选择关联的 CRM 商机项目' })
       return
     }
@@ -742,7 +745,6 @@ export default function DailyReport() {
                   options={[
                     { label: '🏛️ 最新政策', value: 'policy' },
                     { label: '📋 会议部署', value: 'deployment' },
-                    { label: '🎯 项目线索', value: 'lead' },
                     { label: '🔍 情报信息', value: 'intelligence' }
                   ]}
                   value={[formData.actionDescription]}
@@ -844,7 +846,9 @@ export default function DailyReport() {
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
-                  注意：附件包将使用 AES-256 强加密，密码直接发布在群里
+                  {formData.actionDescription === 'policy'
+                    ? '注意：附件包将使用 AES-256 强加密，密码直接发布在群里'
+                    : '注意：文件将作为原始附件直接上传，不进行加密'}
                 </div>
               </Form.Item>
             </Form>
@@ -852,7 +856,7 @@ export default function DailyReport() {
         )}
 
         {/* 前三种动作 (商机联动) */}
-        {['lead_25', 'lead_75', 'contract'].includes(actionType) && (
+        {['potential_lead', 'lead_25', 'lead_75', 'contract'].includes(actionType) && (
           <div>
             <div style={{ borderBottom: '1px solid #eee', paddingBottom: 10, marginBottom: 12 }}>
               <span style={{ fontSize: 13, fontWeight: 'bold', color: '#1677ff' }}>
@@ -860,6 +864,8 @@ export default function DailyReport() {
                   ? '从项目管理系统的合同表获取' 
                   : actionType === 'lead_75' 
                   ? '从投标室确认标讯系统中标项目中获取' 
+                  : actionType === 'potential_lead'
+                  ? '选择对应 CRM 中进展阶段为 5%-10% 的项目'
                   : '选择对应 CRM 中进展阶段为 25% 的项目'}
               </span>
             </div>

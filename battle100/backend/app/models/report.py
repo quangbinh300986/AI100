@@ -27,6 +27,7 @@ class DetailType(str, enum.Enum):
     HAPPINESS = "happiness"        # 幸福行动明细
     TRIANGLE = "triangle"          # 铁三角拜访明细
     LEAD = "lead"                  # 线索明细
+    POTENTIAL_LEAD = "potential_lead"  # 潜力线索明细
 
 
 class DailyReport(BaseModel):
@@ -56,6 +57,9 @@ class DailyReport(BaseModel):
     )
     leads_count: Mapped[int] = mapped_column(
         Integer, default=0, comment="线索数量"
+    )
+    potential_leads_count: Mapped[int] = mapped_column(
+        Integer, default=0, comment="潜力线索数量"
     )
     work_summary: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="工作总结"

@@ -41,6 +41,7 @@ class DailyReportCreate(BaseModel):
     happiness_actions: int = Field(default=0, description="幸福行动次数")
     triangle_count: int = Field(default=0, description="铁三角拜访次数")
     leads_count: int = Field(default=0, description="线索数量")
+    potential_leads_count: int = Field(default=0, description="潜力线索数量")
     work_summary: Optional[str] = Field(None, description="工作总结")
     work_reflection: Optional[str] = Field(None, description="工作反思")
     next_day_plan: Optional[str] = Field(None, description="明日计划")
@@ -55,6 +56,7 @@ class DailyReportUpdate(BaseModel):
     happiness_actions: Optional[int] = Field(None, description="幸福行动次数")
     triangle_count: Optional[int] = Field(None, description="铁三角拜访次数")
     leads_count: Optional[int] = Field(None, description="线索数量")
+    potential_leads_count: Optional[int] = Field(None, description="潜力线索数量")
     work_summary: Optional[str] = Field(None, description="工作总结")
     work_reflection: Optional[str] = Field(None, description="工作反思")
     next_day_plan: Optional[str] = Field(None, description="明日计划")
@@ -72,6 +74,7 @@ class DailyReportResponse(BaseModel):
     happiness_actions: int
     triangle_count: int
     leads_count: int
+    potential_leads_count: int
     work_summary: Optional[str] = None
     work_reflection: Optional[str] = None
     next_day_plan: Optional[str] = None

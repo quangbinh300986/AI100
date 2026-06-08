@@ -354,14 +354,28 @@ const Dashboard: React.FC = () => {
       weeklyForm.resetFields()
       
       let data: any = null
+      let isNewReport = false
       try {
         const res = await get<any>(`/reports/weekly/mine?start_date=${startDateStr}`)
         data = res?.data ? res.data : res
       } catch (err: any) {
         if (err?.response?.status === 404) {
           console.log('该周尚未填写周报')
+          isNewReport = true
         } else {
           message.error('拉取历史周报失败')
+        }
+      }
+
+      // 如果是新填写的周报，尝试拉取上周的周报数据作为初始计划提取来源
+      let prevWeekData: any = null
+      if (isNewReport) {
+        try {
+          const prevMonday = mon.subtract(7, 'day').format('YYYY-MM-DD')
+          const prevRes = await get<any>(`/reports/weekly/mine?start_date=${prevMonday}`)
+          prevWeekData = prevRes?.data ? prevRes.data : prevRes
+        } catch (prevErr) {
+          console.log('未找到上一周的周报')
         }
       }
       
@@ -377,7 +391,14 @@ const Dashboard: React.FC = () => {
       ]
       
       fields.forEach(field => {
-        const val = data ? data[field] : null
+        let val = data ? data[field] : null
+        if (isNewReport && prevWeekData) {
+          if (field === 'delivery_plan') {
+            val = prevWeekData.next_delivery_plan
+          } else if (field === 'sales_plan') {
+            val = prevWeekData.next_sales_plan
+          }
+        }
         if (val !== null && val !== undefined && val !== '') {
           formValues[field] = val
         } else {
@@ -476,6 +497,7 @@ const Dashboard: React.FC = () => {
   const [broadcastModalVisible, setBroadcastModalVisible] = useState(false)
   const [broadcastForm] = Form.useForm()
   const watchHappinessScore = Form.useWatch('happinessScore', broadcastForm)
+  const watchStationCategory = Form.useWatch('stationCategory', broadcastForm)
   const [currentActionType, setCurrentActionType] = useState<string>('')
   const [fileList, setFileList] = useState<any[]>([])
   const [usersList, setUsersList] = useState<{ id: number; name: string }[]>([])
@@ -618,34 +640,12 @@ const Dashboard: React.FC = () => {
 
   // 获取战队线索明细数据
   const handleViewLeadsList = async (teamId: number, leadType: 'valid' | 'potential', teamName: string) => {
-    if (leadType === 'valid') {
-      // 来源于本系统的有效线索库，如附件2
-      setCompanyKpiDetailType('leads')
-      setCompanyFilterTeamId(teamId)
-      setCompanyFilterWeek(undefined)
-      setCompanyFilterReporter(undefined)
-      setCompanyFilterKeyword('')
-      setCompanyKpiDetailModalVisible(true)
-    } else {
-      setLeadsModalVisible(true)
-      setLeadsLoading(true)
-      setLeadsList([])
-      setCurrentLeadType('潜力需求线索')
-      setCurrentLeadTeamName(teamName)
-      try {
-        const res = await get(`/dashboard/team-leads?team_id=${teamId}&lead_type=${leadType}`)
-        if (res && Array.isArray(res)) {
-          setLeadsList(res)
-        }
-      } catch (err: any) {
-        // 捕获异常，并使用 message.error 提示用户连接失败的真实报错原因
-        const errMsg = err?.response?.data?.detail || err?.message || '获取线索明细列表失败'
-        message.error(errMsg)
-        setLeadsModalVisible(false) // 失败时关闭二级Modal，避免显示空白弹框
-      } finally {
-        setLeadsLoading(false)
-      }
-    }
+    setCompanyKpiDetailType(leadType === 'valid' ? 'leads' : 'potential_leads')
+    setCompanyFilterTeamId(teamId)
+    setCompanyFilterWeek(undefined)
+    setCompanyFilterReporter(undefined)
+    setCompanyFilterKeyword('')
+    setCompanyKpiDetailModalVisible(true)
   }
 
   // 铁三角与幸福度下钻状态
@@ -777,12 +777,12 @@ const Dashboard: React.FC = () => {
   // 全公司 KPI 详情弹窗状态
   const [companyKpiDetailModalVisible, setCompanyKpiDetailModalVisible] = useState(false)
   const [companyKpiDetailLoading, setCompanyKpiDetailLoading] = useState(false)
-  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders'>('contracts')
+  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads'>('contracts')
   const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
   const [companyExportLoading, setCompanyExportLoading] = useState(false)
 
   // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
-  const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'happiness' | 'triangle'>('marketing_signing')
+  const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle'>('marketing_signing')
 
   // 周英雄榜实绩个人明细抽屉状态，所有注释必须使用中文
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false)
@@ -803,7 +803,8 @@ const Dashboard: React.FC = () => {
       setActiveRankTab(prev => {
         if (prev === 'marketing_signing') return 'delivery_signing'
         if (prev === 'delivery_signing') return 'leads'
-        if (prev === 'leads') return 'happiness'
+        if (prev === 'leads') return 'potential_leads'
+        if (prev === 'potential_leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
         return 'marketing_signing'
       })
@@ -863,7 +864,8 @@ const Dashboard: React.FC = () => {
         happiness: '公司客户幸福动作明细',
         triangle: '售前铁三角联动明细',
         leads: '新增有效商机线索明细',
-        tenders: '公司累计中标项目明细'
+        tenders: '公司累计中标项目明细',
+        potential_leads: '潜力商机线索明细'
       }
       const title = typeMap[companyKpiDetailType] || '大盘指标明细'
 
@@ -910,7 +912,7 @@ const Dashboard: React.FC = () => {
   }
 
   // 首次点击指标卡片，打开明细弹窗重置筛选条件，所有注释必须使用中文
-  const handleViewCompanyKpiDetail = (type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders') => {
+  const handleViewCompanyKpiDetail = (type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads') => {
     setCompanyKpiDetailType(type)
     setCompanyFilterTeamId(undefined)
     setCompanyFilterWeek(undefined)
@@ -1261,12 +1263,13 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  // 异步获取 CRM 中对应进展阶段的潜在项目列表
+  // 异步获取 CRM 中对应进展阶段 of 潜在项目列表
   const loadCrmProjects = async (actionType: string) => {
     let progress = 25
     if (actionType === 'lead_25') progress = 25
     else if (actionType === 'lead_75') progress = 75
     else if (actionType === 'contract') progress = 90
+    else if (actionType === 'potential_lead') progress = 10
     else return
 
     setCrmLoading(true)
@@ -1295,7 +1298,7 @@ const Dashboard: React.FC = () => {
       setCurrentActionType(type)
       setCrmProjects([])
       setSelectedProjectMarketingUsers([])
-      if (['lead_25', 'lead_75', 'contract'].includes(type)) {
+      if (['potential_lead', 'lead_25', 'lead_75', 'contract'].includes(type)) {
         loadCrmProjects(type)
       }
       broadcastForm.setFieldsValue({
@@ -1407,6 +1410,9 @@ const Dashboard: React.FC = () => {
     let generated = ''
     
     switch (actionType) {
+      case 'potential_lead':
+        generated = `${prefix}确定潜在线索：客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万，赢战百日！`
+        break
       case 'lead_25':
         generated = `${prefix}确定有效线索：客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万，赢战百日！`
         break
@@ -1895,6 +1901,13 @@ const Dashboard: React.FC = () => {
           color: '#1677ff',
           list: data?.leadsBoard || []
         }
+      case 'potential_leads':
+        return {
+          title: '🎯 周潜力线索先锋榜 (TOP 15)',
+          unit: '条',
+          color: '#eb2f96',
+          list: data?.potentialLeadsBoard || []
+        }
       case 'happiness':
         return {
           title: '🌟 周客户幸福动作卷王榜 (TOP 15)',
@@ -2040,9 +2053,9 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 第一级：🏆 公司战役总盘五大指标 */}
+      {/* 第一级：🏆 公司战役总盘六大指标 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap' }}>
-        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2068,7 +2081,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2093,7 +2106,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2118,7 +2131,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2143,7 +2156,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 20%', minWidth: '220px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2164,6 +2177,31 @@ const Dashboard: React.FC = () => {
                 <Text strong color="#722ed1">{kpis?.validLeads.percentage}%</Text>
               </div>
               <Progress percent={kpis?.validLeads.percentage} size="small" strokeColor="#722ed1" />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+          <Card 
+            className="card-kpi" 
+            variant="borderless"
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('potential_leads')}
+          >
+            <Statistic
+              title="🎯 潜在线索确定 (5%-10%)"
+              value={kpis?.potentialLeads?.value}
+              styles={{ content: { color: '#eb2f96', fontSize: 26, fontWeight: 700 } }}
+              prefix={<SearchOutlined />}
+              suffix="条"
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifySelf: 'space-between', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text type="secondary">目标: {kpis?.potentialLeads?.target}条</Text>
+                <Text strong style={{ color: '#eb2f96' }}>{kpis?.potentialLeads?.percentage}%</Text>
+              </div>
+              <Progress percent={kpis?.potentialLeads?.percentage} size="small" strokeColor="#eb2f96" />
             </div>
           </Card>
         </Col>
@@ -2277,6 +2315,7 @@ const Dashboard: React.FC = () => {
                 { id: 'marketing_signing', label: '营销签单' },
                 { id: 'delivery_signing', label: '交付签单' },
                 { id: 'leads', label: '线索先锋' },
+                { id: 'potential_leads', label: '潜力先锋' },
                 { id: 'happiness', label: '幸福卷王' },
                 { id: 'triangle', label: '铁三角协作' }
               ].map(t => {
@@ -2871,7 +2910,6 @@ const Dashboard: React.FC = () => {
                 <Select placeholder="请选择分类">
                   <Select.Option value="policy">🏛️ 最新政策</Select.Option>
                   <Select.Option value="deployment">📋 重大会议部署</Select.Option>
-                  <Select.Option value="lead">🎯 潜在项目线索</Select.Option>
                   <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
                 </Select>
               </Form.Item>
@@ -2926,13 +2964,15 @@ const Dashboard: React.FC = () => {
                   <Button icon={<UploadOutlined />}>选择文件（Word/PDF/ZIP/图片等）</Button>
                 </Upload>
                 <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-                  注意：Supabase 免费版单文件限制 50MB，文件将通过 AES-256 安全加密打包
+                  {watchStationCategory === 'policy'
+                    ? '注意：Supabase 免费版单文件限制 50MB，文件将通过 AES-256 安全加密打包'
+                    : '注意：Supabase 免费版单文件限制 50MB，文件将作为原始附件直接上传'}
                 </div>
               </Form.Item>
             </>
           )}
 
-          {['lead_25', 'lead_75', 'contract'].includes(currentActionType) && (
+          {['potential_lead', 'lead_25', 'lead_75', 'contract'].includes(currentActionType) && (
             <Form.Item
               name="crmProjectId"
               label={
@@ -2940,6 +2980,8 @@ const Dashboard: React.FC = () => {
                   ? '从项目管理系统的合同表获取'
                   : currentActionType === 'lead_75'
                   ? '从投标室确认标讯系统中标项目中获取'
+                  : currentActionType === 'potential_lead'
+                  ? '选择对应 CRM 中进展阶段为 5%-10% 的项目'
                   : '选择对应 CRM 中进展阶段为 25% 的项目'
               }
               rules={[{ required: true, message: '请选择对应的 CRM 潜在项目' }]}
@@ -2960,7 +3002,7 @@ const Dashboard: React.FC = () => {
             </Form.Item>
           )}
 
-          {currentActionType === 'lead_25' && (
+          {(currentActionType === 'lead_25' || currentActionType === 'potential_lead') && (
             <>
               <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: '选择项目后自动填入' }]}>
                 <Input disabled placeholder="选择项目后自动回填业主单位" />
@@ -3542,7 +3584,7 @@ const Dashboard: React.FC = () => {
                 {
                   key: 'potential_leads',
                   name: '📈 潜力需求线索量',
-                  definition: 'CRM线索库中进度在 5%~10% 的线索数（CRM专属指标）',
+                  definition: '本系统潜力线索库中进度为 5%-10% 的线索总数量',
                   target: '—',
                   actual: selectedTeamMetrics.potential_leads_actual !== null ? `${selectedTeamMetrics.potential_leads_actual} 条` : '—',
                   rate: '—'
@@ -3938,6 +3980,7 @@ const Dashboard: React.FC = () => {
               {companyKpiDetailType === 'triangle' && <span>🤝 售前铁三角联动明细</span>}
               {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
               {companyKpiDetailType === 'tenders' && <span>🏆 公司累计中标项目明细</span>}
+              {companyKpiDetailType === 'potential_leads' && <span>🎯 潜力商机线索明细</span>}
             </div>
             
             {/* 标题栏右侧的筛选组合栏，所有注释必须使用中文 */}
@@ -4084,12 +4127,13 @@ const Dashboard: React.FC = () => {
                         {companyKpiDetailType === 'triangle' && '🤝 售前铁三角现场联动累计'}
                         {companyKpiDetailType === 'leads' && '🔍 新增有效商机线索累计'}
                         {companyKpiDetailType === 'tenders' && '🏆 公司累计中标项目累计'}
+                        {companyKpiDetailType === 'potential_leads' && '🎯 潜在线索确定累计'}
                       </span>
                     </Space>
                     <span style={{ fontSize: 22, fontWeight: 'bold', color: companyKpiDetailType === 'tenders' ? '#08979c' : '#389e0d' }}>
                       {companyKpiDetailData.total}{' '}
                       <span style={{ fontSize: 14, fontWeight: 'normal' }}>
-                        {companyKpiDetailType === 'leads' ? '条' : companyKpiDetailType === 'tenders' ? '个' : '次'}
+                        {(companyKpiDetailType === 'leads' || companyKpiDetailType === 'potential_leads') ? '条' : companyKpiDetailType === 'tenders' ? '个' : '次'}
                       </span>
                     </span>
                   </div>
@@ -4193,6 +4237,35 @@ const Dashboard: React.FC = () => {
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
                           { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
                           { title: '联动搭档', dataIndex: 'partner_name', key: 'partner_name', width: 110, align: 'center' },
+                          {
+                            title: '播报内容',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          }
+                        ]
+                      : companyKpiDetailType === 'potential_leads'
+                      ? [
+                          { title: '发现日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', width: 130 },
+                          {
+                            title: '预计金额',
+                            dataIndex: 'amount',
+                            key: 'amount',
+                            width: 110,
+                            align: 'right',
+                            render: (val: number) => <strong style={{ color: '#eb2f96' }}>{val} 万</strong>
+                          },
+                          {
+                            title: '当前进度',
+                            dataIndex: 'progress',
+                            key: 'progress',
+                            width: 100,
+                            align: 'center',
+                            render: (val: string) => <Tag color="magenta">{val}</Tag>
+                          },
                           {
                             title: '播报内容',
                             dataIndex: 'description',

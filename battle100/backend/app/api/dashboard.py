@@ -514,6 +514,16 @@ async def get_dashboard_overview(
     happiness_details_res = await db.execute(happiness_details_stmt)
     val_happiness = int(happiness_details_res.scalar() or 0)
 
+    # 统计全公司潜力线索数（5%-10%）
+    potential_leads_details_stmt = select(
+        func.count(ReportDetail.id)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+    )
+    potential_leads_details_res = await db.execute(potential_leads_details_stmt)
+    val_potential_leads = int(potential_leads_details_res.scalar() or 0)
+
     # 查询战区与战队总目标以计算总签约目标额（仅包含营销新签目标以修正分轨，并保留两位小数）
     total_base_target_res = await db.execute(
         select(func.coalesce(func.sum(TeamGoal.base_target), 0))
@@ -522,6 +532,10 @@ async def get_dashboard_overview(
     total_contract_target = round(float(total_base_target_res.scalar() or 6200.0), 2)
 
     # 构造 KPI Summary 属性
+    # 潜力线索：目标 600 条
+    pct_potential_leads = round((val_potential_leads / 600) * 100, 2)
+    kpi_potential_leads = KpiItem(value=val_potential_leads, target=600, percentage=pct_potential_leads)
+
     # 新签合同
     val_contracts = total_amount_val
     pct_contracts = round((val_contracts / total_contract_target) * 100, 2) if total_contract_target > 0 else 0.0
@@ -553,6 +567,7 @@ async def get_dashboard_overview(
     kpi_tenders = KpiItem(value=val_tenders, target=150, percentage=pct_tenders)
 
     kpi_summary = KpiSummary(
+        potentialLeads=kpi_potential_leads,
         newContracts=kpi_contracts,
         happinessActions=kpi_happiness,
         ironTriangle=kpi_triangle,
@@ -742,6 +757,7 @@ async def get_dashboard_overview(
     targets_map = {r.week_number: (float(r.base_sum), float(r.challenge_sum)) for r in targets_res.all()}
 
     trend_dates = []
+    trend_potential_leads = []
     trend_contracts = []
     trend_contracts_target = []
     trend_contracts_challenge_target = []
@@ -796,12 +812,13 @@ async def get_dashboard_overview(
         running_base_target += week_base
         running_challenge_target += week_challenge
 
-        # 查询该周范围内已审核的幸福、铁三角和线索次数
+        # 查询该周范围内已审核的幸福、铁三角、线索和潜力线索次数
         w_actual_res = await db.execute(
             select(
                 func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("happiness"),
                 func.coalesce(func.sum(DailyReport.triangle_count), 0).label("triangle"),
                 func.coalesce(func.sum(DailyReport.leads_count), 0).label("leads"),
+                func.coalesce(func.sum(DailyReport.potential_leads_count), 0).label("potential_leads"),
             ).where(
                 DailyReport.report_date >= s_date,
                 DailyReport.report_date <= e_date,
@@ -817,9 +834,11 @@ async def get_dashboard_overview(
         trend_happiness.append(int(w_row.happiness))
         trend_triangle.append(int(w_row.triangle))
         trend_leads.append(int(w_row.leads))
+        trend_potential_leads.append(int(w_row.potential_leads))
 
     weekly_trend = WeeklyTrendData(
         dates=trend_dates,
+        potentialLeads=trend_potential_leads,
         newContracts=trend_contracts,
         newContractsTarget=trend_contracts_target,
         newContractsChallengeTarget=trend_contracts_challenge_target,
@@ -881,7 +900,6 @@ async def get_dashboard_overview(
             category_names = {
                 "policy": "🏛️最新政策",
                 "deployment": "📋会议部署",
-                "lead": "🎯项目线索",
                 "intelligence": "🔍情报信息",
             }
             cat_label = category_names.get(obj.station_category, "驻点播报")
@@ -895,8 +913,16 @@ async def get_dashboard_overview(
             user_name = u.name if u else "冲刺队员"
             team_name = u.team.name if (u and u.team) else "冲刺大本营"
             
+            # 0. 潜在线索确定 (5%-10%)
+            if d.detail_type == DetailType.POTENTIAL_LEAD:
+                if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
+                    content = d.description
+                else:
+                    content = f"奋战一百天，亮剑破六千！今日确定潜在线索，客户为{d.customer_name or 'XX'}，项目金额{d.amount or 0.0}万，赢战百日！"
+                feed_type = "achievement"
+                
             # 1. 有效线索确定 (10% -> 25%)
-            if d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
+            elif d.detail_type == DetailType.LEAD and (d.lead_progress == "25%" or "25" in str(d.lead_progress or "")):
                 if d.description and ("攻坚一百天" in d.description or "奋战一百天" in d.description or "亮剑破六千" in d.description):
                     content = d.description
                 else:
@@ -1222,6 +1248,50 @@ async def get_dashboard_overview(
                 )
             )
 
+    # 7.6. 周潜力线索榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
+    potential_leads_stmt = (
+        select(
+            User.name,
+            Team.name.label("team_name"),
+            func.coalesce(func.sum(DailyReport.potential_leads_count), 0).label("score")
+        ).select_from(User)
+        .join(Team, User.team_id == Team.id)
+        .outerjoin(
+            DailyReport,
+            (User.id == DailyReport.user_id) & 
+            (DailyReport.status == ReportStatus.REVIEWED) &
+            (DailyReport.report_date >= start_of_week) &
+            (DailyReport.report_date <= end_of_week)
+        )
+        .where(User.is_active == True)
+    )
+    if team_id is not None:
+        potential_leads_stmt = potential_leads_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        potential_leads_stmt = potential_leads_stmt.where(User.third_class_bar == third_class_bar)
+        
+    potential_leads_stmt = (
+        potential_leads_stmt.group_by(User.id, User.name, Team.name)
+        .order_by(order_direction)
+        .limit(15)
+    )
+    
+    potential_leads_query = await db.execute(potential_leads_stmt)
+    potential_leads_rows = potential_leads_query.all()
+
+    potential_leads_board = []
+    for idx, row in enumerate(potential_leads_rows):
+        if is_lying_flat or row.score > 0:
+            potential_leads_board.append(
+                RankingItem(
+                    rank=idx + 1,
+                    name=row.name,
+                    teamName=row.team_name,
+                    score=float(row.score),
+                    trend="up" if idx == 0 else "same"
+                )
+            )
+
     # 8. 生成双轨动力 3x3 战队卡片数据
     team_leaders_map = {
         "清远战队": "郑子鹏",
@@ -1483,6 +1553,7 @@ async def get_dashboard_overview(
         happinessBoard=happiness_board,
         triangleBoard=triangle_board,
         leadsBoard=leads_board,
+        potentialLeadsBoard=potential_leads_board,
         zoneTeamsPK=zone_teams_pk,
         dualTrackTeams=dual_track_teams,
         leadsFunnel=leads_funnel,
@@ -2007,7 +2078,7 @@ async def get_team_detailed_metrics(
 
     # B. 有效需求线索量 & 潜力需求线索量
     valid_leads_actual = 0
-    potential_leads_actual = None
+    potential_leads_actual = 0
     leads_conversion_rate = None
     crm_connected = False
 
@@ -2031,6 +2102,19 @@ async def get_team_detailed_metrics(
         )
     )
     valid_leads_actual = int(valid_leads_system_res.scalar() or 0)
+
+    # 统计该战队本系统的潜力需求线索量（来源于本系统的潜力线索播报）
+    potential_leads_system_res = await db.execute(
+        select(func.count(ReportDetail.id))
+        .select_from(ReportDetail)
+        .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+        .where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            DailyReport.user_id.in_(member_ids),
+            ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+        )
+    )
+    potential_leads_actual = int(potential_leads_system_res.scalar() or 0)
 
     # 尝试直连 CRM 获取线索数量和转化率
     if crm_user_ids:
@@ -2059,16 +2143,6 @@ async def get_team_detailed_metrics(
             """)
             crm_valid_leads = cur.fetchone()["count"]
 
-            # 潜力需求线索量 (5%-10%阶段)
-            cur.execute(f"""
-                SELECT COUNT(*) as count 
-                FROM zdcrm_business_opportunity 
-                WHERE progress BETWEEN 5 AND 10 
-                  AND (is_suspension = '0' OR is_suspension IS NULL)
-                  AND market_user_id IN ({user_ids_str})
-            """)
-            potential_leads_actual = cur.fetchone()["count"]
-
             # 计算线索转化率 (上月选定有效线索 -> 新签转化率)
             cur.execute(f"""
                 SELECT COUNT(*) as count 
@@ -2089,7 +2163,6 @@ async def get_team_detailed_metrics(
             crm_connected = True
         except Exception as e:
             logger.warning(f"直连 CRM 失败: {e}")
-            potential_leads_actual = None
             leads_conversion_rate = None
 
     # D. 新客户数：去重 customer_name 统计
@@ -3011,6 +3084,60 @@ async def get_company_kpi_detail(
             "list": list_data_clean
         }
 
+    elif kpi_type == "potential_leads":
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                ReportDetail.customer_name,
+                ReportDetail.amount,
+                ReportDetail.lead_progress,
+                ReportDetail.description,
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(Team, User.team_id == Team.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+            )
+        )
+
+        if team_id is not None:
+            stmt = stmt.where(User.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+        stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            list_data.append({
+                "id": r.id,
+                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                "reporter_name": r.reporter_name,
+                "team_name": r.team_name or "—",
+                "customer_name": r.customer_name or "—",
+                "amount": r.amount or 0.0,
+                "progress": r.lead_progress or "—",
+                "description": r.description or "—",
+            })
+        list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+        return {
+            "total": len(list_data_clean),
+            "list": list_data_clean
+        }
+
     elif kpi_type == "tenders":
         stmt = (
             select(
@@ -3480,6 +3607,67 @@ async def export_company_kpi_detail(
                 }, inplace=True)
             sheet_name = "有效商机线索明细"
 
+        elif kpi_type == "potential_leads":
+            stmt = (
+                select(
+                    ReportDetail.id,
+                    DailyReport.report_date,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    ReportDetail.customer_name,
+                    ReportDetail.amount,
+                    ReportDetail.lead_progress,
+                    ReportDetail.description,
+                )
+                .select_from(ReportDetail)
+                .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+                .join(User, DailyReport.user_id == User.id)
+                .outerjoin(Team, User.team_id == Team.id)
+                .where(
+                    DailyReport.status == ReportStatus.REVIEWED,
+                    ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+                )
+            )
+            if team_id is not None:
+                stmt = stmt.where(User.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                stmt = stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+
+            stmt = stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "progress": r.lead_progress or "—",
+                    "description": r.description or "—",
+                })
+            list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+            df = pd.DataFrame(list_data_clean)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "发现日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "amount": "预计金额(万元)",
+                    "progress": "当前进度",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "潜力商机线索明细"
+
         elif kpi_type == "tenders":
             stmt = (
                 select(
@@ -3812,6 +4000,7 @@ async def generate_daily_report(
     report_ids = (await db.execute(report_stmt)).scalars().all()
 
     valid_leads_cnt = 0
+    potential_leads_cnt = 0
     win_contracts_cnt = 0
     win_contracts_amt = 0.0
     signed_contracts_cnt = 0
@@ -3830,6 +4019,13 @@ async def generate_daily_report(
             ReportDetail.lead_progress == "25%"
         )
         valid_leads_cnt = int(await db.scalar(lead_stmt) or 0)
+
+        # 潜在线索确定 (潜力线索明细)
+        potential_stmt = select(func.count(ReportDetail.id)).where(
+            ReportDetail.report_id.in_(report_ids),
+            ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+        )
+        potential_leads_cnt = int(await db.scalar(potential_stmt) or 0)
 
         # 中标确定 (线索明细且进展为75%)
         # 根据数据库实际存储，修正过滤条件为 "75%"
@@ -3959,6 +4155,7 @@ async def generate_daily_report(
         crm_user_ids = [uid for (uid,) in users_res.all() if uid]
 
     crm_leads_cnt = 0
+    crm_potential_leads_cnt = 0
     if crm_user_ids:
         import pymysql
         try:
@@ -3973,6 +4170,7 @@ async def generate_daily_report(
             )
             cur = crm_conn.cursor(pymysql.cursors.DictCursor)
             user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+            # 查询有效线索 (progress = 25)
             cur.execute(f"""
                 SELECT COUNT(*) as count 
                 FROM zdcrm_business_opportunity 
@@ -3983,12 +4181,26 @@ async def generate_daily_report(
                   AND update_time BETWEEN %s AND %s
             """, (start_time, end_time))
             crm_leads_cnt = cur.fetchone()["count"]
+
+            # 查询潜力线索 (progress BETWEEN 5 AND 10)
+            cur.execute(f"""
+                SELECT COUNT(*) as count 
+                FROM zdcrm_business_opportunity 
+                WHERE progress BETWEEN 5 AND 10 
+                  AND is_del = '0'
+                  AND (is_suspension = '0' OR is_suspension IS NULL)
+                  AND market_user_id IN ({user_ids_str})
+                  AND update_time BETWEEN %s AND %s
+            """, (start_time, end_time))
+            crm_potential_leads_cnt = cur.fetchone()["count"]
+
             cur.close()
             crm_conn.close()
         except Exception as crm_err:
-            logger.warning(f"统计区间内日报获取 CRM 线索失败: {crm_err}")
+            logger.warning(f"统计区间内日报获取 CRM 线索及潜力线索失败: {crm_err}")
 
     valid_leads_cnt = max(valid_leads_cnt, crm_leads_cnt)
+    potential_leads_cnt = max(potential_leads_cnt, crm_potential_leads_cnt)
 
     # 统计区间描述文案
     range_str = f"（统计区间：{start_time.strftime('%Y-%m-%d %H:%M')} 至 {end_time.strftime('%Y-%m-%d %H:%M')}）"
@@ -4000,6 +4212,7 @@ async def generate_daily_report(
             f"奋战一百天，亮剑破六千！中地【{month_cn}】月第【{week_cn}】周攻坚目标{range_str}：\n"
             f"新签合同：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
             f"昨日确定有效线索：{valid_leads_cnt} 条\n"
+            f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
             f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
@@ -4020,6 +4233,7 @@ async def generate_daily_report(
                 f"奋战一百天，亮剑破六千！我是中地顾问{z_name}{t_name}，七日攻坚第{day_of_week_cn}日战况播报{range_str}：\n"
                 f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
                 f"今日确定有效线索：{valid_leads_cnt} 条\n"
+                f"今日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
                 f"今日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
@@ -4041,6 +4255,7 @@ async def generate_daily_report(
                 f"奋战一百天，亮剑破六千！{t_name}，百日奋战【{campaign_day}】日战况播报{range_str}：\n"
                 f"本战队【{month_cn}】月第【{week_cn}】周攻坚目标：周营销完成{m_act}万/目标{m_tgt}万，周交付完成{d_act}万/目标{d_tgt}万。\n"
                 f"昨日确定有效线索：{valid_leads_cnt} 条\n"
+                f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
                 f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
@@ -4223,6 +4438,81 @@ async def get_personal_weekly_detail(
                 
         for row in all_leads:
             if row.crm_opportunity_id and row.crm_opportunity_id in crm_valid_set:
+                details_list.append({
+                    "id": row.id,
+                    "date": row.report_date.strftime("%Y-%m-%d"),
+                    "customer_name": row.customer_name or "未关联客户",
+                    "project_name": row.project_name or "未定",
+                    "amount": round(float(row.amount or 0.0), 2),
+                    "crm_opportunity_id": row.crm_opportunity_id,
+                    "description": row.description or ""
+                })
+
+    elif category == "potential_leads":
+        # 潜力线索明细：detail_type == POTENTIAL_LEAD
+        stmt = (
+            select(
+                ReportDetail.id,
+                DailyReport.report_date,
+                ReportDetail.customer_name,
+                ReportDetail.project_name,
+                ReportDetail.amount,
+                ReportDetail.crm_opportunity_id,
+                ReportDetail.description
+            )
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                DailyReport.user_id == user_obj.id,
+                ReportDetail.detail_type == DetailType.POTENTIAL_LEAD,
+                *date_filters
+            )
+            .order_by(DailyReport.report_date.desc())
+        )
+        res = await db.execute(stmt)
+        all_leads = res.all()
+        
+        # 在 CRM 中做一次匹配状态过滤，剔除删除、暂缓、终止以及不在5%-10%的商机
+        potential_lead_ids = []
+        for row in all_leads:
+            if row.crm_opportunity_id:
+                potential_lead_ids.append(row.crm_opportunity_id)
+                
+        crm_valid_set = set()
+        if potential_lead_ids:
+            try:
+                import pymysql
+                crm_conn = pymysql.connect(
+                    host=settings.CRM_DB_HOST,
+                    port=settings.CRM_DB_PORT,
+                    user=settings.CRM_DB_USER,
+                    password=settings.CRM_DB_PASSWORD,
+                    database=settings.CRM_DB_NAME,
+                    charset='utf8mb4',
+                    connect_timeout=3
+                )
+                crm_cur = crm_conn.cursor(pymysql.cursors.DictCursor)
+                placeholders = ", ".join([f"'{lid}'" for lid in potential_lead_ids])
+                crm_cur.execute(f"""
+                    SELECT id 
+                    FROM zdcrm_business_opportunity
+                    WHERE id IN ({placeholders})
+                      AND is_del = '0'
+                      AND progress BETWEEN 5 AND 10
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                """)
+                crm_rows = crm_cur.fetchall()
+                crm_cur.close()
+                crm_conn.close()
+                
+                crm_valid_set = set(str(r["id"]) for r in crm_rows)
+            except Exception as crm_err:
+                logger.warning(f"获取潜力线索详情直连 CRM 匹配失败: {crm_err}")
+                # 异常时兜底让其通过，以免阻断显示，返回原列表
+                crm_valid_set = set(potential_lead_ids)
+                
+        for row in all_leads:
+            if not row.crm_opportunity_id or row.crm_opportunity_id in crm_valid_set:
                 details_list.append({
                     "id": row.id,
                     "date": row.report_date.strftime("%Y-%m-%d"),

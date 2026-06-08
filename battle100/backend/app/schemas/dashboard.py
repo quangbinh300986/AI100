@@ -17,6 +17,7 @@ class KpiItem(BaseModel):
 
 class KpiSummary(BaseModel):
     """五大指标汇总"""
+    potentialLeads: KpiItem = Field(..., description="潜力线索确定（5%-10%）")
     newContracts: KpiItem = Field(..., description="新签合同总额")
     happinessActions: KpiItem = Field(..., description="客户幸福动作次数")
     ironTriangle: KpiItem = Field(..., description="售前铁三角联动次数")
@@ -52,6 +53,7 @@ class LiveFeedItem(BaseModel):
 class WeeklyTrendData(BaseModel):
     """双轴趋势图折线数据列表"""
     dates: list[str] = Field(default_factory=list, description="日期或周次列表")
+    potentialLeads: list[int] = Field(default_factory=list, description="潜力线索趋势")
     newContracts: list[float] = Field(default_factory=list, description="营销完成趋势")
     newContractsTarget: list[float] = Field(default_factory=list, description="营销保底目标累计趋势")
     newContractsChallengeTarget: list[float] = Field(default_factory=list, description="营销挑战目标累计趋势")
@@ -112,6 +114,7 @@ class DashboardResponse(BaseModel):
     happinessBoard: list[RankingItem] = Field(default_factory=list, description="客户幸福之星榜TOP10")
     triangleBoard: list[RankingItem] = Field(default_factory=list, description="铁三角协作标杆榜TOP10")
     leadsBoard: list[RankingItem] = Field(default_factory=list, description="线索先锋榜TOP10")
+    potentialLeadsBoard: list[RankingItem] = Field(default_factory=list, description="潜力线索榜TOP10")
     zoneTeamsPK: dict[str, list[RankingItem]] = Field(default_factory=dict, description="战区内部战队相互PK榜单")
     dualTrackTeams: list[DualTrackTeam] = Field(default_factory=list, description="九宫格双轨战队数据")
     leadsFunnel: list[FunnelItem] = Field(default_factory=list, description="销售漏斗数据")

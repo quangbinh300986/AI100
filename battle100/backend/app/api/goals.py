@@ -135,58 +135,8 @@ class WeeklyTargetCreateIn(BaseModel):
 # ===== 内部辅助函数 =====
 
 async def sync_team_goals_from_weekly(db: AsyncSession, team_id: int):
-    """根据该战队的周度目标累加汇总，自动刷写 TeamGoal 表的营销/交付目标"""
-    # 汇总营销保底和挑战
-    marketing_base = await db.scalar(
-        select(func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0))
-        .where(WeeklyTarget.team_id == team_id)
-    ) or 0.0
-    marketing_challenge = await db.scalar(
-        select(func.coalesce(func.sum(WeeklyTarget.marketing_challenge_target), 0))
-        .where(WeeklyTarget.team_id == team_id)
-    ) or 0.0
-    
-    # 汇总交付保底和挑战
-    delivery_base = await db.scalar(
-        select(func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0))
-        .where(WeeklyTarget.team_id == team_id)
-    ) or 0.0
-    delivery_challenge = await db.scalar(
-        select(func.coalesce(func.sum(WeeklyTarget.delivery_challenge_target), 0))
-        .where(WeeklyTarget.team_id == team_id)
-    ) or 0.0
-    
-    # 更新/创建 营销 TeamGoal
-    g_m_res = await db.execute(
-        select(TeamGoal).where(
-            TeamGoal.team_id == team_id,
-            TeamGoal.category == TeamGoalCategory.MARKETING
-        )
-    )
-    g_m = g_m_res.scalar_one_or_none()
-    if not g_m:
-        g_m = TeamGoal(team_id=team_id, category=TeamGoalCategory.MARKETING)
-    g_m.base_target = marketing_base
-    g_m.red_line_target = marketing_challenge
-    g_m.gap = max(0.0, marketing_challenge - marketing_base)
-    db.add(g_m)
-    
-    # 更新/创建 交付 TeamGoal
-    g_d_res = await db.execute(
-        select(TeamGoal).where(
-            TeamGoal.team_id == team_id,
-            TeamGoal.category == TeamGoalCategory.DELIVERY
-        )
-    )
-    g_d = g_d_res.scalar_one_or_none()
-    if not g_d:
-        g_d = TeamGoal(team_id=team_id, category=TeamGoalCategory.DELIVERY)
-    g_d.base_target = delivery_base
-    g_d.red_line_target = delivery_challenge
-    g_d.gap = max(0.0, delivery_challenge - delivery_base)
-    db.add(g_d)
-    
-    await db.flush()
+    """根据该战队的周度目标累加汇总，自动刷写 TeamGoal 表的营销/交付目标（已断开，做独立存储）"""
+    return
 
 
 async def fetch_users_system_actual_values(db: AsyncSession, user_ids: List[int]) -> dict:
@@ -1088,53 +1038,91 @@ class WeeklyRecordUpdate(BaseModel):
     delivery_challenge_target: float
 
 
+class WeeklyBatchUpdateIn(BaseModel):
+    records: List[WeeklyRecordUpdate] = Field(..., description="周分解数据更新列表")
+    team_id: Optional[int] = Field(None, description="战队ID")
+    category: Optional[str] = Field(None, description="指标类别(marketing/delivery)")
+    is_challenge: Optional[bool] = Field(None, description="是否为挑战目标")
+    total_target: Optional[float] = Field(None, description="新目标总额（万元）")
+
+
 @router.post("/weekly/batch-update-records", summary="批量更新周分解目标的数值")
 async def batch_update_weekly_records(
-    records: List[WeeklyRecordUpdate],
+    payload: WeeklyBatchUpdateIn,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.TARGET_OFFICER, UserRole.DIGITAL_SPECIALIST)),
 ):
-    """批量修改多个周分解记录的值，并联动更新受影响战队的目标值"""
-    if not records:
+    """批量修改多个周分解记录的值，并支持独立修改并持久化该战队此维度的总奋斗目标额（不再通过每周求和更新覆盖）"""
+    records = payload.records
+    if not records and payload.total_target is None:
         return {"code": 200, "message": "没有需要修改的数据"}
         
     record_ids = [r.id for r in records]
 
     # 0. 备份修改前的周记录
-    old_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
-    old_wts = old_wts_res.scalars().all()
-    before_state = [to_dict(w) for w in old_wts]
+    before_state = []
+    if record_ids:
+        old_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
+        old_wts = old_wts_res.scalars().all()
+        before_state = [to_dict(w) for w in old_wts]
 
-    affected_teams = set()
-    for r in records:
-        wt_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id == r.id))
-        wt = wt_res.scalar_one_or_none()
-        if wt:
-            wt.marketing_base_target = r.marketing_base_target
-            wt.marketing_challenge_target = r.marketing_challenge_target
-            wt.delivery_base_target = r.delivery_base_target
-            wt.delivery_challenge_target = r.delivery_challenge_target
-            affected_teams.add(wt.team_id)
-            db.add(wt)
-            
-    await db.flush()
-    
-    # 重新触发级联汇总
-    for tid in affected_teams:
-        await sync_team_goals_from_weekly(db, tid)
+        for r in records:
+            wt_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id == r.id))
+            wt = wt_res.scalar_one_or_none()
+            if wt:
+                wt.marketing_base_target = r.marketing_base_target
+                wt.marketing_challenge_target = r.marketing_challenge_target
+                wt.delivery_base_target = r.delivery_base_target
+                wt.delivery_challenge_target = r.delivery_challenge_target
+                db.add(wt)
+                
+        await db.flush()
+
+    # 独立更新战队目标总额，不根据每周数据进行汇总更新
+    if (payload.team_id is not None and 
+        payload.category is not None and 
+        payload.is_challenge is not None and 
+        payload.total_target is not None):
         
+        # 将 category 映射到 TeamGoalCategory 枚举
+        from app.models.goal import TeamGoalCategory
+        cat = TeamGoalCategory.MARKETING if payload.category == "marketing" else TeamGoalCategory.DELIVERY
+        
+        # 查找或新建 TeamGoal 记录
+        g_res = await db.execute(
+            select(TeamGoal).where(
+                TeamGoal.team_id == payload.team_id,
+                TeamGoal.category == cat
+            )
+        )
+        g = g_res.scalar_one_or_none()
+        if not g:
+            g = TeamGoal(team_id=payload.team_id, category=cat, base_target=0.0, red_line_target=0.0, gap=0.0)
+            
+        if payload.is_challenge:
+            g.red_line_target = payload.total_target
+        else:
+            g.base_target = payload.total_target
+            
+        # 重新计算缺口 gap
+        g.gap = max(0.0, g.red_line_target - g.base_target)
+        db.add(g)
+        await db.flush()
+
     # 1. 备份修改后的周记录
-    new_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
-    new_wts = new_wts_res.scalars().all()
-    after_state = [to_dict(w) for w in new_wts]
+    after_state = []
+    if record_ids:
+        new_wts_res = await db.execute(select(WeeklyTarget).where(WeeklyTarget.id.in_(record_ids)))
+        new_wts = new_wts_res.scalars().all()
+        after_state = [to_dict(w) for w in new_wts]
 
     await log_action(
-        db, current_user, "UPDATE", "weekly_target", ",".join(map(str, record_ids)),
-        f"批量更新了 {len(records)} 条周分解记录的目标值",
+        db, current_user, "UPDATE", "weekly_target", ",".join(map(str, record_ids)) if record_ids else f"team_{payload.team_id}",
+        f"批量更新了 {len(records)} 条周分解记录的目标值并独立更新了战队总额",
         before_state=before_state,
         after_state=after_state
     )
 
     await db.commit()
-    return {"code": 200, "message": "批量修改成功，战队总目标额已自动重算并刷新！"}
+    return {"code": 200, "message": "批量修改成功，战队总目标及分解目标已更新！"}
 

@@ -131,7 +131,7 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
       {
         key: 'potential_leads',
         name: '📈 潜力需求线索量',
-        definition: 'CRM线索库中进度在 5%~10% 的线索数（CRM专属指标）',
+        definition: '本系统潜力线索库中进度为 5%-10% 的线索总数量',
         target: '—',
         actual: m.potential_leads_actual !== null ? `${m.potential_leads_actual} 条` : '—',
         rate: 0.0,

@@ -39,6 +39,19 @@ from app.services.websocket import ws_manager
 async def init_db():
     """初始化数据库表并预置幸福度标准及默认角色权限"""
     from sqlalchemy import text
+    
+    # 0. 外部自愈式非事务更新 detailtype 枚举值 (ALTER TYPE 不能在事务块中执行)
+    try:
+        async with engine.connect() as conn:
+            await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
+                text("ALTER TYPE detailtype ADD VALUE IF NOT EXISTS 'POTENTIAL_LEAD';")
+            )
+            await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
+                text("ALTER TYPE detailtype ADD VALUE IF NOT EXISTS 'potential_lead';")
+            )
+    except Exception as e:
+        logger.warning(f"自愈式升级 detailtype 枚举值失败或已存在: {e}")
+
     async with engine.begin() as conn:
         # 使用同步反射自动在PostgreSQL中创建表
         await conn.run_sync(Base.metadata.create_all)
@@ -60,6 +73,8 @@ async def init_db():
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS agent_description VARCHAR(500);"))
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS system_prompt TEXT;"))
         await conn.execute(text("ALTER TABLE agent_routes ADD COLUMN IF NOT EXISTS user_prompt TEXT;"))
+        # 自愈式升级：自动在 daily_reports 中补充 potential_leads_count 字段列
+        await conn.execute(text("ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS potential_leads_count INT DEFAULT 0;"))
     logger.info("数据库表结构初始化成功")
 
     # 异步预置角色权限默认配置

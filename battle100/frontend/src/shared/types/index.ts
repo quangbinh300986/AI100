@@ -198,6 +198,7 @@ export interface DashboardData {
   triangleBoard?: RankingItem[]
   /** 线索先锋榜TOP10 */
   leadsBoard?: RankingItem[]
+  potentialLeadsBoard?: RankingItem[]
   /** 战区内部战队相互PK数据 */
   zoneTeamsPK?: Record<string, RankingItem[]>
   /** 九宫格双轨战队数据 */

@@ -336,17 +336,30 @@ async def get_crm_projects(
             cur.execute(query)
         else:
             # 只查询未删除、非暂停状态，且最后更新时间在当月（含）以后的项目，同时拉取营销人员列 market_user_id
-            query = """
-                SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
-                FROM zdcrm_business_opportunity
-                WHERE progress = %s
-                  AND update_time >= %s
-                  AND is_del = '0'
-                  AND (is_suspension = '0' OR is_suspension IS NULL)
-                ORDER BY create_time DESC
-                LIMIT 500
-            """
-            cur.execute(query, (progress, start_of_month))
+            if progress == 10:
+                query = """
+                    SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
+                    FROM zdcrm_business_opportunity
+                    WHERE progress IN (5, 10)
+                      AND update_time >= %s
+                      AND is_del = '0'
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                    ORDER BY create_time DESC
+                    LIMIT 500
+                """
+                cur.execute(query, (start_of_month,))
+            else:
+                query = """
+                    SELECT id, name, customer_name, budget_money, expect_money, progress, market_user_id
+                    FROM zdcrm_business_opportunity
+                    WHERE progress = %s
+                      AND update_time >= %s
+                      AND is_del = '0'
+                      AND (is_suspension = '0' OR is_suspension IS NULL)
+                    ORDER BY create_time DESC
+                    LIMIT 500
+                """
+                cur.execute(query, (progress, start_of_month))
         projects = cur.fetchall()
         
         # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID
@@ -885,6 +898,8 @@ async def update_broadcast(
                 report.triangle_count = max(0, report.triangle_count - 1)
             elif detail.detail_type == DetailType.HAPPINESS:
                 report.happiness_actions = max(0, report.happiness_actions - 1)
+            elif detail.detail_type == DetailType.POTENTIAL_LEAD:
+                report.potential_leads_count = max(0, report.potential_leads_count - 1)
         
         await db.delete(detail)
     await db.flush()
@@ -912,7 +927,7 @@ async def update_broadcast(
         event.attachment_urls = update_data["attachment_urls"]
     
     # 前三种和 CRM 关联，后两种及自定义不关联
-    if event.event_type in ["contract_signed", "lead_75", "lead_25"]:
+    if event.event_type in ["contract_signed", "lead_75", "lead_25", "potential_lead"]:
         event.crm_opportunity_id = new_opp_id if (new_opp_id and new_opp_id != "") else None
     else:
         event.crm_opportunity_id = None
@@ -922,8 +937,8 @@ async def update_broadcast(
     # ===== C. 重新计算并录入新业绩明细 =====
     final_opp_id = event.crm_opportunity_id
     
-    # 只有当前三种关联 CRM 时，且类型是合同新签或线索，才重新计入系统数据 (中标确定不更新系统实绩)
-    if (final_opp_id and event.event_type in ["contract_signed", "lead_25"]) or (event.event_type in ["triangle", "happiness"]):
+    # 只有关联 CRM 且类型是合同新签、线索或潜力线索，或者非 CRM 关联但为联动、幸福动作，才重新计入系统数据 (中标确定不更新系统实绩)
+    if (final_opp_id and event.event_type in ["contract_signed", "lead_25", "potential_lead"]) or (event.event_type in ["triangle", "happiness"]):
         report_date = get_business_report_date(event.created_at if event.created_at else datetime.now(timezone.utc))
         
         # 自动生成的日报提交与审核时间应与播报事件的实际发生时间/创建时间对齐，保证统计口径一致
@@ -945,6 +960,7 @@ async def update_broadcast(
                     happiness_actions=0,
                     triangle_count=0,
                     leads_count=0,
+                    potential_leads_count=0,
                     status=ReportStatus.REVIEWED,
                     reviewer_id=current_user.id,
                     submitted_at=target_time,
@@ -1025,6 +1041,20 @@ async def update_broadcast(
                 customer_name=c_name,
                 amount=broadcast_in.amount or 0.0,
                 lead_progress="25%",
+                crm_opportunity_id=final_opp_id,
+                description=f"{event.content}\n[broadcast_id:{event.id}]"
+            )
+            db.add(det)
+        elif event.event_type == "potential_lead":
+            # 潜力线索录入 (数量)
+            rep = await get_or_create_report(event.user_id or current_user.id)
+            rep.potential_leads_count += 1
+            det = ReportDetail(
+                report_id=rep.id,
+                detail_type=DetailType.POTENTIAL_LEAD,
+                customer_name=c_name,
+                amount=broadcast_in.amount or 0.0,
+                lead_progress="5%-10%",
                 crm_opportunity_id=final_opp_id,
                 description=f"{event.content}\n[broadcast_id:{event.id}]"
             )
@@ -1180,6 +1210,8 @@ async def delete_broadcast(
                 report.triangle_count = max(0, report.triangle_count - 1)
             elif detail.detail_type == DetailType.HAPPINESS:
                 report.happiness_actions = max(0, report.happiness_actions - 1)
+            elif detail.detail_type == DetailType.POTENTIAL_LEAD:
+                report.potential_leads_count = max(0, report.potential_leads_count - 1)
         
         # 删除明细
         await db.delete(detail)
@@ -1270,6 +1302,8 @@ async def batch_delete_broadcasts(
                     report.triangle_count = max(0, report.triangle_count - 1)
                 elif detail.detail_type == DetailType.HAPPINESS:
                     report.happiness_actions = max(0, report.happiness_actions - 1)
+                elif detail.detail_type == DetailType.POTENTIAL_LEAD:
+                    report.potential_leads_count = max(0, report.potential_leads_count - 1)
             
             # 删除明细
             await db.delete(detail)
@@ -1353,6 +1387,7 @@ async def create_broadcast(
                     happiness_actions=0,
                     triangle_count=0,
                     leads_count=0,
+                    potential_leads_count=0,
                     status=ReportStatus.REVIEWED,  # 默认自动审核通过
                     reviewer_id=current_user.id,
                     submitted_at=target_time,
@@ -1526,6 +1561,18 @@ async def create_broadcast(
                     description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
                     attachment_urls=broadcast_in.attachment_urls
                 )
+            elif action == "potential_lead":
+                report.potential_leads_count += 1
+                detail = ReportDetail(
+                    report_id=report.id,
+                    detail_type=DetailType.POTENTIAL_LEAD,
+                    customer_name=broadcast_in.customer_name or "潜在客户单位",
+                    amount=amount_to_save,
+                    lead_progress="5%-10%",
+                    crm_opportunity_id=broadcast_in.crm_opportunity_id,
+                    description=f"{broadcast_in.content}\n[broadcast_id:{event.id}]",
+                    attachment_urls=broadcast_in.attachment_urls
+                )
 
             if detail:
                 db.add(detail)
@@ -1558,7 +1605,7 @@ async def create_broadcast(
 
 
 class WebhookBroadcastPayload(BaseModel):
-    type: str = Field(..., description="业务类型: 'lead' (有效线索) 或 'tender' (中标确定)")
+    type: str = Field(..., description="业务类型: 'lead' (有效线索), 'tender' (中标确定) 或 'potential_lead' (潜力线索)")
     id: str = Field(..., description="外部系统唯一标识(CRM商机ID或标讯招标ID)")
     name: str = Field(..., description="项目/标讯名称")
     customer_name: str = Field(..., description="客户/业主名称")
@@ -1578,7 +1625,7 @@ async def crm_webhook_broadcast(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    接收 CRM 和投标室系统推送的中标或线索数据。
+    接收 CRM 和投标室系统推送的中标、有效线索或潜力线索数据。
     自动在百日奋战系统中发布战报广播、推送到钉钉群，并自动为员工录入/生效日报及指标明细。
     """
     from app.config import settings
@@ -1616,8 +1663,12 @@ async def crm_webhook_broadcast(
         event_type = "lead_75"
         money = payload.expect_money if payload.expect_money and payload.expect_money > 0 else payload.budget_money
         content = f"{prefix}确定【{payload.name}】项目中地承接，客户为{payload.customer_name}，项目金额{money or 0.0}万，赢战百日！"
+    elif payload.type == "potential_lead":
+        event_type = "potential_lead"
+        money = payload.expect_money if payload.expect_money and payload.expect_money > 0 else payload.budget_money
+        content = f"{prefix}确定潜在线索：客户为{payload.customer_name}，项目【{payload.name}】金额{money or 0.0}万，赢战百日！"
     else:
-        raise HTTPException(status_code=400, detail="不支持的业务类型，目前仅支持 'lead' 或 'tender'")
+        raise HTTPException(status_code=400, detail="不支持的业务类型，目前仅支持 'lead'、'tender' 或 'potential_lead'")
 
     # 3. 写入战报广播事件
     event = BroadcastEvent(
@@ -1633,8 +1684,8 @@ async def crm_webhook_broadcast(
     db.add(event)
     await db.flush()  # 得到 event.id
 
-    # 4. 如果是有效线索（lead_25）或中标确定（lead_75），自动为该员工创建或更新当天的日报
-    if event_type in ["lead_25", "lead_75"]:
+    # 4. 如果是有效线索（lead_25）、中标确定（lead_75）或潜力线索（potential_lead），自动为该员工创建或更新当天的日报
+    if event_type in ["lead_25", "lead_75", "potential_lead"]:
         report_date = get_business_report_date(event.event_time)
         
         # 查找或创建当天日报
@@ -1654,6 +1705,7 @@ async def crm_webhook_broadcast(
                 happiness_actions=0,
                 triangle_count=0,
                 leads_count=0,
+                potential_leads_count=0,
                 status=ReportStatus.REVIEWED,  # 默认自动审核通过
                 reviewer_id=None,
                 submitted_at=event.event_time,
@@ -1672,14 +1724,16 @@ async def crm_webhook_broadcast(
         # 增加线索总数计数 (中标确定不作为新增线索计数，只有25%有效商机线索才计数)
         if event_type == "lead_25":
             report.leads_count += 1
+        elif event_type == "potential_lead":
+            report.potential_leads_count += 1
         
         # 新增日报明细记录，绑定 broadcast_id 以支持级联清退/删除
         detail = ReportDetail(
             report_id=report.id,
-            detail_type=DetailType.LEAD,
+            detail_type=DetailType.POTENTIAL_LEAD if event_type == "potential_lead" else DetailType.LEAD,
             customer_name=payload.customer_name,
             amount=money or 0.0,
-            lead_progress="25%" if event_type == "lead_25" else "75%",
+            lead_progress="5%-10%" if event_type == "potential_lead" else ("25%" if event_type == "lead_25" else "75%"),
             crm_opportunity_id=payload.id,
             description=f"{content}\n[broadcast_id:{event.id}]"
         )
@@ -1707,7 +1761,7 @@ async def crm_webhook_broadcast(
         # 广播战报提交
         await ws_manager.broadcast({"type": "update", "event_type": "report_submitted"})
         # 广播填报审核通过，促使大屏数据刷新
-        if event_type == "lead_25":
+        if event_type in ["lead_25", "potential_lead"]:
             await ws_manager.broadcast({"type": "update", "event": "report_approved"})
     except Exception:
         pass
@@ -1883,6 +1937,7 @@ async def export_broadcasts(
 
     # 映射字典
     event_type_map = {
+        "potential_lead": "潜力线索确定",
         "lead_25": "有效线索确定",
         "lead_75": "中标确定",
         "contract_signed": "合同签订",
@@ -2393,6 +2448,7 @@ async def restore_broadcast(
                 happiness_actions=0,
                 triangle_count=0,
                 leads_count=0,
+                potential_leads_count=0,
                 status=ReportStatus.REVIEWED,
                 reviewer_id=current_user.id,
                 submitted_at=target_time,
@@ -2430,6 +2486,8 @@ async def restore_broadcast(
             report.triangle_count += 1
         elif detail_type_str == DetailType.HAPPINESS.value:
             report.happiness_actions += 1
+        elif detail_type_str == DetailType.POTENTIAL_LEAD.value:
+            report.potential_leads_count += 1
             
         # 实例化重建 ReportDetail
         detail = ReportDetail(

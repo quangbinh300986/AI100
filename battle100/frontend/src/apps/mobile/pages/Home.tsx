@@ -90,7 +90,7 @@ export default function Home() {
       if (type === 'contracts') {
         res = await get(`/dashboard/team-contracts?team_id=${teamId}&contract_type=${extraType}`)
       } else if (type === 'potential_leads') {
-        res = await get(`/dashboard/team-leads?team_id=${teamId}&lead_type=potential`)
+        res = await get(`/dashboard/company-kpi-detail?kpi_type=potential_leads&team_id=${teamId}`)
       } else if (type === 'valid_leads') {
         res = await get(`/dashboard/company-kpi-detail?kpi_type=leads&team_id=${teamId}`)
       } else if (type === 'triangle') {
@@ -100,8 +100,8 @@ export default function Home() {
       }
       
       let data = res?.data ? res.data : res
-      // 有效线索接口返回的是 {"list": [...]} 结构，特殊提取
-      if (type === 'valid_leads' && data && data.list) {
+      // 有效线索与潜力线索接口返回的是 {"list": [...]} 结构，特殊提取
+      if ((type === 'valid_leads' || type === 'potential_leads') && data && data.list) {
         data = data.list
       }
       if (data && Array.isArray(data)) {
@@ -529,7 +529,7 @@ export default function Home() {
                 {
                   key: 'potential_leads',
                   name: '📈 潜力需求线索量',
-                  definition: 'CRM线索库中进度在 5%~10% 的线索数（CRM专属指标）',
+                  definition: '本系统潜力线索库中进度为 5%-10% 的线索总数量',
                   target: '—',
                   actualVal: teamMetricsData.potential_leads_actual,
                   actual: teamMetricsData.potential_leads_actual !== null ? `${teamMetricsData.potential_leads_actual} 条` : '—',
@@ -684,21 +684,24 @@ export default function Home() {
                   </>
                 )}
 
-                {/* 2. 潜力线索卡片 (CRM 专有) */}
+                {/* 2. 潜力线索卡片 (本系统) */}
                 {subDetailType === 'potential_leads' && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>🏢 客户：{item.customer_name || '—'}</span>
-                      {item.forecast_amount !== undefined && (
-                        <span style={{ color: '#faad14', fontWeight: 'bold' }}>预算 {item.forecast_amount} 万</span>
-                      )}
+                      <span>📅 {item.report_date}</span>
+                      <span style={{ color: '#faad14', fontWeight: 'bold' }}>进度 {item.progress}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      📌 项目：{item.name}
+                      🏢 {item.customer_name}
                     </div>
-                    <div style={{ fontSize: 11, color: '#8c8c8c' }}>
-                      ⚡ 当前进度：<strong style={{ color: '#1677ff' }}>{item.progress ?? '—'}</strong>
+                    <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
+                      👤 提报：{item.reporter_name}
                     </div>
+                    {item.description && (
+                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
+                        💬 {item.description}
+                      </div>
+                    )}
                   </>
                 )}
 

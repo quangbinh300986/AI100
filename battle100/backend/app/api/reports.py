@@ -133,6 +133,7 @@ async def create_report(
     h_actions = 0
     t_count = 0
     l_count = 0
+    pl_count = 0
 
     from app.models.report import DetailType
 
@@ -147,6 +148,8 @@ async def create_report(
         elif detail_in.detail_type == DetailType.LEAD:
             if detail_in.lead_progress == "25%":
                 l_count += 1
+        elif detail_in.detail_type == DetailType.POTENTIAL_LEAD:
+            pl_count += 1
 
     # 创建填报主记录
     report = DailyReport(
@@ -157,6 +160,7 @@ async def create_report(
         happiness_actions=h_actions,
         triangle_count=t_count,
         leads_count=l_count,
+        potential_leads_count=pl_count,
         work_summary=report_in.work_summary,
         work_reflection=report_in.work_reflection,
         next_day_plan=report_in.next_day_plan,
@@ -309,6 +313,7 @@ async def update_report(
         h_actions = 0
         t_count = 0
         l_count = 0
+        pl_count = 0
         
         # 创建新明细并重新计算数值
         for detail_in in report_in.details:
@@ -337,12 +342,15 @@ async def update_report(
             elif detail_in.detail_type == DetailType.LEAD:
                 if detail_in.lead_progress == "25%":
                     l_count += 1
+            elif detail_in.detail_type == DetailType.POTENTIAL_LEAD:
+                pl_count += 1
                 
         report.contract_amount = c_amount
         report.contract_count = c_count
         report.happiness_actions = h_actions
         report.triangle_count = t_count
         report.leads_count = l_count
+        report.potential_leads_count = pl_count
 
     db.add(report)
     await db.flush()
@@ -630,7 +638,7 @@ async def extract_weekly_broadcasts(
         BroadcastEvent.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
         BroadcastEvent.is_deleted == False
     )
     res_self = await db.execute(stmt_self)
@@ -647,7 +655,7 @@ async def extract_weekly_broadcasts(
         DailyReport.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
         BroadcastEvent.is_deleted == False
     )
     res_linked = await db.execute(stmt_linked)
@@ -657,7 +665,7 @@ async def extract_weekly_broadcasts(
     stmt_all = select(BroadcastEvent).where(
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
         BroadcastEvent.is_deleted == False
     )
     res_all = await db.execute(stmt_all)
@@ -708,6 +716,8 @@ async def extract_weekly_broadcasts(
             prefix = "【中标】"
         elif ev.event_type == "lead_25":
             prefix = "【有效线索】"
+        elif ev.event_type == "potential_lead":
+            prefix = "【潜在线索确定】"
         elif ev.event_type == "contract_signed":
             prefix = "【合同签订】"
         elif ev.event_type == "triangle":
@@ -1892,6 +1902,17 @@ async def get_group_weekly_metrics(
     )
     leads_res = await db.execute(leads_stmt)
     local_valid = int(leads_res.scalar() or 0)
+
+    # 本地潜在线索确定
+    potential_leads_stmt = select(func.count(ReportDetail.id)).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        DailyReport.report_date >= start_date,
+        DailyReport.report_date <= end_date,
+        ReportDetail.detail_type == DetailType.POTENTIAL_LEAD,
+        DailyReport.user_id.in_(user_ids)
+    )
+    potential_leads_res = await db.execute(potential_leads_stmt)
+    local_potential = int(potential_leads_res.scalar() or 0)
     
     # 3. CRM 并发拉取
     crm_res = await run_in_threadpool(
@@ -1901,9 +1922,9 @@ async def get_group_weekly_metrics(
         start_date
     )
     
-    # 合并有效线索：本地录入有效线索数 + CRM 端有效线索数
+    # 合并有效线索与潜力线索：本地录入数 + CRM 端数据
     metrics["valid_leads"] = local_valid + crm_res["valid_leads"]
-    metrics["potential_leads"] = crm_res["potential_leads"]
+    metrics["potential_leads"] = local_potential + crm_res["potential_leads"]
     metrics["production_value"] = crm_res["production_value"]
     metrics["receive_value"] = crm_res["receive_value"]
     

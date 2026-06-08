@@ -304,6 +304,7 @@ class DingTalkClient:
         
         # 1. 转换事件类型名称
         event_type_names = {
+            "potential_lead": "潜在线索确定 (5%-10%)",
             "contract_signed": "已完成合同签订 (90%)",
             "lead_75": "中标确定 (75%)",
             "lead_25": "有效线索确定 (25%)",
@@ -483,7 +484,6 @@ class DingTalkClient:
             category_names = {
                 "policy": "🏛️ 最新政策",
                 "deployment": "📋 重大会议部署",
-                "lead": "🎯 潜在项目线索",
                 "intelligence": "🔍 重大情报信息",
             }
             category_label = category_names.get(category, "📢 驻点人员播报")

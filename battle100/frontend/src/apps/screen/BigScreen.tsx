@@ -277,6 +277,7 @@ const BigScreen: React.FC = () => {
               happinessBoard={data?.happinessBoard}
               triangleBoard={data?.triangleBoard}
               leadsBoard={data?.leadsBoard}
+              potentialLeadsBoard={data?.potentialLeadsBoard}
             />
           </div>
         </div>
