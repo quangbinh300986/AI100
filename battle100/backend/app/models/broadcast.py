@@ -20,6 +20,7 @@ class EventType(str, enum.Enum):
     HAPPINESS = "happiness"                # 客户幸福动作
     CUSTOM = "custom"                      # 自定义播报
     STATION_REPORT = "station_report"      # 驻点人员播报
+    MARKETING_REPORT = "marketing_report"  # 营销内部播报
     
     # 兼容历史数据类型
     GOAL_ACHIEVED = "goal_achieved"
@@ -113,3 +114,29 @@ class BroadcastEvent(BaseModel):
 
     def __repr__(self) -> str:
         return f"<BroadcastEvent(id={self.id}, type={self.event_type}, status={self.push_status})>"
+
+
+class KpiLike(BaseModel):
+    """通用指标记录点赞表"""
+    __tablename__ = "kpi_likes"
+
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="目标记录ID (ReportDetail 或 BroadcastEvent 的 ID)")
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False, comment="目标类型: report_detail 或 broadcast_event")
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="点赞用户ID")
+
+    # ===== 关联关系 =====
+    user = relationship("User")
+
+
+class KpiComment(BaseModel):
+    """通用指标记录评论表"""
+    __tablename__ = "kpi_comments"
+
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="目标记录ID (ReportDetail 或 BroadcastEvent 的 ID)")
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False, comment="目标类型: report_detail 或 broadcast_event")
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="评论用户ID")
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="评论内容")
+
+    # ===== 关联关系 =====
+    user = relationship("User")
+

@@ -33,7 +33,7 @@ const ROLES = [
   { key: 'target_officer', name: '目标官', desc: '负责录入并导入全战队的保底、奋斗以及每周签约新签目标数据' },
   { key: 'digital_specialist', name: '数字专员', desc: '协助战队和公司进行数字经营的监控、汇总和目标数据协助导入' },
   { key: 'team_leader', name: '战队长', desc: '各战队巴长，负责审核并审批战队成员每日日报，对完成数据负直接责任' },
-  { key: 'staff', name: '普通员工', desc: '战队前线拼搏队员，主要使用移动端进行每日进展 and 拜访行动填报' },
+  { key: 'staff', name: '队员', desc: '战队前线拼搏队员，主要使用移动端进行每日进展 and 拜访行动填报' },
   { key: 'marketing_staff', name: '营销人员', desc: '负责营销拓展和线索对接，可通过移动端进行签约数据提报' },
   { key: 'tech_marketing', name: '技术营销', desc: '负责技术方案及铁三角联动，在移动端提交对应的协作跟进数据' }
 ]
@@ -51,6 +51,7 @@ const PERMISSIONS = [
 
   // 周复盘汇总
   { key: 'view_weekly_reports', group: '📊 周复盘汇总', label: '访问个人周复盘汇总页面', desc: '允许进入小组个人周复盘汇总页面，查看各小组成员的周复盘填报数据（非管理员限本战队）' },
+  { key: 'view_team_weekly_reports', group: '📊 周复盘汇总', label: '访问团队整体周复盘页面', desc: '允许进入团队整体周复盘页面，进行业务数据指标看板查看与智能整体周报生成' },
   { key: 'edit_weekly_report', group: '📊 周复盘汇总', label: '编辑他人周复盘数据', desc: '允许编辑或修改他人已提交的周复盘数据' },
   { key: 'delete_weekly_report', group: '📊 周复盘汇总', label: '删除与批量删除周复盘数据', desc: '允许删除或批量删除他人的周复盘汇总数据' },
 

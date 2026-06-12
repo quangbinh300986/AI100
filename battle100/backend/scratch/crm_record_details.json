@@ -1,0 +1,497 @@
+{
+  "work_hour_structure": [
+    {
+      "Field": "id",
+      "Type": "varchar(100)",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "is_del",
+      "Type": "varchar(100)",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "create_by",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "create_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "update_by",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "update_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "create_dept",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "remark",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "province",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "province_code",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "city",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "city_code",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "district",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "district_code",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "user_id",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "start_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "end_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "work_hour",
+      "Type": "decimal(5,4)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "sync_zdpm_success",
+      "Type": "varchar(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "project_id",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "title",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    }
+  ],
+  "customer_record_structure": [
+    {
+      "Field": "id",
+      "Type": "varchar(100)",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "is_del",
+      "Type": "varchar(1)",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "create_by",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "create_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "update_by",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "update_time",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "create_dept",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "remark",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "matter_type",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "matter_progress",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "is_key_information",
+      "Type": "varchar(1)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "assist_content",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "customer_id",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "dept_name",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "work_hour_id",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "customer_name",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "customers_json",
+      "Type": "json",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "assist_user_ids",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "sync_feed_back_status",
+      "Type": "varchar(1)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "sort_no",
+      "Type": "int(4)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "update_progress",
+      "Type": "decimal(6,0)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "cur_primary_business",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    }
+  ],
+  "xiang_hours": [
+    {
+      "id": "6a36d99343feed3b0532c21611abb57d",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:32",
+      "create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "remark": null,
+      "province": null,
+      "province_code": null,
+      "city": null,
+      "city_code": null,
+      "district": null,
+      "district_code": null,
+      "user_id": "xiangbinqiang_nts9",
+      "start_time": "2026-06-09 00:00:00",
+      "end_time": "2026-06-10 00:00:00",
+      "work_hour": 1.0,
+      "sync_zdpm_success": "1",
+      "project_id": null,
+      "title": "广东省国土资源技术中心（广东省基础地理信息中心）"
+    },
+    {
+      "id": "6eb50c65188e2af955eba87d9fbf0501",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:44",
+      "create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "remark": null,
+      "province": null,
+      "province_code": null,
+      "city": null,
+      "city_code": null,
+      "district": null,
+      "district_code": null,
+      "user_id": "xiangbinqiang_nts9",
+      "start_time": "2026-06-09 00:00:00",
+      "end_time": "2026-06-10 00:00:00",
+      "work_hour": 1.0,
+      "sync_zdpm_success": "1",
+      "project_id": null,
+      "title": "深汕合作区农业农村和海洋渔业局"
+    }
+  ],
+  "xiang_details": [
+    {
+      "id": "71bb0bb835e899752eaf82e8339b41b2",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:32",
+      "create_dept": null,
+      "remark": null,
+      "matter_type": "业务拓展",
+      "matter_progress": "与中心黎主任、黄科交流土储数据治理、低效用地再开发等相关业务开展情况及政策前沿，介绍公司经验及业绩，了解省厅最新动态。",
+      "is_key_information": "0",
+      "assist_content": "",
+      "customer_id": null,
+      "dept_name": null,
+      "work_hour_id": "6a36d99343feed3b0532c21611abb57d",
+      "customer_name": "广东省国土资源技术中心（广东省基础地理信息中心）",
+      "customers_json": "[{\"customerName\": \"广东省国土资源技术中心（广东省基础地理信息中心）\"}]",
+      "assist_user_ids": "",
+      "sync_feed_back_status": null,
+      "sort_no": null,
+      "update_progress": null,
+      "cur_primary_business": null
+    },
+    {
+      "id": "a6620f9e9965f48e882e8dbcf6c473eb",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:44",
+      "create_dept": null,
+      "remark": null,
+      "matter_type": "项目协助",
+      "matter_progress": "（1）深度解读与研判客户的痛点，哪些是“真问题”，有的放矢地开展项目交付，让客户认为中地的质量在所有合作单位中最为突出，形成质量标杆认知。",
+      "is_key_information": "0",
+      "assist_content": "",
+      "customer_id": null,
+      "dept_name": null,
+      "work_hour_id": "6eb50c65188e2af955eba87d9fbf0501",
+      "customer_name": "深汕合作区农业农村和海洋渔业局",
+      "customers_json": "[{\"customerName\": \"深汕合作区农业农村和海洋渔业局\"}]",
+      "assist_user_ids": "",
+      "sync_feed_back_status": null,
+      "sort_no": null,
+      "update_progress": null,
+      "cur_primary_business": null
+    }
+  ],
+  "other_hour": {
+    "id": "f5974a1226f0cb610e3858fa2fac19f2",
+    "is_del": "0",
+    "create_by": "zhengzipeng_okbl",
+    "create_time": "2026-06-09 22:04:51",
+    "update_by": "zhengzipeng_okbl",
+    "update_time": "2026-06-09 22:04:51",
+    "create_dept": "b4f1be9287f548eca194d9b56354d3f0",
+    "remark": null,
+    "province": null,
+    "province_code": null,
+    "city": null,
+    "city_code": null,
+    "district": null,
+    "district_code": null,
+    "user_id": "zhengzipeng_okbl",
+    "start_time": "2026-06-09 00:00:00",
+    "end_time": "2026-06-10 00:00:00",
+    "work_hour": 1.0,
+    "sync_zdpm_success": "1",
+    "project_id": null,
+    "title": "清远市清城区石角镇人民政府"
+  },
+  "other_details": [
+    {
+      "id": "e2f26d9e9c22b334b47d11830758fe34",
+      "is_del": "0",
+      "create_by": "zhengzipeng_okbl",
+      "create_time": "2026-06-09 22:04:51",
+      "update_by": "zhengzipeng_okbl",
+      "update_time": "2026-06-09 22:04:51",
+      "create_dept": null,
+      "remark": null,
+      "matter_type": "业务拓展",
+      "matter_progress": "配合石角镇自然资源所通过分析各村闲置用地，分析实施2026年度耕地集中整治区项目可行性，初步在田心村包装约90亩新增耕地。",
+      "is_key_information": "0",
+      "assist_content": "",
+      "customer_id": null,
+      "dept_name": null,
+      "work_hour_id": "f5974a1226f0cb610e3858fa2fac19f2",
+      "customer_name": "清远市清城区石角镇人民政府",
+      "customers_json": "[{\"customerName\": \"清远市清城区石角镇人民政府\"}]",
+      "assist_user_ids": "",
+      "sync_feed_back_status": null,
+      "sort_no": null,
+      "update_progress": null,
+      "cur_primary_business": null
+    }
+  ]
+}

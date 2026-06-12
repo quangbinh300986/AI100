@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     DINGTALK_APP_SECRET: str = "4ix04ToPBsSafjLFdydEq2iYQoVu71czrXNSYIQOyRmA4secmgCbjgR-4mT7eH4d"
     DINGTALK_CORP_ID: str = "dingdaec913f1d2b741235c2f4657eb6378f"
     DINGTALK_AGENT_ID: Optional[str] = "4630403498"
+    DINGTALK_WEEKLY_REPORT_TEMPLATE_ID: str = "19eab0d8aa4e349cb1df85146edac9cf"
     DINGTALK_WEBHOOK_URL: Optional[str] = None
     DINGTALK_WEBHOOK_SECRET: Optional[str] = None
     DINGTALK_CHAT_ID: Optional[str] = None

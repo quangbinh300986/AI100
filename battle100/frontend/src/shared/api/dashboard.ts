@@ -1,7 +1,7 @@
 /**
  * 大屏看板数据API
  */
-import { get } from './client'
+import { get, post } from './client'
 import type { DashboardData, RankingItem, MyStatsResponse } from '@shared/types'
 
 /** 获取大屏全部数据 */
@@ -46,12 +46,14 @@ export function getTeamDetailedMetrics(teamId: number) {
 
 /** 获取个人排行榜（支持合同额、单数、幸福动作、线索等维度） */
 export function getPersonalRanking(params?: { start_date?: string; end_date?: string; rank_by?: string; limit?: number }) {
-  return get<{ rank_by: string; items: any[] }>('/ranking/personal', params)
+  // 修正 Axios GET 请求的传参，使用 { params } 包裹以正确传递 Query 参数并保留请求头配置
+  return get<{ rank_by: string; items: any[] }>('/ranking/personal', { params })
 }
 
 /** 获取战队排行榜 */
 export function getTeamRanking(params?: { start_date?: string; end_date?: string; rank_by?: string }) {
-  return get<{ rank_by: string; items: any[] }>('/ranking/team', params)
+  // 修正 Axios GET 请求的传参，使用 { params } 包裹以正确传递 Query 参数并保留请求头配置
+  return get<{ rank_by: string; items: any[] }>('/ranking/team', { params })
 }
 
 /** 获取全公司 KPI 明细数据 */
@@ -63,5 +65,20 @@ export function getCompanyKpiDetail(params: {
   keyword?: string
 }) {
   return get<any>('/dashboard/company-kpi-detail', { params })
+}
+
+/** 点赞/取消点赞 KPI 明细记录 */
+export function toggleKpiLike(data: { target_id: number; target_type: string }) {
+  return post<any>('/broadcast/kpi/like', data)
+}
+
+/** 对 KPI 明细发表评论 */
+export function addKpiComment(data: { target_id: number; target_type: string; content: string }) {
+  return post<any>('/broadcast/kpi/comment', data)
+}
+
+/** 获取 KPI 明细的历史评论列表 */
+export function getKpiComments(params: { target_id: number; target_type: string }) {
+  return get<any[]>('/broadcast/kpi/comments', { params })
 }
 

@@ -173,6 +173,16 @@ export interface DashboardData {
     ironTriangle: { value: number; target: number; percentage: number }
     /** 有效线索总数 */
     validLeads: { value: number; target: number; percentage: number }
+    /** 中标项目确定数 */
+    tenderProjects?: { value: number; target: number; percentage: number }
+    /** 潜在线索确定数 */
+    potentialLeads?: { value: number; target: number; percentage: number }
+    /** 驻点前线播报次数 */
+    stationReports?: { value: number; target: number; percentage: number }
+    /** 中台播报次数 */
+    middleOfficeReports?: { value: number; target: number; percentage: number }
+    /** 幸福委播报次数 */
+    happinessCommitteeReports?: { value: number; target: number; percentage: number }
   }
   /** 战区排名列表 */
   zoneRanking: RankingItem[]
@@ -188,6 +198,8 @@ export interface DashboardData {
   }
   /** 实时播报 */
   liveFeed: LiveFeedItem[]
+  /** 中台幸福委专属播报 */
+  middleOfficeFeed?: LiveFeedItem[]
   /** 英雄榜TOP10 */
   heroBoard: RankingItem[]
   marketingHeroBoard?: RankingItem[]
@@ -199,6 +211,7 @@ export interface DashboardData {
   /** 线索先锋榜TOP10 */
   leadsBoard?: RankingItem[]
   potentialLeadsBoard?: RankingItem[]
+  stationReportsBoard?: RankingItem[]
   /** 战区内部战队相互PK数据 */
   zoneTeamsPK?: Record<string, RankingItem[]>
   /** 九宫格双轨战队数据 */
@@ -304,6 +317,9 @@ export interface MyStatsResponse {
     happinessActions: { value: number; target: number; percentage: number }
     ironTriangle: { value: number; target: number; percentage: number }
     validLeads: { value: number; target: number; percentage: number }
+    tenderProjects?: { value: number; target: number; percentage: number }
+    potentialLeads?: { value: number; target: number; percentage: number }
+    stationReports?: { value: number; target: number; percentage: number }
   }
   team_stats: {
     team_id: number

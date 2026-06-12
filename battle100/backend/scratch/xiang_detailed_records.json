@@ -1,0 +1,121 @@
+{
+  "work_hour": {
+    "id": "6a36d99343feed3b0532c21611abb57d",
+    "is_del": "0",
+    "create_by": "xiangbinqiang_nts9",
+    "create_time": "2026-06-09 21:58:32",
+    "update_by": "xiangbinqiang_nts9",
+    "update_time": "2026-06-09 21:58:32",
+    "create_dept": "b8e4a84b114141799550c61f7f8cf199",
+    "remark": null,
+    "province": null,
+    "province_code": null,
+    "city": null,
+    "city_code": null,
+    "district": null,
+    "district_code": null,
+    "user_id": "xiangbinqiang_nts9",
+    "start_time": "2026-06-09 00:00:00",
+    "end_time": "2026-06-10 00:00:00",
+    "work_hour": "1.0000",
+    "sync_zdpm_success": "1",
+    "project_id": null,
+    "title": "广东省国土资源技术中心（广东省基础地理信息中心）"
+  },
+  "customer_record": {
+    "id": "71bb0bb835e899752eaf82e8339b41b2",
+    "is_del": "0",
+    "create_by": "xiangbinqiang_nts9",
+    "create_time": "2026-06-09 21:58:32",
+    "update_by": "xiangbinqiang_nts9",
+    "update_time": "2026-06-09 21:58:32",
+    "create_dept": null,
+    "remark": null,
+    "matter_type": "业务拓展",
+    "matter_progress": "与中心黎主任、黄科交流土储数据治理、低效用地再开发等相关业务开展情况及政策前沿，介绍公司经验及业绩，了解省厅最新动态。",
+    "is_key_information": "0",
+    "assist_content": "",
+    "customer_id": null,
+    "dept_name": null,
+    "work_hour_id": "6a36d99343feed3b0532c21611abb57d",
+    "customer_name": "广东省国土资源技术中心（广东省基础地理信息中心）",
+    "customers_json": "[{\"customerName\": \"广东省国土资源技术中心（广东省基础地理信息中心）\"}]",
+    "assist_user_ids": "",
+    "sync_feed_back_status": null,
+    "sort_no": null,
+    "update_progress": null,
+    "cur_primary_business": null
+  },
+  "project_records": [],
+  "user_tables": [
+    {
+      "Tables_in_gzzdpm (%user%)": "act_id_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "audit_cc_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "audit_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "brand_score_dept_user_config"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "brand_score_dept_user_config_bak"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "brand_score_dept_user_config_update_time"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "brand_score_manage_score_user_config"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "common_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "contract_handle_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "ding_talk_msg_push_regular_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "ding_talk_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "js_sys_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "js_sys_user_data_scope"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "js_sys_user_role"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "project_check_user_config"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "project_event_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "project_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "project_user_secretagreement"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "task_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "weixin_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "weixin_user_middle"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "www_project_user"
+    },
+    {
+      "Tables_in_gzzdpm (%user%)": "www_project_user_2025"
+    }
+  ]
+}

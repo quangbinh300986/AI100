@@ -1,0 +1,386 @@
+{
+  "deleted_hours_inspect": [
+    {
+      "id": "26697e4012030a83283cd62205dea0a9",
+      "user_id": "lujunsong_cxk7",
+      "create_by": "lujunsong_cxk7",
+      "create_time": "2026-06-09 21:59:22",
+      "update_by": "lujunsong_cxk7",
+      "update_time": "2026-06-09 21:59:22",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "27d02299aec4507460ea0e742a6be82e",
+      "user_id": "zhuhai_i0nx",
+      "create_by": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:52",
+      "update_by": "zhuhai_i0nx",
+      "update_time": "2026-06-09 21:58:52",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "683fee49ea50f4c92b18c035a20c010b",
+      "user_id": "liuluojun_4ldi",
+      "create_by": "liuluojun_4ldi",
+      "create_time": "2026-06-09 21:59:34",
+      "update_by": "liuluojun_4ldi",
+      "update_time": "2026-06-09 21:59:34",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "6a36d99343feed3b0532c21611abb57d",
+      "user_id": "xiangbinqiang_nts9",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:32",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "6a592d194aed701be19211da988bff6c",
+      "user_id": "zhangyongxiong_v43b",
+      "create_by": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:19",
+      "update_by": "zhangyongxiong_v43b",
+      "update_time": "2026-06-09 21:59:19",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "6eb50c65188e2af955eba87d9fbf0501",
+      "user_id": "xiangbinqiang_nts9",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:44",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "72b94052fb5c91270f0f2c6c834f5585",
+      "user_id": "wuyaoqiang_0vub",
+      "create_by": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:59:02",
+      "update_by": "wuyaoqiang_0vub",
+      "update_time": "2026-06-09 21:59:04",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "9efc4e1ded8b219b1c03fb3b7a8f5346",
+      "user_id": "wuyaoqiang_0vub",
+      "create_by": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:58:51",
+      "update_by": "wuyaoqiang_0vub",
+      "update_time": "2026-06-09 21:58:52",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "a3da8f33d0a0fa7434f374da9e460bc1",
+      "user_id": "lijianpeng_tgh0",
+      "create_by": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:58:56",
+      "update_by": "lijianpeng_tgh0",
+      "update_time": "2026-06-09 21:59:04",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "ae4321f6a467ddb8d40bbe1c17376178",
+      "user_id": "chenhongyuan_1ap5",
+      "create_by": "chenhongyuan_1ap5",
+      "create_time": "2026-06-09 21:58:39",
+      "update_by": "chenhongyuan_1ap5",
+      "update_time": "2026-06-09 21:59:12",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "b9b4bf0577ca73dc05b9c68b22ef3c90",
+      "user_id": "zhangyongxiong_v43b",
+      "create_by": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:00",
+      "update_by": "zhangyongxiong_v43b",
+      "update_time": "2026-06-09 21:59:00",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "c69953a675f1cadd029b5a3b50c738a5",
+      "user_id": "402881e48ba77a53018eb611c2d81fa5",
+      "create_by": "402881e48ba77a53018eb611c2d81fa5",
+      "create_time": "2026-06-09 21:58:46",
+      "update_by": "402881e48ba77a53018eb611c2d81fa5",
+      "update_time": "2026-06-09 21:58:46",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "c6ebda7eef68ac92e7e46811b2ade751",
+      "user_id": "wanghaoliang_cspw",
+      "create_by": "wanghaoliang_cspw",
+      "create_time": "2026-06-09 21:59:07",
+      "update_by": "wanghaoliang_cspw",
+      "update_time": "2026-06-09 21:59:08",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "d6217876f2792fd8dc8eb6230dcc5b44",
+      "user_id": "chenhaolong_4n4c",
+      "create_by": "chenhaolong_4n4c",
+      "create_time": "2026-06-09 21:59:07",
+      "update_by": "chenhaolong_4n4c",
+      "update_time": "2026-06-09 21:59:07",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "d6bc6f56b632b68c544c22acfba3e981",
+      "user_id": "chenyujian_njkw",
+      "create_by": "chenyujian_njkw",
+      "create_time": "2026-06-09 21:59:26",
+      "update_by": "chenyujian_njkw",
+      "update_time": "2026-06-09 21:59:26",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "e7025da5bbe0e87b489c70b77ffc8c80",
+      "user_id": "huangshanxing_ln3d",
+      "create_by": "huangshanxing_ln3d",
+      "create_time": "2026-06-09 21:59:37",
+      "update_by": "huangshanxing_ln3d",
+      "update_time": "2026-06-09 21:59:37",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "f16c36412c62170a6fc92887530462bf",
+      "user_id": "lijianpeng_tgh0",
+      "create_by": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:59:39",
+      "update_by": "lijianpeng_tgh0",
+      "update_time": "2026-06-09 21:59:39",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "f5974a1226f0cb610e3858fa2fac19f2",
+      "user_id": "zhengzipeng_okbl",
+      "create_by": "zhengzipeng_okbl",
+      "create_time": "2026-06-09 22:04:51",
+      "update_by": "zhengzipeng_okbl",
+      "update_time": "2026-06-09 22:04:51",
+      "remark": null,
+      "is_del": "1"
+    },
+    {
+      "id": "fa71a1a5d6a2a964b1cf688854317037",
+      "user_id": "zhuhai_i0nx",
+      "create_by": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:54",
+      "update_by": "zhuhai_i0nx",
+      "update_time": "2026-06-09 21:58:54",
+      "remark": null,
+      "is_del": "1"
+    }
+  ],
+  "deleted_details_inspect": [
+    {
+      "id": "019c716f11e1b59c692d3a9753606a51",
+      "work_hour_id": "c69953a675f1cadd029b5a3b50c738a5",
+      "customer_name": "广州市增城区新塘镇人民政府",
+      "create_by": "402881e48ba77a53018eb611c2d81fa5",
+      "create_time": "2026-06-09 21:58:46",
+      "update_by": "402881e48ba77a53018eb611c2d81fa5",
+      "update_time": "2026-06-09 21:58:46",
+      "is_del": "0"
+    },
+    {
+      "id": "0f91e302b025fe15b9ad9fc54214c82e",
+      "work_hour_id": "9efc4e1ded8b219b1c03fb3b7a8f5346",
+      "customer_name": "南雄市土地储备中心",
+      "create_by": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:58:51",
+      "update_by": "wuyaoqiang_0vub",
+      "update_time": "2026-06-09 21:58:52",
+      "is_del": "0"
+    },
+    {
+      "id": "148357f4b79c4413f7fb3f63d0d1c5bb",
+      "work_hour_id": "b9b4bf0577ca73dc05b9c68b22ef3c90",
+      "customer_name": "封开县公路事务中心",
+      "create_by": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:00",
+      "update_by": "zhangyongxiong_v43b",
+      "update_time": "2026-06-09 21:59:00",
+      "is_del": "0"
+    },
+    {
+      "id": "35cfa11e2bfac308729efeafcd8dab62",
+      "work_hour_id": "c6ebda7eef68ac92e7e46811b2ade751",
+      "customer_name": "广东中远海运重工有限公司",
+      "create_by": "wanghaoliang_cspw",
+      "create_time": "2026-06-09 21:59:07",
+      "update_by": "wanghaoliang_cspw",
+      "update_time": "2026-06-09 21:59:08",
+      "is_del": "0"
+    },
+    {
+      "id": "3c86cbcecdbd9c00730255f4b11f8b62",
+      "work_hour_id": "72b94052fb5c91270f0f2c6c834f5585",
+      "customer_name": "开平市自然资源局",
+      "create_by": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:59:02",
+      "update_by": "wuyaoqiang_0vub",
+      "update_time": "2026-06-09 21:59:04",
+      "is_del": "0"
+    },
+    {
+      "id": "558081fd7db258fa50a296d5d4075cc8",
+      "work_hour_id": "27d02299aec4507460ea0e742a6be82e",
+      "customer_name": "南雄市土地储备中心",
+      "create_by": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:52",
+      "update_by": "zhuhai_i0nx",
+      "update_time": "2026-06-09 21:58:52",
+      "is_del": "0"
+    },
+    {
+      "id": "71bb0bb835e899752eaf82e8339b41b2",
+      "work_hour_id": "6a36d99343feed3b0532c21611abb57d",
+      "customer_name": "广东省国土资源技术中心（广东省基础地理信息中心）",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:32",
+      "is_del": "0"
+    },
+    {
+      "id": "87e0f44f6955b1c39bf40c62b833c8d1",
+      "work_hour_id": "d6bc6f56b632b68c544c22acfba3e981",
+      "customer_name": "佛山市三水区大塘镇自然资源所",
+      "create_by": "chenyujian_njkw",
+      "create_time": "2026-06-09 21:59:26",
+      "update_by": "chenyujian_njkw",
+      "update_time": "2026-06-09 21:59:26",
+      "is_del": "0"
+    },
+    {
+      "id": "a2c840efe2318cbd9fe08034c923b4a7",
+      "work_hour_id": "e7025da5bbe0e87b489c70b77ffc8c80",
+      "customer_name": "佛山市自然资源局高明分局",
+      "create_by": "huangshanxing_ln3d",
+      "create_time": "2026-06-09 21:59:37",
+      "update_by": "huangshanxing_ln3d",
+      "update_time": "2026-06-09 21:59:37",
+      "is_del": "0"
+    },
+    {
+      "id": "a3e6c93999999f321cc132646b3f6014",
+      "work_hour_id": "26697e4012030a83283cd62205dea0a9",
+      "customer_name": "佛山市自然资源局禅城分局",
+      "create_by": "lujunsong_cxk7",
+      "create_time": "2026-06-09 21:59:22",
+      "update_by": "lujunsong_cxk7",
+      "update_time": "2026-06-09 21:59:22",
+      "is_del": "0"
+    },
+    {
+      "id": "a6620f9e9965f48e882e8dbcf6c473eb",
+      "work_hour_id": "6eb50c65188e2af955eba87d9fbf0501",
+      "customer_name": "深汕合作区农业农村和海洋渔业局",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:44",
+      "is_del": "0"
+    },
+    {
+      "id": "b51ac54f2dbe27f9c88b89ed9351088b",
+      "work_hour_id": "fa71a1a5d6a2a964b1cf688854317037",
+      "customer_name": "广州市规划和自然资源局番禺区分局",
+      "create_by": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:54",
+      "update_by": "zhuhai_i0nx",
+      "update_time": "2026-06-09 21:58:54",
+      "is_del": "0"
+    },
+    {
+      "id": "b7d86d4abba28af690a566796f425fc3",
+      "work_hour_id": "6a592d194aed701be19211da988bff6c",
+      "customer_name": "封开县南丰镇人民政府",
+      "create_by": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:19",
+      "update_by": "zhangyongxiong_v43b",
+      "update_time": "2026-06-09 21:59:19",
+      "is_del": "0"
+    },
+    {
+      "id": "d41473553339f6de3e0fc2e6c2cbf229",
+      "work_hour_id": "d6217876f2792fd8dc8eb6230dcc5b44",
+      "customer_name": "广东中远海运重工有限公司",
+      "create_by": "chenhaolong_4n4c",
+      "create_time": "2026-06-09 21:59:07",
+      "update_by": "chenhaolong_4n4c",
+      "update_time": "2026-06-09 21:59:07",
+      "is_del": "0"
+    },
+    {
+      "id": "e2f26d9e9c22b334b47d11830758fe34",
+      "work_hour_id": "f5974a1226f0cb610e3858fa2fac19f2",
+      "customer_name": "清远市清城区石角镇人民政府",
+      "create_by": "zhengzipeng_okbl",
+      "create_time": "2026-06-09 22:04:51",
+      "update_by": "zhengzipeng_okbl",
+      "update_time": "2026-06-09 22:04:51",
+      "is_del": "0"
+    },
+    {
+      "id": "e4552bcd8d468adfddb2032f71e0f053",
+      "work_hour_id": "f16c36412c62170a6fc92887530462bf",
+      "customer_name": "开平市月山镇人民政府",
+      "create_by": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:59:39",
+      "update_by": "lijianpeng_tgh0",
+      "update_time": "2026-06-09 21:59:39",
+      "is_del": "0"
+    },
+    {
+      "id": "ecd08d2c4e6eece89972f15d3edf1df3",
+      "work_hour_id": "a3da8f33d0a0fa7434f374da9e460bc1",
+      "customer_name": "开平市自然资源局",
+      "create_by": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:58:56",
+      "update_by": "lijianpeng_tgh0",
+      "update_time": "2026-06-09 21:59:04",
+      "is_del": "0"
+    },
+    {
+      "id": "f01a971138e3b537e938f4f991b6ff5c",
+      "work_hour_id": "ae4321f6a467ddb8d40bbe1c17376178",
+      "customer_name": "茂南区自然资源局",
+      "create_by": "chenhongyuan_1ap5",
+      "create_time": "2026-06-09 21:58:39",
+      "update_by": "chenhongyuan_1ap5",
+      "update_time": "2026-06-09 21:59:12",
+      "is_del": "0"
+    },
+    {
+      "id": "fdbe13d1176dd8a88fc5cafdb007862d",
+      "work_hour_id": "683fee49ea50f4c92b18c035a20c010b",
+      "customer_name": "台山市城乡规划院",
+      "create_by": "liuluojun_4ldi",
+      "create_time": "2026-06-09 21:59:34",
+      "update_by": "liuluojun_4ldi",
+      "update_time": "2026-06-09 21:59:34",
+      "is_del": "0"
+    }
+  ]
+}

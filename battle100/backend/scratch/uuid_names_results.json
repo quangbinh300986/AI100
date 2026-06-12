@@ -1,0 +1,30 @@
+{
+  "target_plan_office_names": [
+    {
+      "office_code": "402881e47ce3f929017d267cf1730d20",
+      "office_name": "数据综管巴"
+    },
+    {
+      "office_code": "402881e47ce3f929017d267cf1730d20",
+      "office_name": "综合管理巴"
+    },
+    {
+      "office_code": "8bd4ffc19f9f4fe89fc6937b64a902fe",
+      "office_name": "综合管理巴"
+    },
+    {
+      "office_code": "b4f1be9287f548eca194d9b56354d3f0",
+      "office_name": "综合管理巴"
+    },
+    {
+      "office_code": "b5a98fb31dca478db4bb03d7a4938289",
+      "office_name": "茂名营销巴"
+    },
+    {
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴"
+    }
+  ],
+  "market_office_relation_names": [],
+  "sys_office_names": []
+}

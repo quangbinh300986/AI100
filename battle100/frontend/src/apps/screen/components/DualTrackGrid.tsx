@@ -311,13 +311,23 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                 {displayTeams.map((team, tIdx) => {
                   // 根据灯状态计算颜色与文字
                   let lightColor = '#f5222d' // red
-                  let lightText = '预警红灯'
+                  let lightText = '警告红灯'
+                  let gradient = 'radial-gradient(circle at 35% 35%, #ff9c9c 0%, #ff4d4f 60%, #a8071a 100%)'
+                  let glow = '0 0 8px rgba(255, 77, 79, 0.8)'
+                  let lightName = 'red'
+                  
                   if (team.statusLight === 'green') {
                     lightColor = '#52c41a'
-                    lightText = '正常绿灯'
+                    lightText = '强劲绿灯'
+                    gradient = 'radial-gradient(circle at 35% 35%, #b7eb8f 0%, #52c41a 60%, #135200 100%)'
+                    glow = '0 0 8px rgba(82, 196, 26, 0.8)'
+                    lightName = 'green'
                   } else if (team.statusLight === 'yellow') {
                     lightColor = '#faad14'
                     lightText = '预警黄灯'
+                    gradient = 'radial-gradient(circle at 35% 35%, #ffe58f 0%, #faad14 60%, #ad6800 100%)'
+                    glow = '0 0 8px rgba(250, 173, 20, 0.8)'
+                    lightName = 'yellow'
                   }
 
                   return (
@@ -347,9 +357,32 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
                         <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#111111' }}>
                           {team.teamName}
                         </span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: lightColor, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: lightColor }} />
+                        <span className="team-light-tooltip-container" style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#595959', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span 
+                            style={{ 
+                              width: '12px', 
+                              height: '12px', 
+                              borderRadius: '50%', 
+                              background: gradient,
+                              boxShadow: `${glow}, inset 0 -1px 2px rgba(0,0,0,0.4)`,
+                              border: '1px solid rgba(255,255,255,0.25)',
+                              animation: `pulse-${lightName} 2s infinite ease-in-out`
+                            }} 
+                          />
                           <span>{lightText}</span>
+                          
+                          {team.lightFormula && (
+                            <div className="team-light-tooltip-content">
+                              <div style={{ fontSize: '0.82rem', marginBottom: '4px' }}>
+                                <strong>本周以前完成率：</strong>
+                                <span style={{ color: '#ffd700', fontWeight: 'bold' }}>{team.lightRate}%</span>
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: '#ffd700', marginTop: '4px', fontWeight: 'bold' }}>计算公式：</div>
+                              <div style={{ fontSize: '0.75rem', color: '#e6f7ff' }}>{team.lightFormula}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#ffd700', marginTop: '4px', fontWeight: 'bold' }}>计算过程：</div>
+                              <div style={{ fontSize: '0.75rem', color: '#bae7ff', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{team.lightProcess}</div>
+                            </div>
+                          )}
                         </span>
                       </div>
 
@@ -441,6 +474,52 @@ const DualTrackGrid: React.FC<DualTrackGridProps> = ({ theme = 'theme-light-red'
 
     {/* 注入红金弹窗定制样式 */}
     <style dangerouslySetInnerHTML={{__html: `
+      @keyframes pulse-red {
+        0% { box-shadow: 0 0 4px rgba(255, 77, 79, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        50% { box-shadow: 0 0 12px rgba(255, 77, 79, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        100% { box-shadow: 0 0 4px rgba(255, 77, 79, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+      }
+      @keyframes pulse-yellow {
+        0% { box-shadow: 0 0 4px rgba(250, 173, 20, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        50% { box-shadow: 0 0 12px rgba(250, 173, 20, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        100% { box-shadow: 0 0 4px rgba(250, 173, 20, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+      }
+      @keyframes pulse-green {
+        0% { box-shadow: 0 0 4px rgba(82, 196, 26, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        50% { box-shadow: 0 0 12px rgba(82, 196, 26, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        100% { box-shadow: 0 0 4px rgba(82, 196, 26, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+      }
+      .team-light-tooltip-container {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        cursor: help;
+      }
+      .team-light-tooltip-content {
+        display: none;
+        position: absolute;
+        bottom: 125%;
+        right: 0;
+        background: linear-gradient(135deg, rgba(30, 2, 2, 0.98) 0%, rgba(10, 0, 0, 0.99) 100%);
+        border: 1px solid rgba(212, 175, 55, 0.85);
+        color: #ffffff;
+        padding: 8px 10px;
+        border-radius: 6px;
+        width: 290px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.65), 0 0 10px rgba(212, 175, 55, 0.25);
+        z-index: 1000;
+        font-weight: normal;
+        text-align: left;
+        line-height: 1.4;
+      }
+      .team-light-tooltip-container:hover .team-light-tooltip-content {
+        display: block;
+        animation: fadeInTooltip 0.15s ease-in-out forwards;
+      }
+      @keyframes fadeInTooltip {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       .screen-team-card-clickable {
         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
       }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { DotLoading } from 'antd-mobile'
-import { getMyStats } from '@shared/api/dashboard'
-import type { MyStatsResponse } from '@shared/types'
+import { getMyStats, getDashboardData } from '@shared/api/dashboard'
+import type { MyStatsResponse, DashboardData } from '@shared/types'
 
 /**
  * 8种指标的元数据映射：emoji图标 + 主题色
@@ -24,12 +24,15 @@ const getColor = (type: string) => GOAL_META[type]?.color ?? '#1677ff'
 
 export default function MyGoals() {
   const [stats, setStats] = useState<MyStatsResponse | null>(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   /** 个人目标胶囊Tab：'base' 保底 / 'challenge' 挑战 */
   const [activeGoalTab, setActiveGoalTab] = useState<'base' | 'challenge'>('base')
 
   useEffect(() => {
     let active = true
+    
+    // 加载个人与战队目标基本数据
     getMyStats()
       .then((res) => {
         if (active && res) setStats(res)
@@ -40,6 +43,16 @@ export default function MyGoals() {
       .finally(() => {
         if (active) setLoading(false)
       })
+
+    // 同时加载大盘数据以渲染各战区冲刺排名
+    getDashboardData()
+      .then((res) => {
+        if (active && res) setDashboardData(res)
+      })
+      .catch((err) => {
+        console.error('获取大盘战区赛马PK数据失败:', err)
+      })
+
     return () => { active = false }
   }, [])
 
@@ -382,6 +395,164 @@ export default function MyGoals() {
           </div>
         </div>
       )}
+
+      {/* 整理大盘战区排名数据并渲染卡片 */}
+      {(() => {
+        if (!dashboardData?.zoneTeamsPK || Object.keys(dashboardData.zoneTeamsPK).length === 0) return null;
+
+        return (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>🏆 各战区战队冲刺排名</div>
+            
+            {Object.entries(dashboardData.zoneTeamsPK).map(([zoneName, teams]) => {
+              if (!teams || teams.length === 0) return null;
+              
+              return (
+                <div 
+                  key={zoneName}
+                  style={{
+                    background: '#fff',
+                    borderRadius: 12,
+                    border: '1px solid #f0f0f0',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                    marginBottom: 14,
+                    overflow: 'hidden'
+                  }}
+                >
+                  {/* 战区头部 */}
+                  <div 
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '12px 16px',
+                      background: 'linear-gradient(90deg, #fafafa, #ffffff)',
+                      borderBottom: '1px solid #f0f0f0'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 4, height: 14, borderRadius: 2, background: 'linear-gradient(180deg, #1890ff, #096dd9)' }} />
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#1f1f1f' }}>{zoneName}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#bfbfbf' }}>共 {teams.length} 支战队</span>
+                  </div>
+
+                  {/* 战队列表 */}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {teams.map((t: any, index: number) => {
+                      const mAct = t.weeklyMarketingActual ?? 0;
+                      const mTgt = t.weeklyMarketingTarget ?? 0;
+                      const dAct = t.weeklyDeliveryActual ?? 0;
+                      const dTgt = t.weeklyDeliveryTarget ?? 0;
+                      
+                      // 排名徽章样式
+                      let rankBg = '#f5f5f5';
+                      let rankColor = '#595959';
+                      let rankBorder = '1px solid #d9d9d9';
+                      
+                      if (t.rank === 1) {
+                        rankBg = 'linear-gradient(135deg, #ffe259 0%, #ffa751 100%)';
+                        rankColor = '#fff';
+                        rankBorder = 'none';
+                      } else if (t.rank === 2) {
+                        rankBg = 'linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%)';
+                        rankColor = '#fff';
+                        rankBorder = 'none';
+                      } else if (t.rank === 3) {
+                        rankBg = 'linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%)';
+                        rankColor = '#fff';
+                        rankBorder = 'none';
+                      }
+
+                      // 趋势气泡样式
+                      let trendBg = '#f5f5f5';
+                      let trendColor = '#595959';
+                      let trendText = '持平';
+                      
+                      if (t.trend === 'up') {
+                        trendBg = '#f6ffed';
+                        trendColor = '#389e0d';
+                        trendText = '↑ 上升';
+                      } else if (t.trend === 'down') {
+                        trendBg = '#fff1f0';
+                        trendColor = '#cf1322';
+                        trendText = '↓ 下降';
+                      } else {
+                        trendText = '→ 持平';
+                      }
+
+                      return (
+                        <div 
+                          key={index}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '12px 16px',
+                            borderBottom: index === teams.length - 1 ? 'none' : '1px solid #f5f5f5'
+                          }}
+                        >
+                          {/* 排名徽章 */}
+                          <div 
+                            style={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: '50%',
+                              background: rankBg,
+                              color: rankColor,
+                              border: rankBorder,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 11,
+                              fontWeight: 'bold',
+                              flexShrink: 0
+                            }}
+                          >
+                            {t.rank}
+                          </div>
+
+                          {/* 战队信息 */}
+                          <div style={{ flex: 1, marginLeft: 12, overflow: 'hidden' }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#262626', marginBottom: 3 }}>
+                              {t.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#8c8c8c', display: 'flex', flexWrap: 'wrap', gap: '4px 8px' }}>
+                              <span>📊 营销: {mAct.toFixed(1).replace('.0', '')}/{mTgt.toFixed(1).replace('.0', '')}万</span>
+                              <span style={{ color: '#d9d9d9' }}>|</span>
+                              <span>📦 交付: {dAct.toFixed(1).replace('.0', '')}/{dTgt.toFixed(1).replace('.0', '')}万</span>
+                            </div>
+                          </div>
+
+                          {/* 完成率与趋势 */}
+                          <div style={{ textAlign: 'right', marginLeft: 8, flexShrink: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#1890ff', marginBottom: 2 }}>
+                              {t.score}%
+                            </div>
+                            <span 
+                              style={{
+                                display: 'inline-block',
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                background: trendBg,
+                                color: trendColor,
+                                fontSize: 9,
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {trendText}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
 
       {/* ═══════════ 模块四：目标说明 ═══════════ */}
       <div className="card" style={{ marginTop: 16 }}>

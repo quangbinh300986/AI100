@@ -70,7 +70,8 @@ const EVENT_TYPE_OPTIONS = [
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
   { label: '驻点快报', value: 'station_report' },
-  { label: '自定义播报', value: 'custom' },
+  { label: '中台播报', value: 'middle_office_report' },
+  { label: '幸福委播报', value: 'happiness_committee' },
 ]
 
 // 推送状态定义
@@ -180,7 +181,7 @@ const Reports: React.FC = () => {
   const [createVisible, setCreateVisible] = useState(false)
   const [editVisible, setEditVisible] = useState(false)
   const [selectedBroadcast, setSelectedBroadcast] = useState<BroadcastItem | null>(null)
-  const [editEventType, setEditEventType] = useState<string>('custom')
+  const [editEventType, setEditEventType] = useState<string>('middle_office_report')
   
   // 回收站状态
   const [recycleVisible, setRecycleVisible] = useState(false)
@@ -1054,6 +1055,12 @@ const Reports: React.FC = () => {
         } else if (val === 'station_report') {
           label = '驻点快报'
           color = 'cyan'
+        } else if (val === 'middle_office_report') {
+          label = '中台播报'
+          color = 'orange'
+        } else if (val === 'happiness_committee') {
+          label = '幸福委播报'
+          color = 'pink'
         }
         return <Tag color={color} style={{ fontWeight: 'bold', padding: '3px 8px', borderRadius: 4 }}>{label}</Tag>
       }
@@ -1062,23 +1069,29 @@ const Reports: React.FC = () => {
       title: '播报内容',
       dataIndex: 'content',
       key: 'content',
-      render: (val: string) => (
-        <Tooltip title={val} placement="topLeft" overlayStyle={{ maxWidth: 400 }}>
-          <div style={{
-            maxHeight: 50,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            color: '#333',
-            fontSize: '13.5px',
-            lineHeight: '1.5'
-          }}>
-            {val}
-          </div>
-        </Tooltip>
-      )
+      render: (val: string, record: any) => {
+        // 如果是驻点快报的“重大会议部署”分类，且包含“【会议主题】”，则只提取展示会议主题部分以避免展示文本过长，所有注释必须使用中文
+        const displayVal = (record.event_type === 'station_report' && record.station_category === 'deployment' && val && val.includes('【会议主题】'))
+          ? (val.match(/(【会议主题】[\s\S]*?)(?=【|$)/)?.[1]?.trim() || val)
+          : val;
+        return (
+          <Tooltip title={displayVal} placement="topLeft" overlayStyle={{ maxWidth: 400 }}>
+            <div style={{
+              maxHeight: 50,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              color: '#333',
+              fontSize: '13.5px',
+              lineHeight: '1.5'
+            }}>
+              {displayVal}
+            </div>
+          </Tooltip>
+        );
+      }
     },
     {
       title: '发布人',
@@ -1540,7 +1553,7 @@ const Reports: React.FC = () => {
           form={createForm}
           layout="vertical"
           initialValues={{
-            event_type: 'custom',
+            event_type: 'middle_office_report',
             push_channel: 'all',
             team_id: isTeamLeader ? String(user?.teamId) : undefined
           }}

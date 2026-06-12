@@ -1,0 +1,722 @@
+{
+  "office_tables": [
+    {
+      "Tables_in_gzzdpm (%office%)": "js_sys_company_office"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "js_sys_employee_office"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "js_sys_office"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_business_month_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_business_year_money_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_business_year_sign_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_regional_month_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_regional_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_regional_year_money_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "office_regional_year_sign_target"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "zdcrm_annual_business_objectives_market_office"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "zdcrm_market_office_area_analysis"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "zdcrm_market_office_area_relation"
+    },
+    {
+      "Tables_in_gzzdpm (%office%)": "zdcrm_target_plan_management_office"
+    }
+  ],
+  "dept_tables": [
+    {
+      "Tables_in_gzzdpm (%dept%)": "brand_score_dept_user_config"
+    },
+    {
+      "Tables_in_gzzdpm (%dept%)": "brand_score_dept_user_config_bak"
+    },
+    {
+      "Tables_in_gzzdpm (%dept%)": "brand_score_dept_user_config_update_time"
+    },
+    {
+      "Tables_in_gzzdpm (%dept%)": "zdcrm_operate_dept_statistic"
+    }
+  ],
+  "office_in_js_sys_company_office": [],
+  "office_in_js_sys_employee_office": [],
+  "office_in_js_sys_office": [],
+  "office_in_office_business_month_target": [],
+  "office_in_office_business_year_money_target": [],
+  "office_in_office_business_year_sign_target": [],
+  "office_in_office_regional_month_target": [],
+  "office_in_office_regional_target": [],
+  "office_in_office_regional_year_money_target": [],
+  "office_in_office_regional_year_sign_target": [],
+  "office_in_zdcrm_market_office_area_analysis": [],
+  "office_in_zdcrm_market_office_area_relation": [],
+  "office_in_zdcrm_target_plan_management_office": [
+    {
+      "id": "08ac9d7d6429cd8df8cb9952fa2458b4",
+      "zdcrm_target_plan_management_id": "639f95a3b7114737fb8233b9b4bc4a15",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-03 14:15:01",
+      "update_by": null,
+      "update_time": "2026-02-03 14:15:01",
+      "remark": null
+    },
+    {
+      "id": "0ae2159200e7aaa2183c2be1618a5df8",
+      "zdcrm_target_plan_management_id": "23ff375c20637518bff3d71c771108fe",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-05-08 18:00:01",
+      "update_by": null,
+      "update_time": "2026-05-08 18:00:01",
+      "remark": null
+    },
+    {
+      "id": "0ea5ac80430a3698c733b7c9ee5fa71d",
+      "zdcrm_target_plan_management_id": "7e76004c0542becd9a44d0600361a850",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:39:44",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:39:44",
+      "remark": null
+    },
+    {
+      "id": "100a1fb977e83421b425236cae7032f1",
+      "zdcrm_target_plan_management_id": "720416cef99f063e5dead7508fd82e69",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-25 16:30:01",
+      "update_by": null,
+      "update_time": "2025-12-25 16:30:01",
+      "remark": null
+    },
+    {
+      "id": "19cc334bba0e0586942e7e974f5a7900",
+      "zdcrm_target_plan_management_id": "13e35bbd703c415526ca38155b840954",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-06-01 01:00:03",
+      "update_by": null,
+      "update_time": "2026-06-01 01:00:03",
+      "remark": null
+    },
+    {
+      "id": "1accfe0d9be2bba2a12f2dabcbbe586f",
+      "zdcrm_target_plan_management_id": "46bc6ce264388b49c1c9356265ade0f7",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-01 10:00:01",
+      "update_by": null,
+      "update_time": "2025-12-01 10:00:01",
+      "remark": null
+    },
+    {
+      "id": "1fe1fac57893d267fa6c1e5e3507638b",
+      "zdcrm_target_plan_management_id": "ece4044ea09bb9afa34350fa7bd72f6b",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-26 14:15:01",
+      "update_by": null,
+      "update_time": "2025-12-26 14:15:01",
+      "remark": null
+    },
+    {
+      "id": "285689d26e5a0102e0bbbb6134e1c494",
+      "zdcrm_target_plan_management_id": "a9b0d04e015d0a4d51735b364238202c",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-11-27 15:30:00",
+      "update_by": null,
+      "update_time": "2025-11-27 15:30:00",
+      "remark": null
+    },
+    {
+      "id": "2cb3ee1a1276d3fd1f608960d300ffcc",
+      "zdcrm_target_plan_management_id": "b047ddd004e25d01eb6a0429289ebc06",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-10-01 01:00:02",
+      "update_by": null,
+      "update_time": "2025-10-01 01:00:02",
+      "remark": null
+    },
+    {
+      "id": "32d8c6e8912bf5fba70af855f1e8fb2a",
+      "zdcrm_target_plan_management_id": "efde4a21542f7561fa7a09521f7584f0",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-01-30 10:00:01",
+      "update_by": null,
+      "update_time": "2026-01-30 10:00:01",
+      "remark": null
+    },
+    {
+      "id": "39f5a2cae774c26818cee2bb53f4df2e",
+      "zdcrm_target_plan_management_id": "5985736399ef7d05a3c7cf8bcdae6524",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-03-24 11:15:00",
+      "update_by": null,
+      "update_time": "2026-03-24 11:15:00",
+      "remark": null
+    },
+    {
+      "id": "4166a0fafda730beef0847fe86188779",
+      "zdcrm_target_plan_management_id": "685ecc9854c2c863f44ac51b5317e1d2",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-04-07 19:45:47",
+      "update_by": null,
+      "update_time": "2026-04-07 19:45:47",
+      "remark": null
+    },
+    {
+      "id": "43f68218a92e05c94566dff6872c09bc",
+      "zdcrm_target_plan_management_id": "6e089519eb03a075edb04a5890316cc8",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:56:01",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:56:01",
+      "remark": null
+    },
+    {
+      "id": "441d9abce5eda4364f3c3b2e1449d0ce",
+      "zdcrm_target_plan_management_id": "7a723aedad6ec2de5bff81f94a8c1c39",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-05-01 01:00:03",
+      "update_by": null,
+      "update_time": "2026-05-01 01:00:03",
+      "remark": null
+    },
+    {
+      "id": "4d2ce5052b06e867882c2a4bba6d674c",
+      "zdcrm_target_plan_management_id": "75f28a6065c56451e29f9b545fdc28b3",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-09-01 01:00:02",
+      "update_by": null,
+      "update_time": "2025-09-01 01:00:02",
+      "remark": null
+    },
+    {
+      "id": "5e3a9c8f9777dcaa920e1c308b380a86",
+      "zdcrm_target_plan_management_id": "e04eb8f8623442ee88f45371ef6feaf7",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-11-13 15:30:00",
+      "update_by": null,
+      "update_time": "2025-11-13 15:30:00",
+      "remark": null
+    },
+    {
+      "id": "5edf5626927cdf0f00b877f49f8a12b8",
+      "zdcrm_target_plan_management_id": "b7ecc32eae848d8e07fc0ffb02805cd3",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-04 17:30:01",
+      "update_by": null,
+      "update_time": "2026-02-04 17:30:01",
+      "remark": null
+    },
+    {
+      "id": "616c7c3b8d6d4334655415e0f070509e",
+      "zdcrm_target_plan_management_id": "e3f16cdba47d82d08c3460ae0548792a",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-04-07 19:45:50",
+      "update_by": null,
+      "update_time": "2026-04-07 19:45:50",
+      "remark": null
+    },
+    {
+      "id": "66e68294b74fcc80cdb4867fe3b9f613",
+      "zdcrm_target_plan_management_id": "4f2f8ce54e19f29ef93945c4aeafbe06",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-04 14:45:01",
+      "update_by": null,
+      "update_time": "2026-02-04 14:45:01",
+      "remark": null
+    },
+    {
+      "id": "6909807f2feaed291f9754b2f636e740",
+      "zdcrm_target_plan_management_id": "d4c9d6cdb6ac2ec3c9e1f7df0cc4b590",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-04 14:45:01",
+      "update_by": null,
+      "update_time": "2026-02-04 14:45:01",
+      "remark": null
+    },
+    {
+      "id": "6f033ad040197ccf6133cbb95682aea4",
+      "zdcrm_target_plan_management_id": "1ec4a891b379c71229cc2d624f2d321a",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:34:45",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:34:45",
+      "remark": null
+    },
+    {
+      "id": "7308360d8021d7fdb35f259fe8c1f514",
+      "zdcrm_target_plan_management_id": "c68146fb74f97b344f7fe02f4a7a3b16",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-05 16:45:00",
+      "update_by": null,
+      "update_time": "2025-12-05 16:45:00",
+      "remark": null
+    },
+    {
+      "id": "78744b8b2913ab35a6bc9be526cd1d35",
+      "zdcrm_target_plan_management_id": "e476b8e1d97d763ae26dc59a04699a40",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-14 15:15:00",
+      "update_by": null,
+      "update_time": "2026-02-14 15:15:00",
+      "remark": null
+    },
+    {
+      "id": "7bcda6598fc1a81d83bcc146260673fb",
+      "zdcrm_target_plan_management_id": "2af1b0487a1169c43cf551102851e7cb",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-16 17:52:14",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-16 17:52:14",
+      "remark": null
+    },
+    {
+      "id": "7c67dab4451413838a1ceb81f0284df4",
+      "zdcrm_target_plan_management_id": "9f2aedcd44675132432fe36e6b177f03",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-03 14:15:01",
+      "update_by": null,
+      "update_time": "2026-02-03 14:15:01",
+      "remark": null
+    },
+    {
+      "id": "7d4921c3ec68dee69f8c2aac050163bf",
+      "zdcrm_target_plan_management_id": "a9799dbbd926a925eabb6f859fbcb78c",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-02-04 16:00:01",
+      "update_by": null,
+      "update_time": "2026-02-04 16:00:01",
+      "remark": null
+    },
+    {
+      "id": "903f896f81e205d8d35bde161adcee2a",
+      "zdcrm_target_plan_management_id": "d3389505fb7fd8e94e543f891a6138e9",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-16 17:51:46",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-16 17:51:46",
+      "remark": null
+    },
+    {
+      "id": "906bb6d16e65b0c301a86d931dc63e4d",
+      "zdcrm_target_plan_management_id": "af99a6ed268b50ba90ecea625c272e05",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-04-30 12:00:01",
+      "update_by": null,
+      "update_time": "2026-04-30 12:00:01",
+      "remark": null
+    },
+    {
+      "id": "92b213649cee66a21794352826826962",
+      "zdcrm_target_plan_management_id": "ea8edc8a6978f537654637750d22d9f8",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-04-07 19:10:01",
+      "update_by": null,
+      "update_time": "2026-04-07 19:10:01",
+      "remark": null
+    },
+    {
+      "id": "93dca6220f40c65db85822dc80db2b56",
+      "zdcrm_target_plan_management_id": "d52f0983ac58688227b7a6adc67ee9b2",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-01-09 15:15:01",
+      "update_by": null,
+      "update_time": "2026-01-09 15:15:01",
+      "remark": null
+    },
+    {
+      "id": "9d70b1e877e38786a1c695058aaf4c67",
+      "zdcrm_target_plan_management_id": "1e97d56d3feeb5ca3c7c689df8c5856f",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-05-09 19:00:01",
+      "update_by": null,
+      "update_time": "2026-05-09 19:00:01",
+      "remark": null
+    },
+    {
+      "id": "9d8c9bf1f8816b2db700fd8cef04cabd",
+      "zdcrm_target_plan_management_id": "0ad47a21023721c352f5e8c800f8f842",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:35:26",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:35:26",
+      "remark": null
+    },
+    {
+      "id": "acdf773c1e43129b02efcb3be937b885",
+      "zdcrm_target_plan_management_id": "8b3955e20f80fa37644538798c65966d",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:31:50",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:31:50",
+      "remark": null
+    },
+    {
+      "id": "b3069597c80a27fe3cf6001f22ec5f67",
+      "zdcrm_target_plan_management_id": "185c54b828e0401b60f167b1a04d666e",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:42:36",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:42:36",
+      "remark": null
+    },
+    {
+      "id": "b49a81fb5abd221851a17be187b5b16e",
+      "zdcrm_target_plan_management_id": "1673c315355a3642c082240fde422c76",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-16 17:52:21",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-16 17:52:21",
+      "remark": null
+    },
+    {
+      "id": "bd11c27075c235f5733b624c2980e4bf",
+      "zdcrm_target_plan_management_id": "421c11e539ee0b0630e90553005480e6",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 15:32:19",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 15:32:19",
+      "remark": null
+    },
+    {
+      "id": "bd35ad96a3276acfb373f7d9f093247e",
+      "zdcrm_target_plan_management_id": "9d91c7c4b63bacb99027227150855e35",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-05 16:45:00",
+      "update_by": null,
+      "update_time": "2025-12-05 16:45:00",
+      "remark": null
+    },
+    {
+      "id": "bdeaa12cc8f331c350f975334c3276b3",
+      "zdcrm_target_plan_management_id": "d1ee2dc7d3e325c2a6c2accd99660146",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-11-28 18:45:00",
+      "update_by": null,
+      "update_time": "2025-11-28 18:45:00",
+      "remark": null
+    },
+    {
+      "id": "c211a373cb972a84d766840456ff5eec",
+      "zdcrm_target_plan_management_id": "7e34e7b6d416d002972069f435dd9e2d",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-01 10:00:01",
+      "update_by": null,
+      "update_time": "2025-12-01 10:00:01",
+      "remark": null
+    },
+    {
+      "id": "ce1461b8a6a417deba4c121d848f00f8",
+      "zdcrm_target_plan_management_id": "4835fb013814aca8b0c948229b457ef0",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2026-04-07 19:45:47",
+      "update_by": null,
+      "update_time": "2026-04-07 19:45:47",
+      "remark": null
+    },
+    {
+      "id": "d16b2f6d9e4d7f6850170a00f3dba006",
+      "zdcrm_target_plan_management_id": "5f9c5eb527c6bbc84a9eae6c2cea0f28",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-12-29 11:00:02",
+      "update_by": null,
+      "update_time": "2025-12-29 11:00:02",
+      "remark": null
+    },
+    {
+      "id": "ea14f0252c284d342c90d31d239a88e4",
+      "zdcrm_target_plan_management_id": "3e03427d095da98482e05856c0b158e2",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "1",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-17 14:40:08",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-17 14:40:08",
+      "remark": null
+    },
+    {
+      "id": "ead75949691204cc472cbba59e3ea36b",
+      "zdcrm_target_plan_management_id": "41a2737407079e40298707f7aa04d925",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-10-30 10:00:01",
+      "update_by": null,
+      "update_time": "2025-10-30 10:00:01",
+      "remark": null
+    },
+    {
+      "id": "f0019bc898a2ecd720c5c5335bb86702",
+      "zdcrm_target_plan_management_id": "e0df0772f4e19fa7486c0d7c01ce0344",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": null,
+      "create_dept": null,
+      "create_time": "2025-08-01 01:00:01",
+      "update_by": null,
+      "update_time": "2025-08-01 01:00:01",
+      "remark": null
+    },
+    {
+      "id": "f48ff9a07dc145b56d011b8bef2f9f5f",
+      "zdcrm_target_plan_management_id": "70d98b5cbe2056f735c5f3df482c4422",
+      "office_code": "b8e4a84b114141799550c61f7f8cf199",
+      "office_name": "综合管理巴",
+      "year_month_time": null,
+      "is_del": "0",
+      "create_by": "zhangfang_0nme",
+      "create_dept": null,
+      "create_time": "2025-07-16 17:51:46",
+      "update_by": "zhangfang_0nme",
+      "update_time": "2025-07-16 17:51:46",
+      "remark": null
+    }
+  ],
+  "direct_js_sys_office": [],
+  "emp_tables": [
+    {
+      "Tables_in_gzzdpm (%employee%)": "ding_talk_employee"
+    },
+    {
+      "Tables_in_gzzdpm (%employee%)": "ding_talk_employee_analysis"
+    },
+    {
+      "Tables_in_gzzdpm (%employee%)": "js_sys_employee"
+    },
+    {
+      "Tables_in_gzzdpm (%employee%)": "js_sys_employee_office"
+    },
+    {
+      "Tables_in_gzzdpm (%employee%)": "js_sys_employee_post"
+    }
+  ]
+}

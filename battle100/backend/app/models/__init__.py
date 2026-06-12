@@ -9,7 +9,7 @@ from app.models.organization import Zone, Team
 from app.models.goal import PersonalGoal, TeamGoal, WeeklyTarget, GoalType, TeamGoalCategory
 from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType, WeeklyReport, GroupWeeklyReport
 from app.models.happiness import HappinessStandard
-from app.models.broadcast import BroadcastEvent, EventType, PushStatus, PushChannel
+from app.models.broadcast import BroadcastEvent, EventType, PushStatus, PushChannel, KpiLike, KpiComment
 from app.models.committee import Committee, CommitteeMember
 from app.models.lead import LeadConversion
 from app.models.audit_log import AuditLog
@@ -48,5 +48,7 @@ __all__ = [
     "LLMProvider",
     "LLMModel",
     "AgentRoute",
+    "KpiLike",
+    "KpiComment",
 ]
 

@@ -129,7 +129,7 @@ const ROLE_OPTIONS = [
   { label: '战队长', value: 'team_leader' },
   { label: '营销', value: 'marketing_staff' },
   { label: '技术营销', value: 'tech_marketing' },
-  { label: '普通员工', value: 'staff' },
+  { label: '队员', value: 'staff' },
 ]
 
 /* 战队选项 */
@@ -1437,7 +1437,7 @@ const Goals: React.FC = () => {
           <Select.Option value="team_leader">战队长</Select.Option>
           <Select.Option value="marketing_staff">营销</Select.Option>
           <Select.Option value="tech_marketing">技术营销</Select.Option>
-          <Select.Option value="staff">普通员工</Select.Option>
+          <Select.Option value="staff">队员</Select.Option>
         </Select>
       )
     },

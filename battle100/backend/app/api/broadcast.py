@@ -57,13 +57,17 @@ async def trigger_broadcast_push(broadcast_id: int):
     async with AsyncSessionLocal() as db:
         try:
             # 1. 查询播报事件及关联的用户、战队
+            from sqlalchemy import func
+            from sqlalchemy.orm import aliased
+            UserTeam = aliased(DbTeam)
             stmt = select(
                 BroadcastEvent, 
                 DbUser.name.label("user_name"), 
                 DbUser.dingtalk_id.label("user_dingtalk_id"),
-                DbTeam.name.label("team_name")
+                func.coalesce(DbTeam.name, UserTeam.name).label("team_name")
             ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
              .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+             .outerjoin(UserTeam, DbUser.team_id == UserTeam.id)\
              .where(BroadcastEvent.id == broadcast_id)
              
             res = await db.execute(stmt)
@@ -96,8 +100,20 @@ async def trigger_broadcast_push(broadcast_id: int):
             for attempt in range(retry_count):
                 if event.event_type == EventType.STATION_REPORT.value:
                     import urllib.parse
+                    # 初始化附件下载链接为 None，防止无附件时发生变量未定义错误
                     download_url = None
-                    summary_text = event.summary or event.content or ""
+                    # 检查 event.summary 是否为系统自动截取的内容
+                    is_auto_summary = False
+                    if event.summary and event.content:
+                        clean_summary = "".join(event.summary.split())
+                        clean_content = "".join(event.content.split())
+                        if clean_content.startswith(clean_summary):
+                            is_auto_summary = True
+                    
+                    if event.summary and event.summary.strip() and not is_auto_summary:
+                        summary_text = f"**内容摘要**：{event.summary}\n\n{event.content}"
+                    else:
+                        summary_text = event.content or ""
                     
                     if event.attachment_urls and len(event.attachment_urls) > 0:
                         raw_url = event.attachment_urls[0].get("url")
@@ -107,7 +123,10 @@ async def trigger_broadcast_push(broadcast_id: int):
                             if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
                                 raw_url = raw_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
                             quoted_name = urllib.parse.quote(name)
-                            download_url = f"{raw_url}?download={quoted_name}"
+                            basic_download_url = f"{raw_url}?download={quoted_name}"
+                            # 使用钉钉 AppLink 协议强制在外部系统默认浏览器中打开，解决钉钉端内直接下载文件报错“检测页面异常”的问题
+                            quoted_download_url = urllib.parse.quote(basic_download_url)
+                            download_url = f"https://applink.dingtalk.com/page/link?url={quoted_download_url}&target=browser"
                         
                         # 优化：如果是多附件，则在消息摘要正文末尾追加全部附件的 markdown 下载链接
                         if len(event.attachment_urls) > 1:
@@ -119,7 +138,11 @@ async def trigger_broadcast_push(broadcast_id: int):
                                     if getattr(settings, "EXTERNAL_SUPABASE_URL", None):
                                         att_url = att_url.replace(settings.SUPABASE_URL.rstrip('/'), settings.EXTERNAL_SUPABASE_URL.rstrip('/'))
                                     quoted_att_name = urllib.parse.quote(att_name)
-                                    summary_text += f"{idx+1}. [{att_name}]({att_url}?download={quoted_att_name}) \n"
+                                    att_download_url = f"{att_url}?download={quoted_att_name}"
+                                    # 同样使用钉钉 AppLink 外部浏览器跳转协议
+                                    quoted_att_download_url = urllib.parse.quote(att_download_url)
+                                    applink_att_url = f"https://applink.dingtalk.com/page/link?url={quoted_att_download_url}&target=browser"
+                                    summary_text += f"{idx+1}. [{att_name}]({applink_att_url}) \n"
                     
                     # 网页详情链接，优先使用配置的公网前端 URL
                     detail_url = None
@@ -137,7 +160,8 @@ async def trigger_broadcast_push(broadcast_id: int):
                         password=event.attachment_password,
                         is_urgent=event.is_urgent,
                         detail_url=detail_url,
-                        attachment_urls=event.attachment_urls
+                        attachment_urls=event.attachment_urls,
+                        reporter_name=user_name
                     )
                 else:
                     msg_id = await dingtalk_client.push_broadcast_message(
@@ -146,7 +170,8 @@ async def trigger_broadcast_push(broadcast_id: int):
                         user_name=user_name,
                         team_name=team_name,
                         dingtalk_users=dingtalk_users,
-                        attachment_urls=event.attachment_urls
+                        attachment_urls=event.attachment_urls,
+                        project_name=event.project_name
                     )
                 
                 if msg_id:
@@ -181,6 +206,267 @@ async def trigger_broadcast_push(broadcast_id: int):
                     await db.commit()
             except Exception as inner_err:
                 logger.error(f"推送战报异常处理回滚失败: {inner_err}")
+
+
+async def push_broadcast_to_crm_task(
+    broadcast_id: int,
+    action_type: Optional[str],
+    event_type: str,
+    customer_name: Optional[str],
+    employee_name: str,
+    action_description: Optional[str],
+    content: str,
+    crm_opportunity_id: Optional[str],
+    project_name: Optional[str],
+    marketing_copartners: Optional[list[str]],
+):
+    """
+    异步将播报数据推送到 CRM 系统的工时事项保存接口 saveWorkHourMatter
+    """
+    import asyncio
+    import re
+    import httpx
+    from app.database import AsyncSessionLocal
+    from app.models.user import User as DbUser, PositionType, UserRole
+    from sqlalchemy import select
+    
+    # 延迟 0.5 秒，确保外层主线程的数据库事务完全 commit，防止并发数据冲突
+    await asyncio.sleep(0.5)
+    
+    # 初始化日志记录器
+    logger = logging.getLogger("battle100")
+    
+    is_triangle = (action_type == "triangle" or event_type == "triangle")
+    is_happiness = (action_type == "happiness" or event_type == "happiness")
+    is_marketing_report = (action_type == "marketing_report" or event_type == "marketing_report")
+    
+    if not (is_triangle or is_happiness or is_marketing_report):
+        # 既不是铁三角行动、客户幸福动作，也不是营销内部播报，则跳过推送
+        return
+
+    # 从数据库中获取所有候选人的角色信息以供判断
+    users_to_push = []
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            if is_triangle:
+                # 铁三角行动：当播报人是营销岗/目标官，或者选了营销联动人时触发
+                # 将播报人姓名和营销联动人列表合并去重，得到所有需要检测资格的候选人
+                all_candidates = list(set([employee_name] + (marketing_copartners or [])))
+                stmt = select(DbUser).where(DbUser.name.in_(all_candidates), DbUser.is_active == True)
+                res = await db.execute(stmt)
+                db_users = res.scalars().all()
+                
+                # 挑选出其中是营销岗（position_type == marketing）、目标官（role == target_officer）或管理员的用户
+                for u in db_users:
+                    if (
+                        u.position_type == PositionType.MARKETING or 
+                        u.role == UserRole.TARGET_OFFICER or
+                        u.role == UserRole.ADMIN
+                    ):
+                        users_to_push.append(u)
+                        
+            elif is_happiness:
+                # 客户幸福动作：仅当播报人是营销岗或目标官时触发
+                stmt = select(DbUser).where(DbUser.name == employee_name, DbUser.is_active == True)
+                res = await db.execute(stmt)
+                user = res.scalar_one_or_none()
+                if user:
+                    if (
+                        user.position_type == PositionType.MARKETING or 
+                        user.role == UserRole.TARGET_OFFICER or
+                        user.role == UserRole.ADMIN
+                    ):
+                        users_to_push.append(user)
+                        
+            elif is_marketing_report:
+                # 营销内部播报：直接为播报人打卡（不限制额外角色判断，因为此入口本就是营销人员专有）
+                stmt = select(DbUser).where(DbUser.name == employee_name, DbUser.is_active == True)
+                res = await db.execute(stmt)
+                user = res.scalar_one_or_none()
+                if user:
+                    users_to_push.append(user)
+                else:
+                    logger.warning(f"CRM工时推送提示：未在本地数据库找到营销内部播报人 {employee_name}，将直接采用此名字尝试打卡。")
+                    # 本地匿名空类兜底
+                    class FakeUser:
+                        name = employee_name
+                    users_to_push.append(FakeUser())
+        except Exception as e:
+            logger.error(f"CRM工时推送错误：在查询候选人角色信息时发生异常: {e}")
+            return
+
+    if not users_to_push:
+        logger.info(f"战报ID {broadcast_id} 未匹配到符合条件的打卡人，跳过CRM推送")
+        return
+
+    belong_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # 针对每一个符合条件的人分别进行打卡（多次打卡逻辑）
+    for u in users_to_push:
+        cur_user_name = u.name
+        
+        if is_triangle:
+            # 协助人中需剔除打卡人自己
+            partners = [name for name in (marketing_copartners or []) if name != cur_user_name]
+            
+            project_list = []
+            if project_name and project_name != "未定":
+                project_list.append({
+                    "projectId": crm_opportunity_id or "",
+                    "projectName": project_name
+                })
+                
+            payload = {
+                "userName": cur_user_name,
+                "belongDate": belong_date,
+                "customerName": customer_name or "未定客户",
+                "matterType": "business_expansion",
+                "matterProgress": action_description or content,
+                "assistUserNames": partners,
+                "assistContent": "",
+                "projectList": project_list
+            }
+            
+        elif is_happiness:
+            project_list = []
+            if project_name and project_name != "未定":
+                project_list.append({
+                    "projectId": crm_opportunity_id or "",
+                    "projectName": project_name
+                })
+                
+            payload = {
+                "userName": cur_user_name,
+                "belongDate": belong_date,
+                "customerName": customer_name or "客户幸福关怀单位",
+                "matterType": "customer_maintenance",
+                "matterProgress": action_description or content,
+                "assistUserNames": [],
+                "assistContent": "",
+                "projectList": project_list
+            }
+            
+        elif is_marketing_report:
+            # 状态机行解析
+            lines = content.split('\n')
+            parsed_matter_type = "daily_work"
+            if "【日常工作】" in content:
+                parsed_matter_type = "daily_work"
+            elif "【回款跟进】" in content:
+                parsed_matter_type = "payment_follow_up"
+
+            region = ""
+            customer = customer_name
+            section = ""
+            is_important = False
+            assist_users = []
+            contracts = []
+            
+            progress_lines = []
+            help_lines = []
+            
+            in_progress = False
+            in_help = False
+            
+            for line in lines:
+                line_strip = line.strip()
+                if not line_strip:
+                    if in_progress:
+                        progress_lines.append("")
+                    if in_help:
+                        help_lines.append("")
+                    continue
+                    
+                if line_strip.startswith("* **区域**："):
+                    region = line_strip.replace("* **区域**：", "").strip()
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **业主单位**："):
+                    if not customer:
+                        customer = line_strip.replace("* **业主单位**：", "").strip()
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **科/股室**："):
+                    section = line_strip.replace("* **科/股室**：", "").strip()
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **是否重点**："):
+                    is_important = "是" in line_strip
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **协助人**："):
+                    assist_str = line_strip.replace("* **协助人**：", "").strip()
+                    if assist_str != "无":
+                        assist_users = [name.strip() for name in re.split(r"[,，、\s]+", assist_str) if name.strip()]
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **关联合同**："):
+                    contract_str = line_strip.replace("* **关联合同**：", "").strip()
+                    if contract_str != "无":
+                        contracts = [c.strip() for c in re.split(r"[,，、]+", contract_str) if c.strip()]
+                    in_progress = False
+                    in_help = False
+                elif line_strip.startswith("* **当前进展**："):
+                    in_progress = True
+                    in_help = False
+                elif line_strip.startswith("* **需协助事项**："):
+                    in_help = True
+                    in_progress = False
+                else:
+                    if in_progress:
+                        progress_lines.append(line)
+                    elif in_help:
+                        help_lines.append(line)
+
+            matter_progress = "\n".join(progress_lines).strip()
+            assist_content = "\n".join(help_lines).strip()
+            
+            if assist_content == "无" or not assist_content:
+                assist_content = ""
+                
+            project_list = []
+            for c in contracts:
+                project_list.append({
+                    "projectId": "",
+                    "projectName": c
+                })
+                
+            if customer == "未指定":
+                customer = "未指定客户"
+                
+            final_assist_users = [name for name in assist_users if name != cur_user_name]
+            
+            payload = {
+                "userName": cur_user_name,
+                "belongDate": belong_date,
+                "customerName": customer or "未指定客户",
+                "matterType": parsed_matter_type,
+                "matterProgress": matter_progress or content,
+                "assistUserNames": final_assist_users,
+                "assistContent": assist_content,
+                "projectList": project_list
+            }
+            
+        url = "https://zdcrm.zdpg.com.cn/api/outside/saveWorkHourMatter"
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "access_token": "battle100_crm_push_token_2026"
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    if res_json.get("code") == 1 or res_json.get("result") == "true" or res_json.get("msg") == "成功":
+                        logger.info(f"CRM工时推送成功！打卡用户: {cur_user_name}, 播报ID: {broadcast_id}, 响应: {res_json}")
+                    else:
+                        logger.error(f"CRM工时推送业务失败：打卡用户: {cur_user_name}, 播报ID: {broadcast_id}, code: {res_json.get('code')}, message: {res_json.get('message') or res_json.get('msg')}")
+                else:
+                    logger.error(f"CRM工时推送网络失败：打卡用户: {cur_user_name}, 播报ID: {broadcast_id}, 状态码: {response.status_code}, 内容: {response.text}")
+        except Exception as push_err:
+            logger.error(f"CRM工时推送网络异常：打卡用户: {cur_user_name}, 播报ID: {broadcast_id}, 异常: {push_err}")
 
 
 router = APIRouter(prefix="/broadcast", tags=["播报"])
@@ -362,15 +648,27 @@ async def get_crm_projects(
                 cur.execute(query, (progress, start_of_month))
         projects = cur.fetchall()
         
-        # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID
-        used_opp_stmt = select(ReportDetail.crm_opportunity_id).where(
-            ReportDetail.crm_opportunity_id.isnot(None),
-            ReportDetail.crm_opportunity_id != ""
-        )
-        used_opp_res = await db.execute(used_opp_stmt)
-        used_opp_ids = set(str(x) for x in used_opp_res.scalars().all())
-        if include_opp_id and str(include_opp_id) in used_opp_ids:
-            used_opp_ids.discard(str(include_opp_id))
+        # 0. 查询本地系统所有已经关联并使用的 CRM 潜在项目 ID (对于已签合同项目 progress=90，过滤掉已经发布过合同签订播报的项目ID)
+        if progress == 90:
+            used_opp_stmt = select(BroadcastEvent.crm_opportunity_id).where(
+                BroadcastEvent.event_type == "contract_signed",
+                BroadcastEvent.is_deleted == False,
+                BroadcastEvent.crm_opportunity_id.isnot(None),
+                BroadcastEvent.crm_opportunity_id != ""
+            )
+            used_opp_res = await db.execute(used_opp_stmt)
+            used_opp_ids = set(str(x) for x in used_opp_res.scalars().all())
+            if include_opp_id and str(include_opp_id) in used_opp_ids:
+                used_opp_ids.discard(str(include_opp_id))
+        else:
+            used_opp_stmt = select(ReportDetail.crm_opportunity_id).where(
+                ReportDetail.crm_opportunity_id.isnot(None),
+                ReportDetail.crm_opportunity_id != ""
+            )
+            used_opp_res = await db.execute(used_opp_stmt)
+            used_opp_ids = set(str(x) for x in used_opp_res.scalars().all())
+            if include_opp_id and str(include_opp_id) in used_opp_ids:
+                used_opp_ids.discard(str(include_opp_id))
 
         # 批量获取关联人员的中文姓名与本地系统 ID 以免陷入 O(N) 循环查询
         all_user_codes = set()
@@ -680,6 +978,9 @@ async def list_broadcasts(
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
 
+    from sqlalchemy.orm import aliased
+    UserTeam = aliased(DbTeam)
+
     # 主查询语句
     query = select(
         BroadcastEvent.id,
@@ -699,9 +1000,10 @@ async def list_broadcasts(
         BroadcastEvent.attachment_urls,
         BroadcastEvent.is_urgent,
         DbUser.name.label("user_name"),
-        DbTeam.name.label("team_name")
+        func.coalesce(DbTeam.name, UserTeam.name).label("team_name")
     ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
      .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+     .outerjoin(UserTeam, DbUser.team_id == UserTeam.id)\
      .order_by(BroadcastEvent.created_at.desc())
 
     # 过滤条件 (主列表默认过滤掉已删除/进入回收站的战报)
@@ -1139,8 +1441,8 @@ async def update_broadcast(
     await db.commit()
     await db.refresh(event)
 
-    # 异步触发钉钉播报推送
-    if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
+    # 异步触发钉钉播报推送 (营销内部播报默认不推送，保持待推送状态)
+    if event.event_type != "marketing_report" and event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
         background_tasks.add_task(trigger_broadcast_push, event.id)
 
     # 触发大屏 WebSocket 刷新
@@ -1597,9 +1899,24 @@ async def create_broadcast(
     await db.commit()
     await db.refresh(event)
 
-    # 异步触发钉钉播报推送
-    if event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
+    # 异步触发钉钉播报推送 (营销内部播报默认不推送，保持待推送状态)
+    if event_type != "marketing_report" and event.push_status == PushStatus.PENDING and (event.push_channel == "dingtalk" or event.push_channel == "all"):
         background_tasks.add_task(trigger_broadcast_push, event.id)
+
+    # 异步将播报信息推送打卡到外部 CRM
+    background_tasks.add_task(
+        push_broadcast_to_crm_task,
+        event.id,
+        broadcast_in.action_type,
+        event.event_type,
+        broadcast_in.customer_name,
+        broadcast_in.employee_name or current_user.name,
+        broadcast_in.action_description,
+        broadcast_in.content,
+        broadcast_in.crm_opportunity_id,
+        broadcast_in.project_name,
+        broadcast_in.marketing_copartners,
+    )
 
     return event
 
@@ -1862,6 +2179,9 @@ async def export_broadcasts(
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
 
+    from sqlalchemy.orm import aliased
+    UserTeam = aliased(DbTeam)
+
     # 主查询语句（不进行分页，限制最多 10000 条数据）
     query = select(
         BroadcastEvent.id,
@@ -1876,9 +2196,10 @@ async def export_broadcasts(
         BroadcastEvent.crm_opportunity_id,
         BroadcastEvent.project_name,
         DbUser.name.label("user_name"),
-        DbTeam.name.label("team_name")
+        func.coalesce(DbTeam.name, UserTeam.name).label("team_name")
     ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
      .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+     .outerjoin(UserTeam, DbUser.team_id == UserTeam.id)\
      .order_by(BroadcastEvent.created_at.desc())\
      .limit(10000)
 
@@ -2035,6 +2356,18 @@ async def create_station_report(
     5. 后台触发钉钉 ActionCard 推送，解压密码直接包含在推送消息里
     6. WebSocket 广播到大屏
     """
+    def _log_err():
+        import traceback
+        import os
+        try:
+            log_dir = r"c:\APP\AI100\battle100\backend\scratch"
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, "error.log")
+            with open(log_path, "w", encoding="utf-8") as f:
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
+
     import uuid
     import httpx
     from app.config import settings
@@ -2075,10 +2408,11 @@ async def create_station_report(
             
             async with httpx.AsyncClient() as client:
                 try:
-                    resp = await client.post(upload_url, content=zip_bytes, headers=headers, timeout=30.0)
+                    resp = await client.post(upload_url, content=zip_bytes, headers=headers, timeout=120.0)
                     if resp.status_code not in [200, 201]:
                         raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
                 except Exception as e:
+                    _log_err()
                     raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
                     
             # 获取公开 URL，支持公网穿透域名替换
@@ -2100,10 +2434,11 @@ async def create_station_report(
                         "Content-Type": "image/png"  # 伪装 MIME 绕过限制
                     }
                     try:
-                        resp = await client.post(upload_url, content=file_bytes, headers=headers, timeout=30.0)
+                        resp = await client.post(upload_url, content=file_bytes, headers=headers, timeout=120.0)
                         if resp.status_code not in [200, 201]:
                             raise HTTPException(status_code=500, detail=f"附件上传至 Supabase Storage 失败: {resp.text}")
                     except Exception as e:
+                        _log_err()
                         raise HTTPException(status_code=500, detail=f"附件上传失败: {str(e)}")
                     
                     # 获取公开 URL，支持公网穿透域名替换
@@ -2266,6 +2601,9 @@ async def list_recycle_bin(
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
 
+    from sqlalchemy.orm import aliased
+    UserTeam = aliased(DbTeam)
+
     query = select(
         BroadcastEvent.id,
         BroadcastEvent.event_type,
@@ -2284,9 +2622,10 @@ async def list_recycle_bin(
         BroadcastEvent.attachment_urls,
         BroadcastEvent.is_urgent,
         DbUser.name.label("user_name"),
-        DbTeam.name.label("team_name")
+        func.coalesce(DbTeam.name, UserTeam.name).label("team_name")
     ).outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id)\
      .outerjoin(DbTeam, BroadcastEvent.team_id == DbTeam.id)\
+     .outerjoin(UserTeam, DbUser.team_id == UserTeam.id)\
      .where(BroadcastEvent.is_deleted == True)\
      .order_by(BroadcastEvent.updated_at.desc())  # 按删除/更新时间倒序
 
@@ -2528,6 +2867,167 @@ async def restore_broadcast(
         pass
         
     return {"message": "战报已成功从回收站中恢复，关联业绩已重算！"}
+
+
+# -------------------- 社交互动功能 (点赞与评论) --------------------
+
+class KpiLikeRequest(BaseModel):
+    target_id: int = Field(..., description="目标记录ID")
+    target_type: str = Field(..., description="目标类型: report_detail 或 broadcast_event")
+
+
+class KpiCommentRequest(BaseModel):
+    target_id: int = Field(..., description="目标记录ID")
+    target_type: str = Field(..., description="目标类型: report_detail 或 broadcast_event")
+    content: str = Field(..., description="评论内容")
+
+
+@router.post("/kpi/like", summary="对 KPI 指标明细点赞或取消点赞")
+async def toggle_kpi_like(
+    req: KpiLikeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    点赞/取消点赞通用接口。如果已点赞则取消点赞，未点赞则新增。所有注释必须使用中文。
+    """
+    from app.models.broadcast import KpiLike
+    from sqlalchemy import func
+    
+    try:
+        # 查找是否已经有点赞记录
+        stmt = select(KpiLike).where(
+            KpiLike.target_id == req.target_id,
+            KpiLike.target_type == req.target_type,
+            KpiLike.user_id == current_user.id
+        )
+        res = await db.execute(stmt)
+        like_record = res.scalar_one_or_none()
+        
+        is_liked = False
+        if like_record:
+            # 取消点赞
+            await db.delete(like_record)
+        else:
+            # 新增点赞
+            new_like = KpiLike(
+                target_id=req.target_id,
+                target_type=req.target_type,
+                user_id=current_user.id
+            )
+            db.add(new_like)
+            is_liked = True
+            
+        await db.commit()
+        
+        # 查询最新点赞总数
+        count_stmt = select(func.count(KpiLike.id)).where(
+            KpiLike.target_id == req.target_id,
+            KpiLike.target_type == req.target_type
+        )
+        count_res = await db.execute(count_stmt)
+        like_count = count_res.scalar() or 0
+        
+        return {
+            "success": True,
+            "is_liked": is_liked,
+            "like_count": like_count
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"点赞操作执行异常: {str(e)}")
+
+
+@router.post("/kpi/comment", summary="发表 KPI 指标明细评论")
+async def create_kpi_comment(
+    req: KpiCommentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    发表评论接口。所有注释必须使用中文。
+    """
+    from app.models.broadcast import KpiComment
+    from app.models.organization import Team
+    
+    # 保存评论
+    comment = KpiComment(
+        target_id=req.target_id,
+        target_type=req.target_type,
+        user_id=current_user.id,
+        content=req.content
+    )
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    
+    # 查询发表人战队名称
+    team_name = "—"
+    if current_user.team_id:
+        team_stmt = select(Team.name).where(Team.id == current_user.team_id)
+        team_res = await db.execute(team_stmt)
+        team_name = team_res.scalar() or "—"
+        
+    return {
+        "success": True,
+        "comment": {
+            "id": comment.id,
+            "content": comment.content,
+            "created_at": comment.created_at.strftime("%Y-%m-%d %H:%M:%S") if comment.created_at else "",
+            "reporter_name": current_user.name,
+            "team_name": team_name
+        }
+    }
+
+
+@router.get("/kpi/comments", summary="获取 KPI 指标明细评论列表")
+async def list_kpi_comments(
+    target_id: int = Query(..., description="目标记录ID"),
+    target_type: str = Query(..., description="目标类型: report_detail 或 broadcast_event"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取某条记录的所有评论列表。所有注释必须使用中文。
+    """
+    from app.models.broadcast import KpiComment
+    from app.models.user import User as DbUser
+    from app.models.organization import Team
+    
+    stmt = (
+        select(
+            KpiComment.id,
+            KpiComment.content,
+            KpiComment.created_at,
+            DbUser.name.label("reporter_name"),
+            Team.name.label("team_name")
+        )
+        .join(DbUser, KpiComment.user_id == DbUser.id)
+        .outerjoin(Team, DbUser.team_id == Team.id)
+        .where(
+            KpiComment.target_id == target_id,
+            KpiComment.target_type == target_type
+        )
+        .order_by(KpiComment.created_at.asc())
+    )
+    
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    comments_list = []
+    for r in rows:
+        comments_list.append({
+            "id": r.id,
+            "content": r.content,
+            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+            "reporter_name": r.reporter_name,
+            "team_name": r.team_name or "—"
+        })
+        
+    return comments_list
+
 
 
 

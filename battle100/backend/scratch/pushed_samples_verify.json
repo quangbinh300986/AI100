@@ -1,0 +1,102 @@
+[
+  {
+    "work_hour": {
+      "id": "18ecaa7c123db5b6e785fcc4ba82d456",
+      "user_id": "402881e480701d220180701ebe19004b",
+      "create_by": "402881e480701d220180701ebe19004b",
+      "create_time": "2026-06-10 13:08:33",
+      "is_del": "0",
+      "title": "清远市潮汕商会",
+      "start_time": "2026-06-09 00:00:00"
+    },
+    "details": [
+      {
+        "id": "ebc4bcdaec55d6958947102de1a3e5b3",
+        "customer_name": "清远市潮汕商会",
+        "matter_type": "业务拓展",
+        "matter_progress": "到清远潮汕商会对接沟通文旅项目用地报批手续及英德银坑矿区耕地集中整治区项目选址相关事项。",
+        "is_del": "0"
+      }
+    ]
+  },
+  {
+    "work_hour": {
+      "id": "9954ff171408bbfabe0572ad72c80037",
+      "user_id": "zhengzipeng_okbl",
+      "create_by": "zhengzipeng_okbl",
+      "create_time": "2026-06-10 13:08:33",
+      "is_del": "0",
+      "title": "清远市潮汕商会",
+      "start_time": "2026-06-09 00:00:00"
+    },
+    "details": [
+      {
+        "id": "fa7f65492c843dc1ff190466db177e8b",
+        "customer_name": "清远市潮汕商会",
+        "matter_type": "业务拓展",
+        "matter_progress": "到清远潮汕商会对接沟通文旅项目用地报批手续及英德银坑矿区耕地集中整治区项目选址相关事项。",
+        "is_del": "0"
+      }
+    ]
+  },
+  {
+    "work_hour": {
+      "id": "f3d9dfc753bd18fd3bbcdb80dad05606",
+      "user_id": "402881e48ba77a53018eb611c2d81fa5",
+      "create_by": "402881e48ba77a53018eb611c2d81fa5",
+      "create_time": "2026-06-10 13:08:30",
+      "is_del": "0",
+      "title": "广州市增城区新塘镇人民政府",
+      "start_time": "2026-06-09 00:00:00"
+    },
+    "details": [
+      {
+        "id": "711cf00ebef5bb7edeb745f360c14159",
+        "customer_name": "广州市增城区新塘镇人民政府",
+        "matter_type": "业务拓展",
+        "matter_progress": "汇报新塘镇雅瑶河评估初步成果。",
+        "is_del": "0"
+      }
+    ]
+  },
+  {
+    "work_hour": {
+      "id": "e58d7a7cff546c1961a9cc19efcc570c",
+      "user_id": "chenhaolong_4n4c",
+      "create_by": "chenhaolong_4n4c",
+      "create_time": "2026-06-10 13:08:29",
+      "is_del": "0",
+      "title": "广东珠三角城际轨道交通有限公司",
+      "start_time": "2026-06-08 00:00:00"
+    },
+    "details": [
+      {
+        "id": "c76601c5771533339a4241d080323df7",
+        "customer_name": "广东珠三角城际轨道交通有限公司",
+        "matter_type": "客户维护",
+        "matter_progress": "（2）对于客户提出的问题，不仅解决表面需求，还深入挖掘潜在需求并提供解决方案；（3）看见客户的顾虑点或难点，力所能及地给予专业方面的支持与帮助，这是真诚、纯粹的相助；（4）客户主动提出的额外服务，尽可能给予响应。团队确实有困难难以按预期响应的，要联合营销经理，以巧妙、委婉且不失真诚的方式与客户沟通，妥善处理。。",
+        "is_del": "0"
+      }
+    ]
+  },
+  {
+    "work_hour": {
+      "id": "7a9b58268e90f7f15663cb9143b44621",
+      "user_id": "402881e480701d220180701ebe19004b",
+      "create_by": "402881e480701d220180701ebe19004b",
+      "create_time": "2026-06-10 13:08:25",
+      "is_del": "0",
+      "title": "英德市自然资源局",
+      "start_time": "2026-06-08 00:00:00"
+    },
+    "details": [
+      {
+        "id": "0155552ceae3a8e198bedcbf2ec8122d",
+        "customer_name": "英德市自然资源局",
+        "matter_type": "业务拓展",
+        "matter_progress": "1，到英德自然资源局拜访认识用地股、规划股、修复股业主，了解临时用地手续相关流程。",
+        "is_del": "0"
+      }
+    ]
+  }
+]

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker, Descriptions } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, Button, Tag, Space, Typography, message, Modal, Input, Form, Badge, Select, Cascader, Alert, Collapse, Checkbox, Upload, Radio, Spin, Tabs, Tooltip, Drawer, Divider, DatePicker, Descriptions, Carousel } from 'antd'
 import dayjs from 'dayjs'
 import {
   DollarOutlined,
@@ -21,10 +21,14 @@ import {
   SearchOutlined,
   TeamOutlined,
   ExportOutlined,
-  SyncOutlined
+  SyncOutlined,
+  SoundOutlined,
+  LikeOutlined,
+  LikeFilled,
+  MessageOutlined
 } from '@ant-design/icons'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
-import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail } from '@shared/api/dashboard'
+import { getDashboardData, getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail, toggleKpiLike, addKpiComment, getKpiComments } from '@shared/api/dashboard'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import type { DashboardData, MyStatsResponse, RankingItem } from '@shared/types'
@@ -58,6 +62,341 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   next_sales_plan: "销售：（新签、回款、营销动作等）\n1. \n2. \n3. "
 }
 
+// ==========================================
+//          通用社交互动单元格组件
+// ==========================================
+interface SocialCellProps {
+  content: string
+  recordId: number
+  targetType: 'report_detail' | 'broadcast_event'
+  initialLikes: number
+  initialComments: number
+  initialLiked: boolean
+}
+
+const SocialCell: React.FC<SocialCellProps> = ({
+  content,
+  recordId,
+  targetType,
+  initialLikes = 0,
+  initialComments = 0,
+  initialLiked = false
+}) => {
+  const [likes, setLikes] = useState(initialLikes)
+  const [liked, setLiked] = useState(initialLiked)
+  const [commentsCount, setCommentsCount] = useState(initialComments)
+  
+  const [showComments, setShowComments] = useState(false)
+  const [commentsList, setCommentsList] = useState<any[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [submittingComment, setSubmittingComment] = useState(false)
+
+  // 处理点赞/取消点赞
+  const handleLike = async () => {
+    try {
+      const res = await toggleKpiLike({ target_id: recordId, target_type: targetType })
+      if (res && res.success) {
+        setLiked(res.is_liked)
+        setLikes(res.like_count)
+      }
+    } catch (err) {
+      message.error('点赞操作失败')
+    }
+  }
+
+  // 获取讨论列表
+  const fetchComments = async () => {
+    setLoadingComments(true)
+    try {
+      const res = await getKpiComments({ target_id: recordId, target_type: targetType })
+      if (res && Array.isArray(res)) {
+        setCommentsList(res)
+        setCommentsCount(res.length)
+      }
+    } catch (err) {
+      message.error('获取讨论列表失败')
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // 展开折叠讨论区
+  const toggleComments = () => {
+    const nextShow = !showComments
+    setShowComments(nextShow)
+    if (nextShow) {
+      fetchComments()
+    }
+  }
+
+  // 提交讨论
+  const handleCommentSubmit = async () => {
+    if (!commentText.trim()) {
+      message.warning('讨论内容不能为空')
+      return
+    }
+    setSubmittingComment(true)
+    try {
+      const res = await addKpiComment({
+        target_id: recordId,
+        target_type: targetType,
+        content: commentText.trim()
+      })
+      if (res && res.success && res.comment) {
+        message.success('讨论发表成功')
+        setCommentText('')
+        // 无缝追加到讨论列表
+        setCommentsList(prev => [...prev, res.comment])
+        setCommentsCount(prev => prev + 1)
+      }
+    } catch (err) {
+      message.error('讨论发表失败')
+    } finally {
+      setSubmittingComment(false)
+    }
+  }
+
+  return (
+    <div style={{ wordBreak: 'break-all' }}>
+      {/* 播报原文 */}
+      <div style={{ fontSize: 12, lineHeight: '1.6', marginBottom: 8, whiteSpace: 'pre-wrap' }}>
+        {content}
+      </div>
+      
+      {/* 社交互动操作栏 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: 12, marginTop: '8px' }}>
+        {/* 点赞 */}
+        <span 
+          onClick={handleLike} 
+          style={{ 
+            cursor: 'pointer', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '4px',
+            color: liked ? '#ff7a45' : '#8c8c8c',
+            fontWeight: liked ? 'bold' : 'normal',
+            transition: 'all 0.2s'
+          }}
+        >
+          {liked ? <LikeFilled style={{ color: '#ff7a45' }} /> : <LikeOutlined />}
+          <span>点赞 {likes}</span>
+        </span>
+
+        {/* 评论 */}
+        <span 
+          onClick={toggleComments} 
+          style={{ 
+            cursor: 'pointer', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '4px',
+            color: showComments ? '#1890ff' : '#8c8c8c',
+            transition: 'all 0.2s'
+          }}
+        >
+          <MessageOutlined />
+          <span>讨论 {commentsCount}</span>
+        </span>
+      </div>
+
+      {/* 折叠内嵌讨论面板 */}
+      {showComments && (
+        <div style={{ 
+          marginTop: 10, 
+          padding: '10px 12px', 
+          background: '#fafafa', 
+          borderRadius: 6, 
+          border: '1px solid #f0f0f0',
+          boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.02)'
+        }}>
+          {/* 发表讨论输入框 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <Input.TextArea
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              placeholder="说点好听的参与讨论吧..."
+              autoSize={{ minRows: 1, maxRows: 3 }}
+              size="small"
+              onKeyDown={(e) => {
+                // Ctrl+Enter 快捷键发送
+                if (e.ctrlKey && e.key === 'Enter') {
+                  handleCommentSubmit()
+                }
+              }}
+            />
+            <Button 
+              type="primary" 
+              size="small" 
+              loading={submittingComment} 
+              onClick={handleCommentSubmit}
+              style={{ alignSelf: 'flex-end', height: 32 }}
+            >
+              发表
+            </Button>
+          </div>
+
+          {/* 讨论历史列表 */}
+          <Spin spinning={loadingComments} size="small">
+            {commentsList.length === 0 ? (
+              <div style={{ color: '#bfbfbf', textAlign: 'center', padding: '6px 0', fontSize: 11 }}>
+                暂无讨论，快来发表观点吧~
+              </div>
+            ) : (
+              <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {commentsList.map(c => (
+                  <div key={c.id} style={{ fontSize: 11, borderBottom: '1px dashed #f0f0f0', paddingBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8c8c8c', marginBottom: 2 }}>
+                      <span>
+                        <strong style={{ color: '#595959' }}>{c.reporter_name}</strong>
+                        <span style={{ fontSize: 10, opacity: 0.85 }}> ({c.team_name})</span>
+                      </span>
+                      <span style={{ fontSize: 9, opacity: 0.8 }}>{dayjs(c.created_at).format('MM-dd HH:mm')}</span>
+                    </div>
+                    <div style={{ color: '#262626', paddingLeft: 4, whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{c.content}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Spin>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// 区域级联选择配置配置，包含广东省主要市区及各个区县，以及北京市和外省
+const REGION_OPTIONS = [
+  {
+    value: '广东省',
+    label: '广东省',
+    children: [
+      {
+        value: '广州市',
+        label: '广州市',
+        children: [
+          { value: '越秀区', label: '越秀区' },
+          { value: '荔湾区', label: '荔湾区' },
+          { value: '海珠区', label: '海珠区' },
+          { value: '天河区', label: '天河区' },
+          { value: '白云区', label: '白云区' },
+          { value: '黄埔区', label: '黄埔区' },
+          { value: '番禺区', label: '番禺区' },
+          { value: '花都区', label: '花都区' },
+          { value: '南沙区', label: '南沙区' },
+          { value: '从化区', label: '从化区' },
+          { value: '增城区', label: '增城区' },
+        ],
+      },
+      {
+        value: '佛山市',
+        label: '佛山市',
+        children: [
+          { value: '禅城区', label: '禅城区' },
+          { value: '南海区', label: '南海区' },
+          { value: '顺德区', label: '顺德区' },
+          { value: '三水区', label: '三水区' },
+          { value: '高明区', label: '高明区' },
+        ],
+      },
+      {
+        value: '深圳市',
+        label: '深圳市',
+        children: [
+          { value: '福田区', label: '福田区' },
+          { value: '罗湖区', label: '罗湖区' },
+          { value: '南山区', label: '南山区' },
+          { value: '宝安区', label: '宝安区' },
+          { value: '龙岗区', label: '龙岗区' },
+          { value: '盐田区', label: '盐田区' },
+          { value: '龙华区', label: '龙华区' },
+          { value: '坪山区', label: '坪山区' },
+          { value: '光明区', label: '光明区' },
+          { value: '大鹏新区', label: '大鹏新区' },
+        ]
+      },
+      {
+        value: '清远市',
+        label: '清远市',
+        children: [
+          { value: '清城区', label: '清城区' },
+          { value: '清新区', label: '清新区' },
+          { value: '佛冈县', label: '佛冈县' },
+          { value: '阳山县', label: '阳山县' },
+          { value: '连山壮族瑶族自治县', label: '连山壮族瑶族自治县' },
+          { value: '连南瑶族自治县', label: '连南瑶族自治县' },
+          { value: '英德市', label: '英德市' },
+          { value: '连州市', label: '连州市' },
+        ],
+      },
+      {
+        value: '湛江市',
+        label: '湛江市',
+        children: [
+          { value: '赤坎区', label: '赤坎区' },
+          { value: '霞山区', label: '霞山区' },
+          { value: '坡头区', label: '坡头区' },
+          { value: '麻章区', label: '麻章区' },
+          { value: '遂溪县', label: '遂溪县' },
+          { value: '徐闻县', label: '徐闻县' },
+          { value: '廉江市', label: '廉江市' },
+          { value: '雷州市', label: '雷州市' },
+          { value: '吴川市', label: '吴川市' },
+        ],
+      },
+      {
+        value: '茂名市',
+        label: '茂名市',
+        children: [
+          { value: '茂南区', label: '茂南区' },
+          { value: '电白区', label: '电白区' },
+          { value: '高州市', label: '高州市' },
+          { value: '化州市', label: '化州市' },
+          { value: '信宜市', label: '信宜市' },
+        ],
+      },
+      {
+        value: '云浮市',
+        label: '云浮市',
+        children: [
+          { value: '云城区', label: '云城区' },
+          { value: '云安区', label: '云安区' },
+          { value: '新兴县', label: '新兴县' },
+          { value: '郁南县', label: '郁南县' },
+          { value: '罗定市', label: '罗定市' },
+        ],
+      },
+    ],
+  },
+  {
+    value: '北京市',
+    label: '北京市',
+    children: [
+      { value: '东城区', label: '东城区' },
+      { value: '西城区', label: '西城区' },
+      { value: '朝阳区', label: '朝阳区' },
+      { value: '丰台区', label: '丰台区' },
+      { value: '石景山区', label: '石景山区' },
+      { value: '海淀区', label: '海淀区' },
+      { value: '门头沟区', label: '门头沟区' },
+      { value: '房山区', label: '房山区' },
+      { value: '通州区', label: '通州区' },
+      { value: '顺义区', label: '顺义区' },
+      { value: '昌平区', label: '昌平区' },
+      { value: '大兴区', label: '大兴区' },
+      { value: '怀柔区', label: '怀柔区' },
+      { value: '平谷区', label: '平谷区' },
+      { value: '密云区', label: '密云区' },
+      { value: '延庆区', label: '延庆区' },
+    ]
+  },
+  {
+    value: '外省',
+    label: '外省'
+  }
+]
+
 // 判定是否为播报无数据的兜底文本
 const isDummyBroadcast = (text: string) => {
   if (!text) return true
@@ -81,6 +420,8 @@ const Dashboard: React.FC = () => {
   const isMarketing = user?.position_type === 'marketing' || ['target_officer', 'marketing_staff', 'tech_marketing'].includes(user?.role || '');
 
   // 周复盘个人填写相关状态和函数
+  const [broadcastSubmitLoading, setBroadcastSubmitLoading] = useState(false)
+  const [middleOfficeSubmitLoading, setMiddleOfficeSubmitLoading] = useState(false)
   const [hasWeeklyReport, setHasWeeklyReport] = useState(false)
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
   const [weeklyWriteVisible, setWeeklyWriteVisible] = useState(false)
@@ -89,6 +430,13 @@ const Dashboard: React.FC = () => {
   const [weeklySubmitLoading, setWeeklySubmitLoading] = useState(false)
   const [weeklyStatusToSubmit, setWeeklyStatusToSubmit] = useState<'draft' | 'submitted'>('draft')
   const [weeklyForm] = Form.useForm()
+
+  // 钉钉同步弹窗状态，所有注释必须使用中文
+  const [syncDingtalkVisible, setSyncDingtalkVisible] = useState(false)
+  const [syncDingtalkReportId, setSyncDingtalkReportId] = useState<number | null>(null)
+  const [syncDingtalkLoading, setSyncDingtalkLoading] = useState(false)
+  const [syncDingtalkForm] = Form.useForm()
+  const [writingWeeklyReport, setWritingWeeklyReport] = useState<any>(null)
 
   // ⚡ 智能拉取 CRM 业绩与进度预览弹窗状态
   const [crmPreviewVisible, setCrmPreviewVisible] = useState(false)
@@ -108,6 +456,7 @@ const Dashboard: React.FC = () => {
 
   const handleAiOptimizeWeekly = async () => {
     const values = weeklyForm.getFieldsValue()
+    const target_plan = isMarketing ? values.sales_plan : values.delivery_plan
     const actual = isMarketing ? values.sales_actual : values.delivery_actual
     const highlights = isMarketing ? values.sales_highlights : values.delivery_highlights
     const blockers = isMarketing ? values.sales_blockers : values.delivery_blockers
@@ -129,6 +478,7 @@ const Dashboard: React.FC = () => {
     try {
       const res = await post<any>('/llm/agents/extractor/chat', {
         variables: {
+          target_plan: target_plan || '',
           actual: actual || '',
           highlights: highlights || '',
           blockers: blockers || '',
@@ -221,11 +571,11 @@ const Dashboard: React.FC = () => {
           delivery_actual: data.delivery_actual,
           sales_actual: data.sales_actual
         })
-        message.success('已自动提取本周您的交付及销售实际数据！')
+        message.success('已成功导入上周实际完成及本周播报数据！')
       }
     } catch (err) {
       console.error(err)
-      message.error('自动提取当周播报数据失败')
+      message.error('导入上周周报与本周播报数据失败')
     } finally {
       setWeeklyExtractLoading(false)
     }
@@ -406,6 +756,7 @@ const Dashboard: React.FC = () => {
         }
       })
       weeklyForm.setFieldsValue(formValues)
+      setWritingWeeklyReport(data)
     } finally {
       setWeeklyWriteLoading(false)
     }
@@ -434,6 +785,35 @@ const Dashboard: React.FC = () => {
     loadWeeklyReportData(today)
   }
 
+  // 打开同步至钉钉日志确认弹窗，所有注释必须使用中文
+  const handleShowSyncDingtalkModal = (reportId: number) => {
+    setSyncDingtalkReportId(reportId)
+    syncDingtalkForm.setFieldsValue({
+      templateId: '19eab0d8aa4e349cb1df85146edac9cf' // 预填默认模板ID
+    })
+    setSyncDingtalkVisible(true)
+  }
+
+  // 异步调用后端接口一键同步个人周报至钉钉工作日志，所有注释必须使用中文
+  const handleSyncWeeklyReportToDingtalk = async () => {
+    if (!syncDingtalkReportId) return
+    setSyncDingtalkLoading(true)
+    try {
+      const values = syncDingtalkForm.getFieldsValue()
+      const res = await post<any>(`/reports/weekly/${syncDingtalkReportId}/sync-to-dingtalk`, {
+        template_id: values.templateId || undefined
+      })
+      message.success(res?.message || '同步填报至钉钉工作日志成功！')
+      setSyncDingtalkVisible(false)
+    } catch (err: any) {
+      console.error('同步钉钉日志失败:', err)
+      const errMsg = err?.response?.data?.detail || err?.message || '同步填报至钉钉日志失败，请稍后重试'
+      message.error(errMsg)
+    } finally {
+      setSyncDingtalkLoading(false)
+    }
+  }
+
   const handleWeeklySubmit = async (values: any) => {
     setWeeklySubmitLoading(true)
     try {
@@ -449,6 +829,19 @@ const Dashboard: React.FC = () => {
         message.success(weeklyStatusToSubmit === 'draft' ? '周复盘草稿已暂存' : '周复盘已正式提交')
         setWeeklyWriteVisible(false)
         setHasWeeklyReport(true)
+        // 如果是正式提交，且提交返回了报告ID，询问是否同步至钉钉，所有注释必须使用中文
+        if (weeklyStatusToSubmit === 'submitted' && res.id) {
+          Modal.confirm({
+            title: '📢 同步至钉钉日志',
+            content: '您的个人周报已成功正式提交，是否立即将其同步至钉钉工作日志中？',
+            okText: '立即同步',
+            cancelText: '暂不同步',
+            centered: true,
+            onOk: () => {
+              handleShowSyncDingtalkModal(res.id)
+            }
+          })
+        }
       }
     } catch (err: any) {
       console.error(err)
@@ -457,6 +850,56 @@ const Dashboard: React.FC = () => {
       setWeeklySubmitLoading(false)
     }
   }
+
+  // 自动保存周复盘草稿核心方法，所有注释必须使用中文
+  const handleAutoSaveDraft = async () => {
+    // 只有当弹窗处于打开状态时，才执行自动保存
+    if (!weeklyWriteVisible) return
+    try {
+      const values = weeklyForm.getFieldsValue()
+      const [mon, sun] = getMondayAndSunday(weeklyDate)
+      const payload = {
+        ...values,
+        start_date: mon.format('YYYY-MM-DD'),
+        end_date: sun.format('YYYY-MM-DD'),
+        status: 'draft'
+      }
+      await post<any>('/reports/weekly', payload)
+      console.log('【自动存盘】大盘弹窗个人周复盘草稿已自动保存（后台静默）')
+    } catch (err) {
+      console.error('【自动存盘】后台自动保存草稿失败', err)
+    }
+  }
+
+  // 自动保存草稿侦听器：包含60秒定时及窗口失去焦点/标签页隐藏，所有注释必须使用中文
+  useEffect(() => {
+    let intervalId: any = null
+
+    const handleWindowBlurOrHide = () => {
+      if (weeklyWriteVisible) {
+        handleAutoSaveDraft()
+      }
+    }
+
+    if (weeklyWriteVisible) {
+      // 1. 每隔60秒自动执行一次草稿暂存
+      intervalId = setInterval(() => {
+        handleAutoSaveDraft()
+      }, 60000)
+
+      // 2. 监听浏览器标签隐藏与浏览器窗口失去焦点事件
+      document.addEventListener('visibilitychange', handleWindowBlurOrHide)
+      window.addEventListener('blur', handleWindowBlurOrHide)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+      document.removeEventListener('visibilitychange', handleWindowBlurOrHide)
+      window.removeEventListener('blur', handleWindowBlurOrHide)
+    }
+  }, [weeklyWriteVisible, weeklyDate])
 
   // 个人奋斗目标矩阵大盘状态变量，所有注释均采用中文
   const [matrixData, setMatrixData] = useState<any[]>([])
@@ -498,6 +941,14 @@ const Dashboard: React.FC = () => {
   const [broadcastForm] = Form.useForm()
   const watchHappinessScore = Form.useWatch('happinessScore', broadcastForm)
   const watchStationCategory = Form.useWatch('stationCategory', broadcastForm)
+  const watchIntelligenceType = Form.useWatch('intelligenceType', broadcastForm)
+  const watchMarketingCategory = Form.useWatch('marketingCategory', broadcastForm)
+  
+  // 新增中台幸福委播报状态及表单，所有注释必须使用中文
+  const [middleOfficeModalVisible, setMiddleOfficeModalVisible] = useState(false)
+  const [middleOfficeForm] = Form.useForm()
+  const watchFirstType = Form.useWatch('firstType', middleOfficeForm)
+
   const [currentActionType, setCurrentActionType] = useState<string>('')
   const [fileList, setFileList] = useState<any[]>([])
   const [usersList, setUsersList] = useState<{ id: number; name: string }[]>([])
@@ -777,12 +1228,12 @@ const Dashboard: React.FC = () => {
   // 全公司 KPI 详情弹窗状态
   const [companyKpiDetailModalVisible, setCompanyKpiDetailModalVisible] = useState(false)
   const [companyKpiDetailLoading, setCompanyKpiDetailLoading] = useState(false)
-  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads'>('contracts')
+  const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads' | 'station_reports'>('contracts')
   const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
   const [companyExportLoading, setCompanyExportLoading] = useState(false)
 
   // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
-  const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle'>('marketing_signing')
+  const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle' | 'station_reports'>('marketing_signing')
 
   // 周英雄榜实绩个人明细抽屉状态，所有注释必须使用中文
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false)
@@ -806,6 +1257,7 @@ const Dashboard: React.FC = () => {
         if (prev === 'leads') return 'potential_leads'
         if (prev === 'potential_leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
+        if (prev === 'triangle') return 'station_reports'
         return 'marketing_signing'
       })
     }, 8000)
@@ -824,7 +1276,7 @@ const Dashboard: React.FC = () => {
 
   // 核心数据拉取函数，注释全部使用中文
   const loadCompanyKpiData = async (
-    type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders',
+    type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads' | 'station_reports' | 'middle_office_report' | 'happiness_committee',
     params: {
       team_id?: number
       week?: number
@@ -865,7 +1317,10 @@ const Dashboard: React.FC = () => {
         triangle: '售前铁三角联动明细',
         leads: '新增有效商机线索明细',
         tenders: '公司累计中标项目明细',
-        potential_leads: '潜力商机线索明细'
+        potential_leads: '潜力商机线索明细',
+        station_reports: '公司驻点前线播报明细',
+        middle_office_report: '公司中台播报明细',
+        happiness_committee: '公司幸福委播报明细'
       }
       const title = typeMap[companyKpiDetailType] || '大盘指标明细'
 
@@ -912,7 +1367,7 @@ const Dashboard: React.FC = () => {
   }
 
   // 首次点击指标卡片，打开明细弹窗重置筛选条件，所有注释必须使用中文
-  const handleViewCompanyKpiDetail = (type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads') => {
+  const handleViewCompanyKpiDetail = (type: 'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads' | 'station_reports' | 'middle_office_report' | 'happiness_committee') => {
     setCompanyKpiDetailType(type)
     setCompanyFilterTeamId(undefined)
     setCompanyFilterWeek(undefined)
@@ -989,7 +1444,16 @@ const Dashboard: React.FC = () => {
             title: '描述',
             dataIndex: 'description',
             key: 'description',
-            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+            render: (val: string, record: any) => (
+              <SocialCell
+                content={val}
+                recordId={record.id}
+                targetType={record.target_type}
+                initialLikes={record.like_count}
+                initialComments={record.comment_count}
+                initialLiked={record.is_liked}
+              />
+            )
           }
         ]
       case 'leads':
@@ -1016,7 +1480,16 @@ const Dashboard: React.FC = () => {
             title: '播报描述',
             dataIndex: 'description',
             key: 'description',
-            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+            render: (val: string, record: any) => (
+              <SocialCell
+                content={val}
+                recordId={record.id}
+                targetType={record.target_type}
+                initialLikes={record.like_count}
+                initialComments={record.comment_count}
+                initialLiked={record.is_liked}
+              />
+            )
           }
         ]
       case 'happiness':
@@ -1043,7 +1516,16 @@ const Dashboard: React.FC = () => {
             title: '关怀动作描述',
             dataIndex: 'description',
             key: 'description',
-            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+            render: (val: string, record: any) => (
+              <SocialCell
+                content={val}
+                recordId={record.id}
+                targetType={record.target_type}
+                initialLikes={record.like_count}
+                initialComments={record.comment_count}
+                initialLiked={record.is_liked}
+              />
+            )
           }
         ]
       case 'triangle':
@@ -1054,7 +1536,35 @@ const Dashboard: React.FC = () => {
             title: '联动描述',
             dataIndex: 'description',
             key: 'description',
-            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+            render: (val: string, record: any) => (
+              <SocialCell
+                content={val}
+                recordId={record.id}
+                targetType={record.target_type}
+                initialLikes={record.like_count}
+                initialComments={record.comment_count}
+                initialLiked={record.is_liked}
+              />
+            )
+          }
+        ]
+      case 'station_reports':
+        return [
+          ...baseColumns,
+          {
+            title: '播报内容',
+            dataIndex: 'description',
+            key: 'description',
+            render: (val: string, record: any) => (
+              <SocialCell
+                content={val}
+                recordId={record.id}
+                targetType={record.target_type}
+                initialLikes={record.like_count}
+                initialComments={record.comment_count}
+                initialLiked={record.is_liked}
+              />
+            )
           }
         ]
       default:
@@ -1298,8 +1808,8 @@ const Dashboard: React.FC = () => {
       setCurrentActionType(type)
       setCrmProjects([])
       setSelectedProjectMarketingUsers([])
-      if (['potential_lead', 'lead_25', 'lead_75', 'contract'].includes(type)) {
-        loadCrmProjects(type)
+      if (['potential_lead', 'lead_25', 'lead_75', 'contract', 'marketing_report'].includes(type)) {
+        loadCrmProjects(type === 'marketing_report' ? 'contract' : type)
       }
       broadcastForm.setFieldsValue({
         crmProjectId: undefined,
@@ -1314,10 +1824,20 @@ const Dashboard: React.FC = () => {
         employeeName: allValues.employeeName || user?.name || '',
         happinessScore: 20,
         actionDescription: '',
-        content: type === 'station_report' ? '' : (type ? '奋战一百天，亮剑破六千！今日' : '')
+        content: ['station_report', 'marketing_report'].includes(type) ? '' : (type ? '奋战一百天，亮剑破六千！今日' : ''),
+        // 重置营销播报专属字段
+        marketingCategory: undefined,
+        marketingRegion: ['广东省', '广州市', '荔湾区'],
+        marketingOwner: undefined,
+        marketingSection: '',
+        marketingAssistors: [],
+        marketingContracts: [],
+        marketingProgress: '',
+        marketingIsImportant: 'no',
+        marketingHelpNeeded: ''
       })
-      if (type === 'happiness') {
-        loadCrmProjectsSearch()
+      if (['happiness', 'marketing_report'].includes(type)) {
+        loadCrmCustomers()
       }
       setFormVersion(v => v + 1)
       return
@@ -1403,13 +1923,45 @@ const Dashboard: React.FC = () => {
     }
 
     // C. 重新计算生成捷报文字
-    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback, happinessResult, happinessFeedback, recommendAction } = allValues
+    const { actionType, customerName, projectName, contractName, employeeName, happinessScore, actionDescription, budgetMoney, expectMoney, copartners, marketingCopartners, triangleResult, customerFeedback, happinessResult, happinessFeedback, recommendAction, marketingCategory, marketingRegion, marketingOwner, marketingSection, marketingAssistors, marketingContracts, marketingProgress, marketingIsImportant, marketingHelpNeeded } = allValues
     if (!actionType || actionType === 'station_report') return
     
     const prefix = '奋战一百天，亮剑破六千！今日'
     let generated = ''
     
     switch (actionType) {
+      case 'marketing_report': {
+        const isImportant = marketingIsImportant === 'yes'
+        let regionStr = '广东省'
+        if (Array.isArray(marketingRegion)) {
+          regionStr = marketingRegion.join('/')
+        } else if (typeof marketingRegion === 'string') {
+          regionStr = marketingRegion
+        }
+
+        if (marketingCategory === 'daily_work') {
+          generated = `【日常工作】\n` +
+            `* **区域**：${regionStr}\n` +
+            `* **业主单位**：${marketingOwner || '未指定'}\n` +
+            `* **科/股室**：${marketingSection || '无'}\n` +
+            `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+            `* **协助人**：${(marketingAssistors && marketingAssistors.length > 0) ? marketingAssistors.join(', ') : '无'}\n` +
+            `* **当前进展**：\n${marketingProgress || '无'}\n\n` +
+            `* **需协助事项**：\n${marketingHelpNeeded || '无'}`
+        } else if (marketingCategory === 'payment_followup') {
+          generated = `【回款跟进】\n` +
+            `* **区域**：${regionStr}\n` +
+            `* **业主单位**：${marketingOwner || '未指定'}\n` +
+            `* **科/股室**：${marketingSection || '无'}\n` +
+            `* **关联合同**：${(marketingContracts && marketingContracts.length > 0) ? marketingContracts.join(', ') : '无'}\n` +
+            `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+            `* **当前进展**：\n${marketingProgress || '无'}\n\n` +
+            `* **需协助事项**：\n${marketingHelpNeeded || '无'}`
+        } else {
+          generated = ''
+        }
+        break
+      }
       case 'potential_lead':
         generated = `${prefix}确定潜在线索：客户为${customerName || 'XX'}，项目金额${expectMoney || 0.0}万，赢战百日！`
         break
@@ -1593,17 +2145,106 @@ const Dashboard: React.FC = () => {
 
   // 真正执行发布广播的底层方法，所有注释采用中文
   const executePublishBroadcast = async (values: any) => {
+    setBroadcastSubmitLoading(true)
     try {
       if (values.actionType === 'station_report') {
+        let finalContent = ''
+        let finalTitle = values.title || ''
+        const isUrgent = !!values.isUrgent
+        const urgentStr = isUrgent ? '【紧急】' : ''
+
+        if (values.stationCategory === 'policy') {
+          if (!values.policyLevel) {
+            message.error('请选择政策层级！')
+            return
+          }
+          let points = []
+          if (values.policyOpportunity?.trim()) {
+            points.push(`1. 业务机会：\n${values.policyOpportunity.trim()}`)
+          }
+          if (values.policyRisk?.trim()) {
+            points.push(`2. 风险点：\n${values.policyRisk.trim()}`)
+          }
+          if (values.policyOther?.trim()) {
+            points.push(`3. 其他要点：\n${values.policyOther.trim()}`)
+          }
+
+          finalContent = `【政策层级】\n${values.policyLevel}`
+          if (points.length > 0) {
+            finalContent += `\n\n【核心要点】\n${points.join('\n\n')}`
+          }
+
+          const levelStr = `[${values.policyLevel}]`
+          if (!finalTitle.startsWith('【政策】') && !finalTitle.startsWith('【最新政策】')) {
+            finalTitle = `【政策】${urgentStr}${levelStr}${finalTitle}`
+          }
+        } else if (values.stationCategory === 'deployment') {
+          if (!values.meetingSubject?.trim()) {
+            message.error('请输入会议主题！')
+            return
+          }
+          let points = []
+          if (values.meetingProject?.trim()) {
+            points.push(`1. 项目方面：\n${values.meetingProject.trim()}`)
+          }
+          if (values.meetingFunds?.trim()) {
+            points.push(`2. 资金方面：\n${values.meetingFunds.trim()}`)
+          }
+          if (values.meetingInstructions?.trim()) {
+            points.push(`3. 领导批示或核心决议：\n${values.meetingInstructions.trim()}`)
+          }
+          if (values.meetingDeadline?.trim()) {
+            points.push(`4. 时间要求：\n${values.meetingDeadline.trim()}`)
+          }
+
+          finalContent = `【会议主题】\n${values.meetingSubject}\n\n` +
+            `【时间地点】\n${values.meetingTimePlace || '未指定'}\n\n` +
+            `【主持/出席领导】\n${values.meetingHost || '未指定'}`
+
+          if (points.length > 0) {
+            finalContent += `\n\n【会议要点】\n${points.join('\n\n')}`
+          }
+
+          if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】')) {
+            finalTitle = `【会议】${urgentStr}${finalTitle}`
+          }
+        } else if (values.stationCategory === 'intelligence') {
+          if (!values.intelligenceType) {
+            message.error('请选择情报类型！')
+            return
+          }
+          if (!values.intelligenceContent?.trim()) {
+            message.error('请输入具体情报内容！')
+            return
+          }
+          
+          const typeMap: Record<string, string> = {
+            peer: '同行',
+            personnel: '人事',
+            competitor: '对手',
+          }
+          const typeLabel = typeMap[values.intelligenceType] || '通用'
+
+          finalContent = `【情报类型】\n${typeLabel}\n\n` +
+            `【情报来源与可靠性】\n${values.intelligenceSource || '未填写'} (可靠性评估：${values.intelligenceReliability || '中'})\n\n` +
+            `【具体内容】\n${values.intelligenceContent}`
+
+          if (!finalTitle.startsWith('【情报') && !finalTitle.startsWith('【重大情报')) {
+            finalTitle = `【情报-${typeLabel}】${urgentStr}${finalTitle}`
+          }
+        } else {
+          finalContent = values.content || ''
+        }
+
         const formData = new FormData()
         formData.append('station_category', values.stationCategory)
         formData.append('station_location', values.stationLocation)
-        formData.append('title', values.title)
-        formData.append('content', values.content)
+        formData.append('title', finalTitle)
+        formData.append('content', finalContent)
         if (values.summary) {
           formData.append('summary', values.summary)
         }
-        formData.append('is_urgent', String(!!values.isUrgent))
+        formData.append('is_urgent', String(isUrgent))
         formData.append('push_channel', 'all')
         
         if (fileList && fileList.length > 0) {
@@ -1625,6 +2266,73 @@ const Dashboard: React.FC = () => {
           setBroadcastModalVisible(false)
           setCurrentActionType('')
           setFileList([])
+          broadcastForm.resetFields()
+          loadData()
+        }
+        return
+      } else if (values.actionType === 'marketing_report') {
+        let finalContent = ''
+        const isImportant = values.marketingIsImportant === 'yes'
+        const categoryLabel = values.marketingCategory === 'daily_work' ? '日常工作' : '回款跟进'
+        
+        let regionStr = '广东省'
+        if (Array.isArray(values.marketingRegion)) {
+          regionStr = values.marketingRegion.join('/')
+        } else if (typeof values.marketingRegion === 'string') {
+          regionStr = values.marketingRegion
+        }
+
+        if (values.marketingCategory === 'daily_work') {
+          if (!values.marketingProgress?.trim()) {
+            message.error('请输入事项当前进展！')
+            return
+          }
+          finalContent = `【日常工作】\n` +
+            `* **区域**：${regionStr}\n` +
+            `* **业主单位**：${values.marketingOwner || '未指定'}\n` +
+            `* **科/股室**：${values.marketingSection || '无'}\n` +
+            `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+            `* **协助人**：${(values.marketingAssistors && values.marketingAssistors.length > 0) ? values.marketingAssistors.join(', ') : '无'}\n` +
+            `* **当前进展**：\n${values.marketingProgress}\n\n` +
+            `* **需协助事项**：\n${values.marketingHelpNeeded || '无'}`
+        } else if (values.marketingCategory === 'payment_followup') {
+          if (!values.marketingProgress?.trim()) {
+            message.error('请输入事项当前进展！')
+            return
+          }
+          finalContent = `【回款跟进】\n` +
+            `* **区域**：${regionStr}\n` +
+            `* **业主单位**：${values.marketingOwner || '未指定'}\n` +
+            `* **科/股室**：${values.marketingSection || '无'}\n` +
+            `* **关联合同**：${(values.marketingContracts && values.marketingContracts.length > 0) ? values.marketingContracts.join(', ') : '无'}\n` +
+            `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+            `* **当前进展**：\n${values.marketingProgress}\n\n` +
+            `* **需协助事项**：\n${values.marketingHelpNeeded || '无'}`
+        } else {
+          message.error('请选择营销播报分类！')
+          return
+        }
+
+        if (!values.content?.trim()) {
+          message.error('最终生成战报文本不能为空！')
+          return
+        }
+
+        const payload: any = {
+          event_type: 'marketing_report',
+          content: values.content,
+          push_channel: 'all',
+          action_type: 'marketing_report',
+          customer_name: values.marketingOwner || '',
+          employee_name: user?.name || '',
+          team_id: user?.teamId || null
+        }
+        
+        const res = await post<any>('/broadcast', payload)
+        if (res) {
+          message.success('营销内部播报发布成功，大屏端与钉钉已同步推送！')
+          setBroadcastModalVisible(false)
+          setCurrentActionType('')
           broadcastForm.resetFields()
           loadData()
         }
@@ -1761,12 +2469,16 @@ const Dashboard: React.FC = () => {
       }
     } catch (err) {
       message.error('发布失败')
+    } finally {
+      setBroadcastSubmitLoading(false)
     }
   }
 
   // 提交战报广播的前置检测与拦截校验方法
   const handlePublishBroadcast = async (values: any) => {
-    if (values.actionType === 'station_report') {
+    if (broadcastSubmitLoading) return
+
+    if (['station_report', 'marketing_report'].includes(values.actionType)) {
       await executePublishBroadcast(values)
       return
     }
@@ -1788,6 +2500,7 @@ const Dashboard: React.FC = () => {
       }
     }
 
+    setBroadcastSubmitLoading(true)
     try {
       const customerName = values.customerName || values.contractName || values.projectName || ''
       // 请求后端进行重复检测与明细条数拉取
@@ -1807,6 +2520,8 @@ const Dashboard: React.FC = () => {
         })
         setShowDetails(false)
         setDuplicateModalVisible(true)
+        // 弹出拦截Modal时，重置Loading状态，以便用户在重复提示窗中选择
+        setBroadcastSubmitLoading(false)
         return
       }
     } catch (err: any) {
@@ -1817,6 +2532,31 @@ const Dashboard: React.FC = () => {
 
     // 若未发生重复或检查无拦截，正常执行发布
     await executePublishBroadcast(values)
+  }
+
+  // 提交中台幸福委播报的方法，所有注释必须使用中文
+  const handlePublishMiddleOfficeBroadcast = async (values: any) => {
+    if (middleOfficeSubmitLoading) return
+    setMiddleOfficeSubmitLoading(true)
+    try {
+      const payload: any = {
+        event_type: values.firstType === 'happiness' ? 'happiness_committee' : 'middle_office_report',
+        content: `【${values.secondType}】${values.content}`,
+        push_channel: 'all',
+        team_id: user?.teamId || null
+      }
+      const res = await post('/broadcast', payload)
+      if (res) {
+        message.success('中台幸福委播报发布成功，大屏端与钉钉已同步推送')
+        setMiddleOfficeModalVisible(false)
+        middleOfficeForm.resetFields()
+        loadData()
+      }
+    } catch (err) {
+      message.error('发布失败')
+    } finally {
+      setMiddleOfficeSubmitLoading(false)
+    }
   }
 
   const kpis = data?.kpiSummary
@@ -1922,6 +2662,13 @@ const Dashboard: React.FC = () => {
           color: '#fa8c16',
           list: data?.triangleBoard || []
         }
+      case 'station_reports':
+        return {
+          title: '📢 周前线驻点播报榜 (TOP 15)',
+          unit: '次',
+          color: '#fa541c',
+          list: data?.stationReportsBoard || []
+        }
       case 'marketing_signing':
       default:
         return {
@@ -1934,16 +2681,65 @@ const Dashboard: React.FC = () => {
   }
 
   // 状态灯辅助方法
-  const getLightStatus = (light: 'red' | 'yellow' | 'green' | undefined) => {
-    if (light === 'green') return 'success'
-    if (light === 'yellow') return 'warning'
-    return 'error'
+  const getLightText = (light: 'red' | 'yellow' | 'green' | undefined) => {
+    if (light === 'green') return '强劲绿灯'
+    if (light === 'yellow') return '预警黄灯'
+    return '警告红灯'
   }
 
-  const getLightText = (light: 'red' | 'yellow' | 'green' | undefined) => {
-    if (light === 'green') return '势头强劲'
-    if (light === 'yellow') return '稍有落后'
-    return '预警红灯'
+  const renderGlowingLight = (t: any) => {
+    const light = t.statusLight
+    const text = getLightText(light)
+    let gradient = 'radial-gradient(circle at 35% 35%, #ff9c9c 0%, #ff4d4f 60%, #a8071a 100%)'
+    let glow = '0 0 8px rgba(255, 77, 79, 0.8)'
+    let lightName = light || 'red'
+    
+    if (light === 'green') {
+      gradient = 'radial-gradient(circle at 35% 35%, #b7eb8f 0%, #52c41a 60%, #135200 100%)'
+      glow = '0 0 8px rgba(82, 196, 26, 0.8)'
+    } else if (light === 'yellow') {
+      gradient = 'radial-gradient(circle at 35% 35%, #ffe58f 0%, #faad14 60%, #ad6800 100%)'
+      glow = '0 0 8px rgba(250, 173, 20, 0.8)'
+    }
+    
+    const tooltipTitle = t.lightFormula ? (
+      <div style={{ padding: '4px', fontSize: '12px', lineHeight: '1.5' }}>
+        <div><strong>本周以前完成率：</strong><span style={{ color: '#ffd700', fontWeight: 'bold' }}>{t.lightRate}%</span></div>
+        <div style={{ marginTop: '4px' }}><strong>计算公式：</strong></div>
+        <div style={{ color: '#e6f7ff' }}>{t.lightFormula}</div>
+        <div style={{ marginTop: '4px' }}><strong>计算过程：</strong></div>
+        <div style={{ color: '#bae7ff', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{t.lightProcess}</div>
+      </div>
+    ) : null;
+    
+    const lightNode = (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+        <span 
+          style={{
+            display: 'inline-block',
+            width: '12px',
+            height: '12px',
+            borderRadius: '50%',
+            background: gradient,
+            boxShadow: `${glow}, inset 0 -1px 2px rgba(0, 0, 0, 0.4)`,
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            verticalAlign: 'middle',
+            animation: `pulse-${lightName} 2s infinite ease-in-out`
+          }} 
+        />
+        <span style={{ fontSize: '13px', fontWeight: 500, color: '#595959' }}>{text}</span>
+      </div>
+    )
+    
+    if (tooltipTitle) {
+      return (
+        <Tooltip title={tooltipTitle} color="rgba(0, 0, 0, 0.9)" overlayStyle={{ maxWidth: '340px' }}>
+          {lightNode}
+        </Tooltip>
+      )
+    }
+    
+    return lightNode
   }
 
   const zone1Teams = data?.dualTrackTeams?.slice(0, 3) || []
@@ -1958,11 +2754,7 @@ const Dashboard: React.FC = () => {
           onClick={() => t.teamId && handleViewTeamMetrics(t.teamId)}
           size="small"
           title={<strong style={{ fontSize: 15, cursor: 'pointer' }}>{t.teamName}</strong>}
-          extra={
-            <Space>
-              <Badge status={getLightStatus(t.statusLight)} text={getLightText(t.statusLight)} />
-            </Space>
-          }
+          extra={renderGlowingLight(t)}
           style={{
             background: '#fafafa',
             border: `1px solid ${t.statusLight === 'red' ? '#ffa39e' : t.statusLight === 'yellow' ? '#ffe58f' : '#d9d9d9'}`,
@@ -2008,6 +2800,23 @@ const Dashboard: React.FC = () => {
 
   return (
     <div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes pulse-red {
+          0% { box-shadow: 0 0 4px rgba(255, 77, 79, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          50% { box-shadow: 0 0 12px rgba(255, 77, 79, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          100% { box-shadow: 0 0 4px rgba(255, 77, 79, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        }
+        @keyframes pulse-yellow {
+          0% { box-shadow: 0 0 4px rgba(250, 173, 20, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          50% { box-shadow: 0 0 12px rgba(250, 173, 20, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          100% { box-shadow: 0 0 4px rgba(250, 173, 20, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        }
+        @keyframes pulse-green {
+          0% { box-shadow: 0 0 4px rgba(82, 196, 26, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          50% { box-shadow: 0 0 12px rgba(82, 196, 26, 1), inset 0 -1px 2px rgba(0,0,0,0.4); }
+          100% { box-shadow: 0 0 4px rgba(82, 196, 26, 0.6), inset 0 -1px 2px rgba(0,0,0,0.4); }
+        }
+      `}} />
       <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
         <Col>
           <Title level={3} style={{ margin: 0 }}>⚔️ 百日奋战经营作战大盘 (管理端)</Title>
@@ -2038,24 +2847,44 @@ const Dashboard: React.FC = () => {
               {hasWeeklyReport ? '编辑我的周报' : '填写我的周报'}
             </Button>
             <Button icon={<FireOutlined />} onClick={loadData} loading={loading}>刷新看板</Button>
-            <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
-              setCurrentActionType('')
-              setBroadcastModalVisible(true)
-              setFileList([])
-              broadcastForm.setFieldsValue({
-                actionType: undefined,
-                employeeName: user?.name || ''
-              })
-            }}>
-              发送实时战报
+            {/* 发送实时战报按钮：管理员、非中台，或者中台且有战队时展示，所有注释必须使用中文 */}
+            {(user?.role === 'admin' || (user?.position_type !== 'middle_office') || (user?.position_type === 'middle_office' && user?.teamId)) && (
+              <Button type="primary" icon={<NotificationOutlined />} onClick={() => {
+                setCurrentActionType('')
+                setBroadcastModalVisible(true)
+                setFileList([])
+                broadcastForm.setFieldsValue({
+                  actionType: undefined,
+                  employeeName: user?.name || ''
+                })
+              }}>
+                发送实时战报
+              </Button>
+            )}
+
+            {/* 中台幸福委播报按钮：所有人均可展示并播报，所有注释必须使用中文 */}
+            <Button 
+              type="primary" 
+              style={{ backgroundColor: '#722ed1', borderColor: '#722ed1' }} 
+              icon={<NotificationOutlined />} 
+              onClick={() => {
+                setMiddleOfficeModalVisible(true)
+                middleOfficeForm.setFieldsValue({
+                  firstType: undefined,
+                  secondType: undefined,
+                  content: ''
+                })
+              }}
+            >
+              中台幸福委播报
             </Button>
           </Space>
         </Col>
       </Row>
 
-      {/* 第一级：🏆 公司战役总盘六大指标 */}
+      {/* 第一级：🏆 公司战役总盘七大指标 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap' }}>
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2067,7 +2896,7 @@ const Dashboard: React.FC = () => {
               title="💰 公司累计新签合同额"
               value={kpis?.newContracts.value}
               precision={2}
-              styles={{ content: { color: '#1677ff', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#1677ff', fontSize: 20, fontWeight: 700 } }}
               prefix={<DollarOutlined />}
               suffix="万元"
             />
@@ -2081,7 +2910,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2092,7 +2921,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="😊 公司客户幸福动作"
               value={kpis?.happinessActions.value}
-              styles={{ content: { color: '#52c41a', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#52c41a', fontSize: 20, fontWeight: 700 } }}
               prefix={<HeartOutlined />}
               suffix="次"
             />
@@ -2106,7 +2935,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2117,7 +2946,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🤝 售前铁三角联动次数"
               value={kpis?.ironTriangle.value}
-              styles={{ content: { color: '#fa8c16', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#fa8c16', fontSize: 20, fontWeight: 700 } }}
               prefix={<SmileOutlined />}
               suffix="次"
             />
@@ -2131,7 +2960,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2142,7 +2971,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🏆 公司累计中标项目"
               value={kpis?.tenderProjects?.value}
-              styles={{ content: { color: '#13c2c2', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#13c2c2', fontSize: 20, fontWeight: 700 } }}
               prefix={<TrophyOutlined />}
               suffix="个"
             />
@@ -2156,7 +2985,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2167,7 +2996,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🔍 新增有效商机线索"
               value={kpis?.validLeads.value}
-              styles={{ content: { color: '#722ed1', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#722ed1', fontSize: 20, fontWeight: 700 } }}
               prefix={<RiseOutlined />}
               suffix="条"
             />
@@ -2181,7 +3010,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} style={{ flex: '1 1 16%', minWidth: '200px' }}>
+        <Col xs={24} sm={12} style={{ flex: '1 1 14%', minWidth: '120px' }}>
           <Card 
             className="card-kpi" 
             variant="borderless"
@@ -2192,7 +3021,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="🎯 潜在线索确定 (5%-10%)"
               value={kpis?.potentialLeads?.value}
-              styles={{ content: { color: '#eb2f96', fontSize: 26, fontWeight: 700 } }}
+              styles={{ content: { color: '#eb2f96', fontSize: 20, fontWeight: 700 } }}
               prefix={<SearchOutlined />}
               suffix="条"
             />
@@ -2202,6 +3031,85 @@ const Dashboard: React.FC = () => {
                 <Text strong style={{ color: '#eb2f96' }}>{kpis?.potentialLeads?.percentage}%</Text>
               </div>
               <Progress percent={kpis?.potentialLeads?.percentage} size="small" strokeColor="#eb2f96" />
+            </div>
+          </Card>
+        </Col>
+
+      </Row>
+
+      {/* 第二级：📢 播报与实时发布类指标卡片 (次行排版)，所有注释必须使用中文 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap' }}>
+        <Col xs={24} sm={12} md={8} style={{ flex: '1 1 30%', minWidth: '200px' }}>
+          <Card 
+            className="card-kpi" 
+            variant="borderless"
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('station_reports')}
+          >
+            <Statistic
+              title="📢 驻点前线播报"
+              value={kpis?.stationReports?.value}
+              styles={{ content: { color: '#fa541c', fontSize: 20, fontWeight: 700 } }}
+              prefix={<SoundOutlined />}
+              suffix="次"
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifySelf: 'space-between', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text type="secondary">目标: {kpis?.stationReports?.target}次</Text>
+                <Text strong style={{ color: '#fa541c' }}>{kpis?.stationReports?.percentage}%</Text>
+              </div>
+              <Progress percent={kpis?.stationReports?.percentage} size="small" strokeColor="#fa541c" />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={8} style={{ flex: '1 1 30%', minWidth: '200px' }}>
+          <Card 
+            className="card-kpi" 
+            variant="borderless"
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('middle_office_report')}
+          >
+            <Statistic
+              title="📢 中台播报"
+              value={kpis?.middleOfficeReports?.value}
+              styles={{ content: { color: '#0050b3', fontSize: 20, fontWeight: 700 } }}
+              prefix={<NotificationOutlined />}
+              suffix="次"
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifySelf: 'space-between', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text type="secondary">目标: {kpis?.middleOfficeReports?.target || 500}次</Text>
+                <Text strong style={{ color: '#0050b3' }}>{kpis?.middleOfficeReports?.percentage || 0}%</Text>
+              </div>
+              <Progress percent={kpis?.middleOfficeReports?.percentage || 0} size="small" strokeColor="#0050b3" />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={8} style={{ flex: '1 1 30%', minWidth: '200px' }}>
+          <Card 
+            className="card-kpi" 
+            variant="borderless"
+            hoverable
+            style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+            onClick={() => handleViewCompanyKpiDetail('happiness_committee')}
+          >
+            <Statistic
+              title="😊 幸福委播报"
+              value={kpis?.happinessCommitteeReports?.value}
+              styles={{ content: { color: '#722ed1', fontSize: 20, fontWeight: 700 } }}
+              prefix={<HeartOutlined />}
+              suffix="次"
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifySelf: 'space-between', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text type="secondary">目标: {kpis?.happinessCommitteeReports?.target || 600}次</Text>
+                <Text strong style={{ color: '#722ed1' }}>{kpis?.happinessCommitteeReports?.percentage || 0}%</Text>
+              </div>
+              <Progress percent={kpis?.happinessCommitteeReports?.percentage || 0} size="small" strokeColor="#722ed1" />
             </div>
           </Card>
         </Col>
@@ -2312,41 +3220,33 @@ const Dashboard: React.FC = () => {
             {/* 5个 Tab 按钮选择器 */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
               {[
-                { id: 'marketing_signing', label: '营销签单' },
-                { id: 'delivery_signing', label: '交付签单' },
-                { id: 'leads', label: '线索先锋' },
-                { id: 'potential_leads', label: '潜力先锋' },
-                { id: 'happiness', label: '幸福卷王' },
-                { id: 'triangle', label: '铁三角协作' }
+                { id: 'marketing_signing', label: '营销签单', color: '#ff4d4f' },
+                { id: 'delivery_signing', label: '交付签单', color: '#08979c' },
+                { id: 'leads', label: '线索先锋', color: '#1677ff' },
+                { id: 'potential_leads', label: '潜力先锋', color: '#eb2f96' },
+                { id: 'happiness', label: '幸福卷王', color: '#52c41a' },
+                { id: 'triangle', label: '铁三角协作', color: '#fa8c16' },
+                { id: 'station_reports', label: '驻点播报', color: '#fa541c' }
               ].map(t => {
                 const isActive = activeRankTab === t.id
-                const isDelivery = t.id === 'delivery_signing'
                 return (
-                  <Button
-                    key={t.id}
-                    size="small"
-                    onClick={() => setActiveRankTab(t.id as any)}
-                    style={{
-                      fontSize: 11,
-                      padding: '0 6px',
-                      height: 22,
-                      background: isActive 
-                        ? isDelivery 
-                          ? '#08979c' 
-                          : '#ff4d4f'
-                        : '#f5f5f5',
-                      borderColor: isActive 
-                        ? isDelivery 
-                          ? '#08979c' 
-                          : '#ff4d4f'
-                        : '#d9d9d9',
-                      color: isActive ? '#ffffff' : '#595959',
-                      fontWeight: isActive ? 'bold' : 'normal',
-                      borderRadius: 4
-                    }}
-                  >
-                    {t.label}
-                  </Button>
+                   <Button
+                     key={t.id}
+                     size="small"
+                     onClick={() => setActiveRankTab(t.id as any)}
+                     style={{
+                       fontSize: 11,
+                       padding: '0 6px',
+                       height: 22,
+                       background: isActive ? t.color : '#f5f5f5',
+                       borderColor: isActive ? t.color : '#d9d9d9',
+                       color: isActive ? '#ffffff' : '#595959',
+                       fontWeight: isActive ? 'bold' : 'normal',
+                       borderRadius: 4
+                     }}
+                   >
+                     {t.label}
+                   </Button>
                 )
               })}
             </div>
@@ -2461,7 +3361,7 @@ const Dashboard: React.FC = () => {
                       <div key={idx} style={{ marginBottom: 14, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
                           <Text strong>{item.goal_name}</Text>
-                          <Text type="success" strong>实际：{item.actual} {item.unit}</Text>
+                          <Text type="success" strong>实际：{typeof item.actual === 'number' ? parseFloat(item.actual.toFixed(2)) : item.actual} {item.unit}</Text>
                         </div>
 
                         {/* 自定义双轨水位进度条 */}
@@ -2507,8 +3407,8 @@ const Dashboard: React.FC = () => {
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c' }}>
-                          <span>🔴 基础:{item.base_target} ({item.actual >= item.base_target ? '达成✅' : '未达'})</span>
-                          <span>🟡 挑战:{item.challenge_target} ({item.actual >= item.challenge_target ? '破线🔥' : '未破'})</span>
+                          <span>🔴 基础:{typeof item.base_target === 'number' ? parseFloat(item.base_target.toFixed(2)) : item.base_target} ({item.actual >= item.base_target ? '达成✅' : '未达'})</span>
+                          <span>🟡 挑战:{typeof item.challenge_target === 'number' ? parseFloat(item.challenge_target.toFixed(2)) : item.challenge_target} ({item.actual >= item.challenge_target ? '破线🔥' : '未破'})</span>
                         </div>
                       </div>
                     )
@@ -2782,7 +3682,9 @@ const Dashboard: React.FC = () => {
                           item.type === 'contract' ? 'error' : 
                           item.type === 'achievement' ? 'success' : 
                           item.type === 'milestone' ? 'warning' : 
-                          item.type === 'station_report' ? 'magenta' : 'processing'
+                          item.type === 'station_report' ? 'magenta' : 
+                          item.type === 'happiness_committee' ? 'purple' : 
+                          item.type === 'middle_office_report' ? 'cyan' : 'processing'
                         }
                         style={{ 
                           whiteSpace: 'normal', 
@@ -2800,7 +3702,9 @@ const Dashboard: React.FC = () => {
                           item.type === 'contract' ? '合同新签' : 
                           item.type === 'achievement' ? '有效线索' : 
                           item.type === 'milestone' ? (item.content.includes('幸福') ? '幸福动作' : '阶段中标') : 
-                          item.type === 'station_report' ? '驻点快报' : '售前铁三角联动'
+                          item.type === 'station_report' ? '驻点快报' : 
+                          item.type === 'happiness_committee' ? '幸福委' : 
+                          item.type === 'middle_office_report' ? '中台播报' : '铁三角联动'
                         }
                       </Tag>
                     </div>
@@ -2862,11 +3766,91 @@ const Dashboard: React.FC = () => {
         </Spin>
       </Card>
 
+      {/* 中台幸福委播报Modal，所有注释必须使用中文 */}
+      <Modal
+        title="发布中台幸福委播报（广播至4K大屏与钉钉）"
+        open={middleOfficeModalVisible}
+        confirmLoading={middleOfficeSubmitLoading}
+        onCancel={() => {
+          if (middleOfficeSubmitLoading) return
+          setMiddleOfficeModalVisible(false)
+        }}
+        onOk={() => middleOfficeForm.submit()}
+        destroyOnClose
+      >
+        <Form 
+          form={middleOfficeForm} 
+          layout="vertical" 
+          onFinish={handlePublishMiddleOfficeBroadcast}
+        >
+          <Form.Item
+            name="firstType"
+            label="播报动作类型 (一级)"
+            rules={[{ required: true, message: '请选择播报一级类型' }]}
+          >
+            <Select placeholder="请选择一级类型" onChange={() => middleOfficeForm.setFieldsValue({ secondType: undefined })}>
+              <Select.Option value="happiness">幸福委播报</Select.Option>
+              <Select.Option value="middle">中台播报</Select.Option>
+            </Select>
+          </Form.Item>
+
+          {watchFirstType === 'happiness' && (
+            <Form.Item
+              name="secondType"
+              label="幸福委专委分类 (二级)"
+              rules={[{ required: true, message: '请选择二级分类' }]}
+            >
+              <Select placeholder="请选择幸福委二级分类">
+                <Select.Option value="B3-1 使命落地委">B3-1 使命落地委</Select.Option>
+                <Select.Option value="B3-2 铁三角落地委">B3-2 铁三角落地委</Select.Option>
+                <Select.Option value="B3-3 AI提效委">B3-3 AI提效委</Select.Option>
+                <Select.Option value="B3-4 数字经营委">B3-4 数字经营委</Select.Option>
+                <Select.Option value="B3-5 传灯推广委">B3-5 传灯推广委</Select.Option>
+                <Select.Option value="B3-6 产品研发委">B3-6 产品研发委</Select.Option>
+                <Select.Option value="B3-7 质量风控委">B3-7 质量风控委</Select.Option>
+                <Select.Option value="B3-8 伙伴打造委">B3-8 伙伴打造委</Select.Option>
+                <Select.Option value="B3-9 直连客户委">B3-9 直连客户委</Select.Option>
+                <Select.Option value="B3-10 组织幸福委">B3-10 组织幸福委</Select.Option>
+                <Select.Option value="B3-11 温暖快乐委">B3-11 温暖快乐委</Select.Option>
+                <Select.Option value="B3-12 成长学习委">B3-12 成长学习委</Select.Option>
+              </Select>
+            </Form.Item>
+          )}
+
+          {watchFirstType === 'middle' && (
+            <Form.Item
+              name="secondType"
+              label="中台部门分类 (二级)"
+              rules={[{ required: true, message: '请选择二级分类' }]}
+            >
+              <Select placeholder="请选择中台二级部门">
+                <Select.Option value="市场部">市场部</Select.Option>
+                <Select.Option value="技术中心">技术中心</Select.Option>
+                <Select.Option value="行政部">行政部</Select.Option>
+                <Select.Option value="人力资源部">人力资源部</Select.Option>
+                <Select.Option value="投标部">投标部</Select.Option>
+                <Select.Option value="中地研究院">中地研究院</Select.Option>
+              </Select>
+            </Form.Item>
+          )}
+
+          <Form.Item
+            name="content"
+            label="播报内容"
+            rules={[{ required: true, message: '请输入播报内容' }]}
+          >
+            <Input.TextArea rows={4} placeholder="请输入具体的播报内容..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* 手动发送播报Modal */}
       <Modal
         title="发布实时战报（广播至4K大屏与钉钉）"
         open={broadcastModalVisible}
+        confirmLoading={broadcastSubmitLoading}
         onCancel={() => {
+          if (broadcastSubmitLoading) return
           setBroadcastModalVisible(false)
           setCurrentActionType('')
         }}
@@ -2889,6 +3873,9 @@ const Dashboard: React.FC = () => {
               <Select.Option value="triangle">铁三角联动</Select.Option>
               <Select.Option value="happiness">客户幸福动作</Select.Option>
               <Select.Option value="station_report">驻点人员播报</Select.Option>
+              {(user?.position_type === 'marketing' || user?.role === 'target_officer' || user?.role === 'admin') && (
+                <Select.Option value="marketing_report">营销内部播报</Select.Option>
+              )}
             </Select>
           </Form.Item>
 
@@ -2897,9 +3884,9 @@ const Dashboard: React.FC = () => {
               <Form.Item
                 name="stationLocation"
                 label="驻点地点"
-                rules={[{ required: true, message: '请输入驻点地点（如：广州、茂名）' }]}
+                rules={[{ required: true, message: '请输入驻点地点（区域+客户名称）' }]}
               >
-                <Input placeholder="请输入驻点地点，例如：茂名、湛江、广州" />
+                <Input placeholder="请输入驻点区域+客户名称，例：廉江市自然资源局；黄埔区九佛街道办" />
               </Form.Item>
 
               <Form.Item
@@ -2922,13 +3909,164 @@ const Dashboard: React.FC = () => {
                 <Input placeholder="请输入播报标题" />
               </Form.Item>
 
-              <Form.Item
-                name="content"
-                label="正文内容"
-                rules={[{ required: true, message: '请输入正文内容' }]}
-              >
-                <Input.TextArea rows={4} placeholder="请输入具体的播报正文内容..." />
-              </Form.Item>
+              {/* 最新政策专属栏目 */}
+              {watchStationCategory === 'policy' && (
+                <Card size="small" title="🏛️ 最新政策要素录入" style={{ marginBottom: 16, borderColor: '#1677ff', background: '#fafafa' }}>
+                  <Form.Item
+                    name="policyLevel"
+                    label="政策层级"
+                    rules={[{ required: true, message: '请选择政策层级' }]}
+                  >
+                    <Select placeholder="请选择政策级别">
+                      <Select.Option value="国家级">国家级</Select.Option>
+                      <Select.Option value="省级">省级</Select.Option>
+                      <Select.Option value="市级">市级</Select.Option>
+                      <Select.Option value="县区级">县区级</Select.Option>
+                      <Select.Option value="其它">其它</Select.Option>
+                    </Select>
+                  </Form.Item>
+                  <Form.Item
+                    name="policyOpportunity"
+                    label="业务机会 (选填)"
+                  >
+                    <Input.TextArea rows={3} placeholder="例：1. XX项目可能在XX月启动招标" />
+                  </Form.Item>
+                  <Form.Item
+                    name="policyRisk"
+                    label="风险点 (选填)"
+                  >
+                    <Input.TextArea rows={3} placeholder="例：2. 预算可能缩减，或者对原方案有调整风险" />
+                  </Form.Item>
+                  <Form.Item
+                    name="policyOther"
+                    label="其他要点 (选填)"
+                  >
+                    <Input.TextArea rows={3} placeholder="例：3. 其他需要注意的通知事项" />
+                  </Form.Item>
+                </Card>
+              )}
+
+              {/* 重大会议部署专属栏目 */}
+              {watchStationCategory === 'deployment' && (
+                <Card size="small" title="📋 重大会议部署要素录入" style={{ marginBottom: 16, borderColor: '#722ed1', background: '#fafafa' }}>
+                  <Form.Item
+                    name="meetingSubject"
+                    label="会议主题"
+                    rules={[{ required: true, message: '请输入会议主题' }]}
+                  >
+                    <Input placeholder="例：XXX工作部署会" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingTimePlace"
+                    label="时间/地点"
+                    rules={[{ required: true, message: '请输入会议召开时间与地点' }]}
+                  >
+                    <Input placeholder="例：6月8日，3楼第一会议室" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingHost"
+                    label="主持/出席领导"
+                    rules={[{ required: true, message: '请输入主持人或出席领导' }]}
+                  >
+                    <Input placeholder="例：分管副局长李某某" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingProject"
+                    label="会议要点-项目方面 (选填)"
+                  >
+                    <Input.TextArea rows={2} placeholder="1、项目方面：...（名称、规模、主体）" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingFunds"
+                    label="会议要点-资金方面 (选填)"
+                  >
+                    <Input.TextArea rows={2} placeholder="2、资金方面：...（额度、投向）" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingInstructions"
+                    label="会议要点-领导批示或核心决议 (选填)"
+                  >
+                    <Input.TextArea rows={2} placeholder="3、领导批示或核心决议" />
+                  </Form.Item>
+                  <Form.Item
+                    name="meetingDeadline"
+                    label="会议要点-时间要求 (选填)"
+                  >
+                    <Input.TextArea rows={2} placeholder="4、时间要求：..." />
+                  </Form.Item>
+                </Card>
+              )}
+
+              {/* 重大情报信息专属栏目 */}
+              {watchStationCategory === 'intelligence' && (
+                <Card size="small" title="🔍 重大情报信息要素录入" style={{ marginBottom: 16, borderColor: '#fa8c16', background: '#fafafa' }}>
+                  <Form.Item
+                    name="intelligenceType"
+                    label="情报类型"
+                    initialValue="peer"
+                    rules={[{ required: true, message: '请选择情报类型' }]}
+                  >
+                    <Select placeholder="请选择情报类型">
+                      <Select.Option value="peer">同行项目</Select.Option>
+                      <Select.Option value="personnel">领导变动</Select.Option>
+                      <Select.Option value="competitor">竞争对手</Select.Option>
+                    </Select>
+                  </Form.Item>
+                  
+                  <Form.Item
+                    name="intelligenceContent"
+                    label={
+                      watchIntelligenceType === 'personnel'
+                        ? '人物与变动 (必填)'
+                        : watchIntelligenceType === 'competitor'
+                        ? '对手与动向 (必填)'
+                        : '项目概况 (必填)'
+                    }
+                    rules={[{ required: true, message: '请输入具体情报内容' }]}
+                  >
+                    <Input.TextArea
+                      rows={4}
+                      placeholder={
+                        watchIntelligenceType === 'personnel'
+                          ? '输入领导变动的具体职位、姓名、分管方向等'
+                          : watchIntelligenceType === 'competitor'
+                          ? '输入竞争对手的近期市场活动及主要走势等'
+                          : '输入同行在某地开展新型项目的具体规模、主体、模式等'
+                      }
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="intelligenceSource"
+                    label="情报来源"
+                    rules={[{ required: true, message: '请输入情报来源' }]}
+                  >
+                    <Input placeholder="例：XX单位XX人透露、现场实地观察" />
+                  </Form.Item>
+                  <Form.Item
+                    name="intelligenceReliability"
+                    label="可靠性评估"
+                    initialValue="中"
+                    rules={[{ required: true, message: '请评估可靠性' }]}
+                  >
+                    <Select placeholder="评估可靠性">
+                      <Select.Option value="高">高</Select.Option>
+                      <Select.Option value="中">中</Select.Option>
+                      <Select.Option value="低">低</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Card>
+              )}
+
+              {/* 当分类不是这三者（或者未选分类）时，展示兜底的正文内容输入框 */}
+              {!['policy', 'deployment', 'intelligence'].includes(watchStationCategory) && (
+                <Form.Item
+                  name="content"
+                  label="正文内容"
+                  rules={[{ required: true, message: '请输入正文内容' }]}
+                >
+                  <Input.TextArea rows={4} placeholder="请输入具体的播报正文内容..." />
+                </Form.Item>
+              )}
 
               <Form.Item
                 name="summary"
@@ -2969,6 +4107,140 @@ const Dashboard: React.FC = () => {
                     : '注意：Supabase 免费版单文件限制 50MB，文件将作为原始附件直接上传'}
                 </div>
               </Form.Item>
+            </>
+          )}
+
+          {currentActionType === 'marketing_report' && (
+            <>
+              <Form.Item
+                name="marketingCategory"
+                label="营销播报分类"
+                rules={[{ required: true, message: '请选择营销播报分类' }]}
+              >
+                <Select placeholder="请选择分类">
+                  <Select.Option value="daily_work">日常工作</Select.Option>
+                  <Select.Option value="payment_followup">回款跟进</Select.Option>
+                </Select>
+              </Form.Item>
+
+              {/* 共有字段：区域、业主单位、科股室 */}
+              {watchMarketingCategory && (
+                <>
+                  <Form.Item
+                    name="marketingRegion"
+                    label="区域"
+                    initialValue={['广东省', '广州市', '荔湾区']}
+                    rules={[{ required: true, message: '请选择区域' }]}
+                  >
+                    <Cascader 
+                      options={REGION_OPTIONS} 
+                      placeholder="请选择省/市/区"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="marketingOwner"
+                    label="业主单位"
+                    rules={[{ required: true, message: '请选择或搜索 CRM 客户名称' }]}
+                  >
+                    <Select
+                      showSearch
+                      placeholder="输入关键字检索并选择 CRM 客户"
+                      filterOption={false}
+                      onSearch={handleCustomerSearch}
+                      options={crmCustomers.map(c => ({ value: c, label: c }))}
+                      defaultActiveFirstOption={false}
+                      onDropdownVisibleChange={(open) => {
+                        if (open && crmCustomers.length === 0) {
+                          loadCrmCustomers()
+                        }
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="marketingSection"
+                    label="科/股室 (选填)"
+                  >
+                    <Input placeholder="请输入科/股室，例：开发利用科" />
+                  </Form.Item>
+                </>
+              )}
+
+              {/* 日常工作专属字段：协助人 */}
+              {watchMarketingCategory === 'daily_work' && (
+                <Form.Item
+                  name="marketingAssistors"
+                  label="协助人 (选填)"
+                >
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择协助人员"
+                    style={{ width: '100%' }}
+                    options={usersList.map(u => ({ value: u.name, label: u.name }))}
+                  />
+                </Form.Item>
+              )}
+
+              {/* 回款跟进专属字段：合同名称 */}
+              {watchMarketingCategory === 'payment_followup' && (
+                <Form.Item
+                  name="marketingContracts"
+                  label="合同名称 (可多选)"
+                  rules={[{ required: true, message: '请选择合同名称' }]}
+                >
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择或搜索合同项目名称..."
+                    optionFilterProp="label"
+                    showSearch
+                    filterOption={(input, option) =>
+                      ((option as any)?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={crmProjects.map(p => ({
+                      value: p.name,
+                      label: `${p.name} | 业主：${p.customer_name}`
+                    }))}
+                    onDropdownVisibleChange={(open) => {
+                      if (open && crmProjects.length === 0) {
+                        loadCrmProjects('contract')
+                      }
+                    }}
+                  />
+                </Form.Item>
+              )}
+
+              {/* 共有字段：事项当前进展、是否重点信息、需协助事项 */}
+              {watchMarketingCategory && (
+                <>
+                  <Form.Item
+                    name="marketingProgress"
+                    label="事项当前进展"
+                    rules={[{ required: true, message: '请输入事项当前进展' }]}
+                  >
+                    <Input.TextArea rows={4} placeholder="请输入当前事项进展情况..." />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="marketingIsImportant"
+                    label="是否重点信息"
+                    initialValue="no"
+                    rules={[{ required: true, message: '请选择是否为重点信息' }]}
+                  >
+                    <Radio.Group>
+                      <Radio value="yes">是</Radio>
+                      <Radio value="no">否</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+
+                  <Form.Item
+                    name="marketingHelpNeeded"
+                    label="需协助事项 (选填)"
+                  >
+                    <Input.TextArea rows={3} placeholder="请输入需要协调解决或上级支持的事项..." />
+                  </Form.Item>
+                </>
+              )}
             </>
           )}
 
@@ -3449,7 +4721,7 @@ const Dashboard: React.FC = () => {
             </Form.Item>
           )}
 
-          {currentActionType !== 'station_report' && (
+          {currentActionType && currentActionType !== 'station_report' && (
             <Form.Item
               name="content"
               label="最终生成战报文本"
@@ -3981,6 +5253,7 @@ const Dashboard: React.FC = () => {
               {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
               {companyKpiDetailType === 'tenders' && <span>🏆 公司累计中标项目明细</span>}
               {companyKpiDetailType === 'potential_leads' && <span>🎯 潜力商机线索明细</span>}
+              {companyKpiDetailType === 'station_reports' && <span>📢 公司驻点前线播报明细</span>}
             </div>
             
             {/* 标题栏右侧的筛选组合栏，所有注释必须使用中文 */}
@@ -4113,8 +5386,18 @@ const Dashboard: React.FC = () => {
                   </Row>
                 ) : (
                   <div style={{
-                    background: companyKpiDetailType === 'tenders' ? '#e6fffb' : '#f6ffed',
-                    border: companyKpiDetailType === 'tenders' ? '1px solid #87e8de' : '1px solid #b7eb8f',
+                    background: 
+                      companyKpiDetailType === 'tenders' ? '#e6fffb' : 
+                      companyKpiDetailType === 'station_reports' ? '#fff2e8' : 
+                      companyKpiDetailType === 'middle_office_report' ? '#e6f7ff' : 
+                      companyKpiDetailType === 'happiness_committee' ? '#f9f0ff' : 
+                      '#f6ffed',
+                    border: 
+                      companyKpiDetailType === 'tenders' ? '1px solid #87e8de' : 
+                      companyKpiDetailType === 'station_reports' ? '1px solid #ffbb96' : 
+                      companyKpiDetailType === 'middle_office_report' ? '1px solid #91d5ff' : 
+                      companyKpiDetailType === 'happiness_committee' ? '1px solid #d3adf7' : 
+                      '1px solid #b7eb8f',
                     padding: '12px 20px',
                     borderRadius: '8px',
                     display: 'flex',
@@ -4122,15 +5405,36 @@ const Dashboard: React.FC = () => {
                     justifyContent: 'space-between'
                   }}>
                     <Space size="middle">
-                      <span style={{ fontSize: 15, fontWeight: 500, color: companyKpiDetailType === 'tenders' ? '#08979c' : '#389e0d' }}>
+                      <span style={{ 
+                        fontSize: 15, 
+                        fontWeight: 500, 
+                        color: 
+                          companyKpiDetailType === 'tenders' ? '#08979c' : 
+                          companyKpiDetailType === 'station_reports' ? '#d4380d' : 
+                          companyKpiDetailType === 'middle_office_report' ? '#0050b3' : 
+                          companyKpiDetailType === 'happiness_committee' ? '#722ed1' : 
+                          '#389e0d' 
+                      }}>
                         {companyKpiDetailType === 'happiness' && '😊 公司客户幸福动作累计已执行'}
                         {companyKpiDetailType === 'triangle' && '🤝 售前铁三角现场联动累计'}
                         {companyKpiDetailType === 'leads' && '🔍 新增有效商机线索累计'}
                         {companyKpiDetailType === 'tenders' && '🏆 公司累计中标项目累计'}
                         {companyKpiDetailType === 'potential_leads' && '🎯 潜在线索确定累计'}
+                        {companyKpiDetailType === 'station_reports' && '📢 公司驻点前线播报累计'}
+                        {companyKpiDetailType === 'middle_office_report' && '📢 公司中台播报累计'}
+                        {companyKpiDetailType === 'happiness_committee' && '😊 公司幸福委播报累计'}
                       </span>
                     </Space>
-                    <span style={{ fontSize: 22, fontWeight: 'bold', color: companyKpiDetailType === 'tenders' ? '#08979c' : '#389e0d' }}>
+                    <span style={{ 
+                      fontSize: 22, 
+                      fontWeight: 'bold', 
+                      color: 
+                        companyKpiDetailType === 'tenders' ? '#08979c' : 
+                        companyKpiDetailType === 'station_reports' ? '#d4380d' : 
+                        companyKpiDetailType === 'middle_office_report' ? '#0050b3' : 
+                        companyKpiDetailType === 'happiness_committee' ? '#722ed1' : 
+                        '#389e0d' 
+                    }}>
                       {companyKpiDetailData.total}{' '}
                       <span style={{ fontSize: 14, fontWeight: 'normal' }}>
                         {(companyKpiDetailType === 'leads' || companyKpiDetailType === 'potential_leads') ? '条' : companyKpiDetailType === 'tenders' ? '个' : '次'}
@@ -4167,7 +5471,16 @@ const Dashboard: React.FC = () => {
                           title: '播报内容',
                           dataIndex: 'description',
                           key: 'description',
-                          render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          render: (val: string, record: any) => (
+                            <SocialCell
+                              content={val}
+                              recordId={record.id}
+                              targetType={record.target_type}
+                              initialLikes={record.like_count}
+                              initialComments={record.comment_count}
+                              initialLiked={record.is_liked}
+                            />
+                          )
                         }
                       ]}
                     />
@@ -4196,7 +5509,16 @@ const Dashboard: React.FC = () => {
                           title: '播报内容',
                           dataIndex: 'description',
                           key: 'description',
-                          render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                          render: (val: string, record: any) => (
+                            <SocialCell
+                              content={val}
+                              recordId={record.id}
+                              targetType={record.target_type}
+                              initialLikes={record.like_count}
+                              initialComments={record.comment_count}
+                              initialLiked={record.is_liked}
+                            />
+                          )
                         }
                       ]}
                     />
@@ -4227,7 +5549,16 @@ const Dashboard: React.FC = () => {
                             title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
-                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
                           }
                         ]
                       : companyKpiDetailType === 'triangle'
@@ -4241,7 +5572,16 @@ const Dashboard: React.FC = () => {
                             title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
-                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
                           }
                         ]
                       : companyKpiDetailType === 'potential_leads'
@@ -4270,7 +5610,16 @@ const Dashboard: React.FC = () => {
                             title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
-                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
                           }
                         ]
                       : companyKpiDetailType === 'tenders'
@@ -4299,7 +5648,69 @@ const Dashboard: React.FC = () => {
                             title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
-                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
+                          }
+                        ]
+                      : companyKpiDetailType === 'middle_office_report' || companyKpiDetailType === 'happiness_committee'
+                      ? [
+                          { title: '播报日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          {
+                            title: '二级分类',
+                            dataIndex: 'station_category',
+                            key: 'station_category',
+                            width: 120,
+                            align: 'center',
+                            render: (val: string) => (
+                              val && val !== '—' ? <Tag color="geekblue">{val}</Tag> : '—'
+                            )
+                          },
+                          {
+                            title: '播报内容',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
+                          }
+                        ]
+                      : companyKpiDetailType === 'station_reports'
+                      ? [
+                          { title: '播报日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
+                          { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
+                          { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
+                          { title: '驻点地点(子分类)', dataIndex: 'customer_name', key: 'customer_name', width: 180 },
+                          {
+                            title: '播报内容',
+                            dataIndex: 'description',
+                            key: 'description',
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
                           }
                         ]
                       : [
@@ -4327,7 +5738,16 @@ const Dashboard: React.FC = () => {
                             title: '播报内容',
                             dataIndex: 'description',
                             key: 'description',
-                            render: (val: string) => <div style={{ fontSize: 12, wordBreak: 'break-all' }}>{val}</div>
+                            render: (val: string, record: any) => (
+                              <SocialCell
+                                content={val}
+                                recordId={record.id}
+                                targetType={record.target_type}
+                                initialLikes={record.like_count}
+                                initialComments={record.comment_count}
+                                initialLiked={record.is_liked}
+                              />
+                            )
                           }
                         ]
                   }
@@ -4376,6 +5796,19 @@ const Dashboard: React.FC = () => {
         open={weeklyWriteVisible}
         onCancel={() => setWeeklyWriteVisible(false)}
         footer={[
+          writingWeeklyReport && writingWeeklyReport.status === 'submitted' && (
+            <Button
+              key="sync-dingtalk"
+              type="primary"
+              ghost
+              onClick={() => {
+                setWeeklyWriteVisible(false)
+                handleShowSyncDingtalkModal(writingWeeklyReport.id)
+              }}
+            >
+              📢 同步至钉钉日志
+            </Button>
+          ),
           <Button key="cancel" onClick={() => setWeeklyWriteVisible(false)}>
             取消
           </Button>,
@@ -4400,7 +5833,7 @@ const Dashboard: React.FC = () => {
           >
             正式提交
           </Button>
-        ]}
+        ].filter(Boolean)}
         width={800}
         destroyOnHidden
       >
@@ -4434,7 +5867,7 @@ const Dashboard: React.FC = () => {
                 onClick={handleAutoExtractWeekly}
                 style={{ whiteSpace: 'nowrap' }}
               >
-                一键导入当周播报数据
+                导入上周周报和本周播报
               </Button>
               <Button
                 type="primary"
@@ -4549,6 +5982,53 @@ const Dashboard: React.FC = () => {
             )}
           </Form>
         </div>
+      </Modal>
+
+      {/* 一键同步至钉钉日志 Modal，所有注释必须使用中文 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '18px' }}>📢</span>
+            <span style={{ color: '#1890ff', fontWeight: 600 }}>同步个人周报至钉钉工作日志</span>
+          </div>
+        }
+        open={syncDingtalkVisible}
+        onOk={() => syncDingtalkForm.submit()}
+        onCancel={() => setSyncDingtalkVisible(false)}
+        confirmLoading={syncDingtalkLoading}
+        okText="立即同步填报"
+        cancelText="取消"
+        centered
+        width={500}
+        zIndex={1050}
+      >
+        <Form
+          form={syncDingtalkForm}
+          layout="vertical"
+          onFinish={handleSyncWeeklyReportToDingtalk}
+          style={{ marginTop: 16 }}
+        >
+          <Alert
+            message={<strong>同步须知</strong>}
+            description={
+              <div style={{ fontSize: '12.5px', lineHeight: '1.6' }}>
+                <p style={{ marginBottom: 4 }}>1. 系统将自动使用您在系统中的<strong>手机号</strong>去匹配对应的钉钉员工账号，免去手动绑定的繁琐操作。</p>
+                <p style={{ marginBottom: 4 }}>2. 匹配成功后，系统会把本周报内容自动整理并填报到您在钉钉绑定的“中台百日奋斗交付周报”中。</p>
+                <p style={{ marginBottom: 0 }}>3. 默认模板 ID 已预填，若公司调整了模板，您可在此输入新的模板 ID。</p>
+              </div>
+            }
+            type="info"
+            showIcon
+            style={{ marginBottom: 20 }}
+          />
+          <Form.Item
+            name="templateId"
+            label={<strong>钉钉日志模板 ID</strong>}
+            rules={[{ required: true, message: '请输入钉钉日志模板 ID' }]}
+          >
+            <Input placeholder="请输入钉钉日志模板 ID" maxLength={100} allowClear />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* ⚡ 智能拉取 CRM 业绩与进度预览 Modal */}

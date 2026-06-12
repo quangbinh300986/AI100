@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@shared/hooks/useAuth'
-import { getMyStats, getTeamDetailedMetrics } from '@shared/api/dashboard'
+import { getMyStats, getTeamDetailedMetrics, getCompanyKpiDetail, toggleKpiLike, addKpiComment, getKpiComments } from '@shared/api/dashboard'
 import { get } from '@shared/api/client'
 import type { MyStatsResponse } from '@shared/types'
-import { DotLoading, Tabs, Popup } from 'antd-mobile'
+import { DotLoading, Tabs, Popup, Form, Button, Toast, Selector, TextArea, Input, InfiniteScroll } from 'antd-mobile'
+import { post } from '@shared/api/client'
 
 /** 快捷入口配置 */
 const shortcuts = [
@@ -14,6 +15,269 @@ const shortcuts = [
   { icon: '👤', label: '个人中心', path: '/m/profile' },
 ]
 
+interface MobileKpiCardProps {
+  item: any;
+  kpiType: string;
+}
+
+const MobileKpiCard: React.FC<MobileKpiCardProps> = ({ item, kpiType }) => {
+  // 社交互动点赞 target_type 逻辑
+  let targetType = 'report_detail';
+  if (kpiType === 'middle_office_report' || kpiType === 'happiness_committee' || kpiType === 'station_reports') {
+    targetType = 'broadcast_event';
+  }
+
+  const targetId = item.id;
+
+  const [liked, setLiked] = useState(item.is_liked || false);
+  const [likeCount, setLikeCount] = useState(item.like_count || 0);
+  const [commentCount, setCommentCount] = useState(item.comment_count || 0);
+  
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  useEffect(() => {
+    setLiked(item.is_liked || false);
+    setLikeCount(item.like_count || 0);
+    setCommentCount(item.comment_count || 0);
+  }, [item]);
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const nextLiked = !liked;
+      const res = await toggleKpiLike({
+        target_id: targetId,
+        target_type: targetType
+      });
+      if (res) {
+        setLiked(nextLiked);
+        setLikeCount(prev => nextLiked ? prev + 1 : Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error('点赞操作失败:', err);
+    }
+  };
+
+  const loadComments = async () => {
+    setCommentsLoading(true);
+    try {
+      const res = await getKpiComments({
+        target_id: targetId,
+        target_type: targetType
+      });
+      if (res) {
+        setComments(res);
+      }
+    } catch (err) {
+      console.error('获取讨论列表失败:', err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const toggleComments = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextShow = !showComments;
+    setShowComments(nextShow);
+    if (nextShow) {
+      loadComments();
+    }
+  };
+
+  const handleSubmitComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentInput.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const res = await addKpiComment({
+        target_id: targetId,
+        target_type: targetType,
+        content: commentInput.trim()
+      });
+      if (res) {
+        setCommentInput('');
+        setCommentCount(prev => prev + 1);
+        loadComments();
+      }
+    } catch (err) {
+      console.error('发表讨论失败:', err);
+      Toast.show({ icon: 'fail', content: '发表讨论失败' });
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  return (
+    <div 
+      style={{ 
+        background: '#fff', 
+        borderRadius: 8, 
+        border: '1px solid #f0f0f0', 
+        padding: 12, 
+        marginBottom: 10,
+        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#bfbfbf', marginBottom: 6 }}>
+        <span>📅 {item.report_date || item.created_at?.slice(0, 10) || '未知时间'}</span>
+        <span>✍️ {item.reporter_name || item.user_name || '系统'} ({item.team_name || item.team_name_val || '总部'})</span>
+      </div>
+
+      {item.customer_name && (
+        <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
+          🏢 {item.customer_name}
+        </div>
+      )}
+
+      {/* 铁三角联动人或搭档 */}
+      {item.partner_name && item.partner_name !== '—' && (
+        <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
+          🤝 联动人/协同搭档：{item.partner_name}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, color: '#595959', lineHeight: '18px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        {item.description || item.content}
+      </div>
+
+      {/* 合同金额 */}
+      {item.amount !== undefined && (
+        <div style={{ fontSize: 12, fontWeight: 'bold', color: '#ff4d4f', marginTop: 4 }}>
+          签约额: {item.amount} 万元
+        </div>
+      )}
+
+      {/* 线索进度 */}
+      {item.progress && (
+        <div style={{ fontSize: 12, fontWeight: 'bold', color: '#1677ff', marginTop: 4 }}>
+          进度: {item.progress}
+        </div>
+      )}
+
+      {/* 幸福动作得分或等级 */}
+      {item.level && (
+        <div style={{ fontSize: 12, fontWeight: 'bold', color: '#52c41a', marginTop: 4 }}>
+          动作评价/得分: {item.level}
+        </div>
+      )}
+
+      <div 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 16, 
+          marginTop: 10, 
+          paddingTop: 8, 
+          borderTop: '1px dashed #f5f5f5' 
+        }}
+      >
+        <div 
+          onClick={handleLike}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 4, 
+            fontSize: 12, 
+            color: liked ? '#ff4d4f' : '#8c8c8c', 
+            cursor: 'pointer' 
+          }}
+        >
+          <span>👍</span>
+          <span>{likeCount}</span>
+        </div>
+
+        <div 
+          onClick={toggleComments}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 4, 
+            fontSize: 12, 
+            color: showComments ? '#1890ff' : '#8c8c8c', 
+            cursor: 'pointer' 
+          }}
+        >
+          <span>💬</span>
+          <span>{commentCount} 讨论</span>
+        </div>
+      </div>
+
+      {showComments && (
+        <div 
+          style={{ 
+            marginTop: 10, 
+            background: '#fafafa', 
+            borderRadius: 6, 
+            padding: 8, 
+            borderTop: '1px solid #f0f0f0' 
+          }}
+        >
+          {commentsLoading ? (
+            <div style={{ textAlign: 'center', padding: '10px 0', fontSize: 11, color: '#999' }}>加载讨论中...</div>
+          ) : comments.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8, maxHeight: 150, overflowY: 'auto' }}>
+              {comments.map((c) => (
+                <div key={c.id} style={{ fontSize: 11, lineHeight: '14px', color: '#595959' }}>
+                  <span style={{ fontWeight: 'bold', color: '#262626' }}>{c.user_name} ({c.team_name || '总部'}):</span>{' '}
+                  <span>{c.content}</span>
+                  <span style={{ color: '#bfbfbf', marginLeft: 6 }}>{c.created_at?.slice(5, 16)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '10px 0', fontSize: 11, color: '#bfbfbf' }}>暂无讨论</div>
+          )}
+
+          <form 
+            onSubmit={handleSubmitComment} 
+            style={{ 
+              display: 'flex', 
+              gap: 6, 
+              borderTop: '1px solid #f0f0f0', 
+              paddingTop: 8, 
+              marginTop: 4 
+            }}
+          >
+            <input 
+              type="text" 
+              placeholder="发表讨论..." 
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              style={{ 
+                flex: 1, 
+                border: '1px solid #d9d9d9', 
+                borderRadius: 4, 
+                padding: '4px 8px', 
+                fontSize: 11, 
+                background: '#fff' 
+              }}
+            />
+            <button 
+              type="submit" 
+              disabled={!commentInput.trim() || submittingComment}
+              style={{ 
+                background: '#1890ff', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 4, 
+                padding: '4px 10px', 
+                fontSize: 11, 
+                cursor: 'pointer' 
+              }}
+            >
+              发送
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function Home() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -22,6 +286,99 @@ export default function Home() {
 
   // 战区大PK Tab 状态，默认全部为中文
   const [activeZoneTab, setActiveZoneTab] = useState<string>('第一战区')
+
+  // 全公司大盘 KPI 指标详情弹窗状态
+  const [companyKpiVisible, setCompanyKpiVisible] = useState(false)
+  const [companyKpiLoading, setCompanyKpiLoading] = useState(false)
+  const [companyKpiData, setCompanyKpiData] = useState<any>(null)
+  const [companyKpiTitle, setCompanyKpiTitle] = useState('')
+  const [companyKpiType, setCompanyKpiType] = useState<string>('')
+
+  // 移动端明细无限滚动懒加载状态，所有注释必须使用中文
+  const [displayedCount, setDisplayedCount] = useState(10)
+  const loadMoreKpiData = async () => {
+    // 延迟 500ms，为移动端滚动加载提供丝滑体验
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setDisplayedCount(prev => prev + 10)
+  }
+
+  const handleViewCompanyKpi = async (type: string, title: string) => {
+    setCompanyKpiTitle(title)
+    setCompanyKpiType(type)
+    setCompanyKpiVisible(true)
+    setCompanyKpiLoading(true)
+    setCompanyKpiData(null)
+    setDisplayedCount(10) // 每次打开弹窗重置展示行数为10条
+    try {
+      const res = await getCompanyKpiDetail({ kpi_type: type })
+      if (res) {
+        setCompanyKpiData(res)
+      }
+    } catch (err) {
+      console.error('加载公司大盘KPI明细失败:', err)
+      Toast.show({ icon: 'fail', content: '加载明细失败' })
+    } finally {
+      setCompanyKpiLoading(false)
+    }
+  }
+
+  // 中台幸福委播报相关状态与方法，所有注释必须使用中文
+  const isMiddleOfficeOrAdmin = user?.role === 'admin' || user?.position_type === 'middle_office'
+  const [middleOfficeVisible, setMiddleOfficeVisible] = useState(false)
+  const [middleOfficeSubmitLoading, setMiddleOfficeSubmitLoading] = useState(false)
+  const [middleOfficeForm, setMiddleOfficeForm] = useState({
+    firstType: '',
+    secondType: '',
+    content: ''
+  })
+
+  const handlePublishMiddleOfficeBroadcast = async () => {
+    if (!middleOfficeForm.firstType) {
+      Toast.show({ icon: 'fail', content: '请选择播报一级分类' })
+      return
+    }
+    if (!middleOfficeForm.secondType) {
+      Toast.show({ icon: 'fail', content: '请选择二级分类' })
+      return
+    }
+    if (!middleOfficeForm.content.trim()) {
+      Toast.show({ icon: 'fail', content: '请输入播报内容' })
+      return
+    }
+
+    if (middleOfficeSubmitLoading) return
+    setMiddleOfficeSubmitLoading(true)
+
+    try {
+      const payload: any = {
+        event_type: middleOfficeForm.firstType === 'happiness' ? 'happiness_committee' : 'middle_office_report',
+        content: `【${middleOfficeForm.secondType}】${middleOfficeForm.content}`,
+        push_channel: 'all',
+        team_id: user?.teamId || null
+      }
+      const res = await post('/broadcast', payload)
+      if (res) {
+        Toast.show({ icon: 'success', content: '中台幸福委播报发布成功，大屏端与钉钉已同步推送' })
+        setMiddleOfficeVisible(false)
+        setMiddleOfficeForm({
+          firstType: '',
+          secondType: '',
+          content: ''
+        })
+        // 成功提报后，重新拉取统计数据刷新页面
+        const statsRes = await getMyStats()
+        if (statsRes) {
+          setStats(statsRes as any)
+        }
+      }
+    } catch (err: any) {
+      console.error(err)
+      const detail = err?.response?.data?.detail || '发布失败'
+      Toast.show({ icon: 'fail', content: detail })
+    } finally {
+      setMiddleOfficeSubmitLoading(false)
+    }
+  }
 
   // 一级指标弹窗状态
   const [teamMetricsVisible, setTeamMetricsVisible] = useState(false)
@@ -85,6 +442,7 @@ export default function Home() {
     setSubDetailVisible(true)
     setSubDetailLoading(true)
     setSubDetailData([])
+    setDisplayedCount(10) // 每次打开弹窗重置展示行数为10条
     try {
       let res: any
       if (type === 'contracts') {
@@ -124,12 +482,103 @@ export default function Home() {
   }
 
   // 1. 公司盘数据
-  const companyStats = stats?.company_stats || {
-    newContracts: { value: 0, target: 12400, percentage: 0 },
-    happinessActions: { value: 0, target: 3300, percentage: 0 },
-    ironTriangle: { value: 0, target: 500, percentage: 0 },
-    validLeads: { value: 0, target: 600, percentage: 0 }
+  const rawCompanyStats = stats?.company_stats || {}
+  const companyStats = {
+    newContracts: rawCompanyStats.newContracts || { value: 0, target: 6200, percentage: 0 },
+    happinessActions: rawCompanyStats.happinessActions || { value: 0, target: 3300, percentage: 0 },
+    ironTriangle: rawCompanyStats.ironTriangle || { value: 0, target: 500, percentage: 0 },
+    tenderProjects: rawCompanyStats.tenderProjects || { value: 0, target: 150, percentage: 0 },
+    validLeads: rawCompanyStats.validLeads || { value: 0, target: 600, percentage: 0 },
+    potentialLeads: rawCompanyStats.potentialLeads || { value: 0, target: 600, percentage: 0 },
+    stationReports: rawCompanyStats.stationReports || { value: 0, target: 300, percentage: 0 },
+    middleOfficeReports: rawCompanyStats.middleOfficeReports || { value: 0, target: 500, percentage: 0 },
+    happinessCommitteeReports: rawCompanyStats.happinessCommitteeReports || { value: 0, target: 600, percentage: 0 }
   }
+
+  // 9 大指标列表，全部注释采用中文
+  const kpiItems = [
+    {
+      key: 'newContracts',
+      type: 'contracts',
+      title: '新签合同',
+      value: `${companyStats.newContracts.value.toLocaleString()} 万元`,
+      target: `${companyStats.newContracts.target}万`,
+      percentage: companyStats.newContracts.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'happinessActions',
+      type: 'happiness',
+      title: '幸福动作',
+      value: `${companyStats.happinessActions.value} 次`,
+      target: `${companyStats.happinessActions.target}次`,
+      percentage: companyStats.happinessActions.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'ironTriangle',
+      type: 'triangle',
+      title: '铁三角协作',
+      value: `${companyStats.ironTriangle.value} 次`,
+      target: `${companyStats.ironTriangle.target}次`,
+      percentage: companyStats.ironTriangle.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'tenderProjects',
+      type: 'tenders',
+      title: '中标项目',
+      value: `${companyStats.tenderProjects.value} 个`,
+      target: `${companyStats.tenderProjects.target}个`,
+      percentage: companyStats.tenderProjects.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'validLeads',
+      type: 'leads',
+      title: '有效线索',
+      value: `${companyStats.validLeads.value} 条`,
+      target: `${companyStats.validLeads.target}条`,
+      percentage: companyStats.validLeads.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'potentialLeads',
+      type: 'potential_leads',
+      title: '潜在线索',
+      value: `${companyStats.potentialLeads.value} 条`,
+      target: `${companyStats.potentialLeads.target}条`,
+      percentage: companyStats.potentialLeads.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'stationReports',
+      type: 'station_reports',
+      title: '驻点前线播报',
+      value: `${companyStats.stationReports.value} 次`,
+      target: `${companyStats.stationReports.target}次`,
+      percentage: companyStats.stationReports.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'middleOfficeReports',
+      type: 'middle_office_report',
+      title: '中台前线播报',
+      value: `${companyStats.middleOfficeReports.value} 次`,
+      target: `${companyStats.middleOfficeReports.target}次`,
+      percentage: companyStats.middleOfficeReports.percentage,
+      color: '#00d4ff'
+    },
+    {
+      key: 'happinessCommitteeReports',
+      type: 'happiness_committee',
+      title: '幸福委播报',
+      value: `${companyStats.happinessCommitteeReports.value} 次`,
+      target: `${companyStats.happinessCommitteeReports.target}次`,
+      percentage: companyStats.happinessCommitteeReports.percentage,
+      color: '#00d4ff'
+    }
+  ]
 
   // 2. 战队盘数据
   const teamStats = stats?.team_stats
@@ -170,10 +619,21 @@ export default function Home() {
         className="card"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 4 }}
       >
-        {shortcuts.map((item) => (
+        {(
+          [
+            ...shortcuts,
+            { icon: '📢', label: '中台幸福委播报', path: 'middle_office_popup' }
+          ]
+        ).map((item) => (
           <div
             key={item.path}
-            onClick={() => navigate(item.path)}
+            onClick={() => {
+              if (item.path === 'middle_office_popup') {
+                setMiddleOfficeVisible(true)
+              } else {
+                navigate(item.path)
+              }
+            }}
             style={{
               display: 'flex',
               flexDirection: 'column',
@@ -203,43 +663,38 @@ export default function Home() {
           <span>🏆 战役累计公司总盘</span>
           <span style={{ fontSize: 11, color: '#00d4ff', border: '1px solid #00d4ff', padding: '2px 6px', borderRadius: 4 }}>全员共享</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div style={{ borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#00d4ff' }}>
-              {companyStats.newContracts.value.toLocaleString()} 万元
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>新签合同（目标 {companyStats.newContracts.target}万）</div>
-            <div style={{ fontSize: 12, color: '#52c41a', marginTop: 4, fontWeight: 600 }}>
-              完成率 {companyStats.newContracts.percentage}%
-            </div>
-          </div>
-          <div style={{ paddingLeft: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#00d4ff' }}>
-              {companyStats.happinessActions.value} 次
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>幸福动作（目标 {companyStats.happinessActions.target}次）</div>
-            <div style={{ fontSize: 12, color: '#52c41a', marginTop: 4, fontWeight: 600 }}>
-              完成率 {companyStats.happinessActions.percentage}%
-            </div>
-          </div>
-          <div style={{ borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: 8, paddingTop: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#00d4ff' }}>
-              {companyStats.ironTriangle.value} 次
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>铁三角协作（目标 {companyStats.ironTriangle.target}次）</div>
-            <div style={{ fontSize: 12, color: '#52c41a', marginTop: 4, fontWeight: 600 }}>
-              完成率 {companyStats.ironTriangle.percentage}%
-            </div>
-          </div>
-          <div style={{ paddingLeft: 8, paddingTop: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#00d4ff' }}>
-              {companyStats.validLeads.value} 条
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>有效线索（目标 {companyStats.validLeads.target}条）</div>
-            <div style={{ fontSize: 12, color: '#52c41a', marginTop: 4, fontWeight: 600 }}>
-              完成率 {companyStats.validLeads.percentage}%
-            </div>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 8px' }}>
+          {kpiItems.map((item, idx) => {
+            const isLastRow = idx >= 6
+            const isRightCol = (idx + 1) % 3 === 0
+            
+            return (
+              <div 
+                key={item.key}
+                onClick={() => handleViewCompanyKpi(item.type, item.title)}
+                style={{
+                  padding: '10px 4px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  borderRight: isRightCol ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: isLastRow ? 'none' : '1px solid rgba(255,255,255,0.08)'
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: item.color }}>
+                  {item.value.replace(' 万元', '万').replace(' 次', '次').replace(' 个', '个').replace(' 条', '条')}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2, whiteSpace: 'nowrap' }}>
+                  {item.title}
+                </div>
+                <div style={{ fontSize: 9, opacity: 0.5, marginTop: 1, whiteSpace: 'nowrap' }}>
+                  目标 {item.target}
+                </div>
+                <div style={{ fontSize: 11, color: '#52c41a', marginTop: 4, fontWeight: 600 }}>
+                  达成 {item.percentage}%
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -257,7 +712,7 @@ export default function Home() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
                   {zone.teams.map((t) => {
                     const lightColor = t.status_light === 'green' ? '#52c41a' : t.status_light === 'yellow' ? '#faad14' : '#ff4d4f';
-                    const lightText = t.status_light === 'green' ? '正常绿灯' : t.status_light === 'yellow' ? '稍有落后' : '预警红灯';
+                    const lightText = t.status_light === 'green' ? '强劲绿灯' : t.status_light === 'yellow' ? '预警黄灯' : '警告红灯';
 
                     return (
                       <div
@@ -388,7 +843,7 @@ export default function Home() {
                 }}
               />
               <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>
-                {teamStats.status_light === 'green' ? '势头强劲' : teamStats.status_light === 'yellow' ? '稍有落后' : '预警红灯'}
+                {teamStats.status_light === 'green' ? '强劲绿灯' : teamStats.status_light === 'yellow' ? '预警黄灯' : '警告红灯'}
               </span>
             </div>
           </div>
@@ -661,119 +1116,280 @@ export default function Home() {
           <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}><DotLoading color="primary" /></div>
         ) : subDetailData.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {subDetailData.map((item, idx) => (
-              <div key={idx} style={{ background: '#f9f9f9', padding: 12, borderRadius: 8, border: '1px solid #f0f0f0' }}>
-                {/* 1. 合同类型卡片 */}
-                {subDetailType === 'contracts' && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>📅 {item.report_date}</span>
-                      <span style={{ color: '#ff4d4f', fontWeight: 'bold' }}>{item.amount} 万元</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      🏢 {item.customer_name}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
-                      👤 提报：{item.reporter_name} {item.partner_name && item.partner_name !== '—' && `· 协同：${item.partner_name}`}
-                    </div>
-                    {item.description && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
-                        💬 {item.description}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* 2. 潜力线索卡片 (本系统) */}
-                {subDetailType === 'potential_leads' && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>📅 {item.report_date}</span>
-                      <span style={{ color: '#faad14', fontWeight: 'bold' }}>进度 {item.progress}</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      🏢 {item.customer_name}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
-                      👤 提报：{item.reporter_name}
-                    </div>
-                    {item.description && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
-                        💬 {item.description}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* 3. 有效线索卡片 (本系统) */}
-                {subDetailType === 'valid_leads' && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>📅 {item.report_date}</span>
-                      <span style={{ color: '#1677ff', fontWeight: 'bold' }}>进度 {item.progress}</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      🏢 {item.customer_name}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
-                      👤 提报：{item.reporter_name}
-                    </div>
-                    {item.description && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
-                        💬 {item.description}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* 4. 铁三角联动卡片 */}
-                {subDetailType === 'triangle' && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>📅 {item.report_date}</span>
-                      <span>👤 提报：{item.reporter_name}</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      🏢 客户：{item.customer_name}
-                    </div>
-                    {item.partner_name && item.partner_name !== '—' && (
-                      <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
-                        🤝 联动人：{item.partner_name}
-                      </div>
-                    )}
-                    {item.description && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
-                        💬 {item.description}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* 5. 幸福动作卡片 */}
-                {subDetailType === 'happiness' && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>
-                      <span>📅 {item.report_date}</span>
-                      <span style={{ color: '#52c41a', fontWeight: 'bold' }}>得分 +{item.level} 分</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#262626', marginBottom: 4 }}>
-                      🏢 客户：{item.customer_name}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#595959', marginBottom: 4 }}>
-                      👤 提报人：{item.reporter_name}
-                    </div>
-                    {item.description && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', borderTop: '1px dashed #e8e8e8', paddingTop: 4, marginTop: 4, wordBreak: 'break-all' }}>
-                        💬 {item.description}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+            {subDetailData.slice(0, displayedCount).map((item, idx) => (
+              <MobileKpiCard key={idx} item={item} kpiType={subDetailType} />
             ))}
+            <InfiniteScroll 
+              loadMore={loadMoreKpiData} 
+              hasMore={displayedCount < subDetailData.length} 
+            />
           </div>
         ) : (
           <div style={{ textAlign: 'center', color: '#bfbfbf', padding: '40px 0' }}>暂无该项累计实绩明细记录</div>
+        )}
+      </Popup>
+
+      {/* 中台幸福委播报 Popup 表单，所有注释必须使用中文 */}
+      <Popup
+        visible={middleOfficeVisible}
+        onClose={() => {
+          if (!middleOfficeSubmitLoading) setMiddleOfficeVisible(false)
+        }}
+        bodyStyle={{
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          minHeight: '60vh',
+          maxHeight: '90vh',
+          padding: '20px 16px',
+          overflowY: 'auto',
+          zIndex: 1060
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid #f0f0f0' }}>
+          <span style={{ fontSize: 15, fontWeight: 'bold', color: '#722ed1' }}>
+            📢 中台幸福委播报提报
+          </span>
+          <span
+            onClick={() => {
+              if (!middleOfficeSubmitLoading) setMiddleOfficeVisible(false)
+            }}
+            style={{ color: '#666', fontSize: 14, cursor: 'pointer' }}
+          >
+            关闭
+          </span>
+        </div>
+
+        <Form layout="vertical">
+          <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>播报动作类型 (一级)</span>}>
+            <Selector
+              options={[
+                { label: '幸福委播报', value: 'happiness' },
+                { label: '中台播报', value: 'middle' }
+              ]}
+              value={[middleOfficeForm.firstType]}
+              onChange={(arr) => {
+                const val = arr[0] || ''
+                setMiddleOfficeForm(prev => ({ ...prev, firstType: val, secondType: '' }))
+              }}
+              style={{
+                '--font-size': '13px',
+                '--active-background-color': '#f9f0ff',
+                '--active-border-color': '#722ed1'
+              }}
+            />
+          </Form.Item>
+
+          {middleOfficeForm.firstType === 'happiness' && (
+            <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>幸福委专委分类 (二级)</span>}>
+              <Selector
+                columns={2}
+                options={[
+                  { label: 'B3-1 使命落地委', value: 'B3-1 使命落地委' },
+                  { label: 'B3-2 铁三角落地委', value: 'B3-2 铁三角落地委' },
+                  { label: 'B3-3 AI提效委', value: 'B3-3 AI提效委' },
+                  { label: 'B3-4 数字经营委', value: 'B3-4 数字经营委' },
+                  { label: 'B3-5 传灯推广委', value: 'B3-5 传灯推广委' },
+                  { label: 'B3-6 产品研发委', value: 'B3-6 产品研发委' },
+                  { label: 'B3-7 质量风控委', value: 'B3-7 质量风控委' },
+                  { label: 'B3-8 伙伴打造委', value: 'B3-8 伙伴打造委' },
+                  { label: 'B3-9 直连客户委', value: 'B3-9 直连客户委' },
+                  { label: 'B3-10 组织幸福委', value: 'B3-10 组织幸福委' },
+                  { label: 'B3-11 温暖快乐委', value: 'B3-11 温暖快乐委' },
+                  { label: 'B3-12 成长学习委', value: 'B3-12 成长学习委' }
+                ]}
+                value={[middleOfficeForm.secondType]}
+                onChange={(arr) => {
+                  const val = arr[0] || ''
+                  setMiddleOfficeForm(prev => ({ ...prev, secondType: val }))
+                }}
+                style={{
+                  '--font-size': '12px',
+                  '--active-background-color': '#f9f0ff',
+                  '--active-border-color': '#722ed1'
+                }}
+              />
+            </Form.Item>
+          )}
+
+          {middleOfficeForm.firstType === 'middle' && (
+            <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>中台部门分类 (二级)</span>}>
+              <Selector
+                columns={3}
+                options={[
+                  { label: '市场部', value: '市场部' },
+                  { label: '技术中心', value: '技术中心' },
+                  { label: '行政部', value: '行政部' },
+                  { label: '人力资源部', value: '人力资源部' },
+                  { label: '投标部', value: '投标部' },
+                  { label: '中地研究院', value: '中地研究院' }
+                ]}
+                value={[middleOfficeForm.secondType]}
+                onChange={(arr) => {
+                  const val = arr[0] || ''
+                  setMiddleOfficeForm(prev => ({ ...prev, secondType: val }))
+                }}
+                style={{
+                  '--font-size': '12px',
+                  '--active-background-color': '#f9f0ff',
+                  '--active-border-color': '#722ed1'
+                }}
+              />
+            </Form.Item>
+          )}
+
+          {middleOfficeForm.secondType && (
+            <>
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>播报内容</span>}>
+                <TextArea
+                  placeholder="请输入具体的播报内容..."
+                  rows={4}
+                  value={middleOfficeForm.content}
+                  onChange={(val) => setMiddleOfficeForm(prev => ({ ...prev, content: val }))}
+                  style={{
+                    fontSize: 13,
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    background: '#fff'
+                  }}
+                />
+              </Form.Item>
+
+              <div style={{ marginTop: 24, marginBottom: 12 }}>
+                <Button
+                  block
+                  color="primary"
+                  onClick={handlePublishMiddleOfficeBroadcast}
+                  loading={middleOfficeSubmitLoading}
+                  style={{
+                    borderRadius: 8,
+                    height: 44,
+                    fontSize: 15,
+                    fontWeight: 'bold',
+                    backgroundColor: '#722ed1',
+                    borderColor: '#722ed1'
+                  }}
+                >
+                  确认发布
+                </Button>
+              </div>
+            </>
+          )}
+        </Form>
+      </Popup>
+
+      {/* ================= 全公司大盘 KPI 指标详情弹窗 ================= */}
+      <Popup
+        visible={companyKpiVisible}
+        onMaskClick={() => {
+          setCompanyKpiVisible(false)
+          setCompanyKpiData(null)
+        }}
+        bodyStyle={{ borderTopLeftRadius: 16, borderTopRightRadius: 16, minHeight: '80vh', maxHeight: '90vh', padding: 20, overflowY: 'auto' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid #f0f0f0' }}>
+          <span style={{ fontSize: 15, fontWeight: 'bold' }}>
+            🏆 全公司【{companyKpiTitle}】大盘明细
+          </span>
+          <span onClick={() => {
+            setCompanyKpiVisible(false)
+            setCompanyKpiData(null)
+          }} style={{ color: '#1677ff', fontSize: 14, cursor: 'pointer', fontWeight: 'bold' }}>关闭</span>
+        </div>
+
+        {companyKpiLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}><DotLoading color="primary" /></div>
+        ) : companyKpiData ? (
+          <div>
+            {/* 顶部的汇总卡片 */}
+            <div style={{ marginBottom: 14 }}>
+              {companyKpiType === 'contracts' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', background: 'linear-gradient(135deg, #1890ff, #096dd9)', padding: 12, borderRadius: 8, color: '#fff' }}>
+                    <span style={{ fontSize: 12 }}>交付新签总额 (大盘去重)</span>
+                    <span style={{ fontSize: 14, fontWeight: 'bold' }}>{companyKpiData.delivery_total || 0} 万元</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', background: 'linear-gradient(135deg, #ff7a45, #ff4d4f)', padding: 12, borderRadius: 8, color: '#fff' }}>
+                    <span style={{ fontSize: 12 }}>营销新签总额</span>
+                    <span style={{ fontSize: 14, fontWeight: 'bold' }}>{companyKpiData.marketing_total || 0} 万元</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 8, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>累计统计项：{companyKpiTitle}</span>
+                  <span style={{ fontWeight: 'bold', color: '#1677ff' }}>共 {companyKpiData.total ?? 0} 次/条/个</span>
+                </div>
+              )}
+            </div>
+
+            {/* 流水卡片列表 */}
+            <div>
+              {(() => {
+                if (companyKpiType === 'contracts') {
+                  const dList = companyKpiData.delivery_list || [];
+                  const mList = companyKpiData.marketing_list || [];
+                  if (dList.length === 0 && mList.length === 0) {
+                    return <div style={{ textAlign: 'center', padding: 30, color: '#bfbfbf', fontSize: 12 }}>暂无新签合同明细</div>;
+                  }
+
+                  const dListToShow = dList.slice(0, displayedCount);
+                  const mListToShow = displayedCount > dList.length
+                    ? mList.slice(0, displayedCount - dList.length)
+                    : [];
+                  
+                  const totalCount = dList.length + mList.length;
+                  const hasMore = displayedCount < totalCount;
+
+                  return (
+                    <div>
+                      {dListToShow.length > 0 && (
+                        <div style={{ marginBottom: 14 }}>
+                          <div style={{ fontSize: 13, fontWeight: 'bold', color: '#111', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 3, height: 12, background: '#1890ff' }} />
+                            交付新签合同列表 ({dList.length})
+                          </div>
+                          {dListToShow.map((item: any, idx: number) => (
+                            <MobileKpiCard key={`d-${idx}`} item={item} kpiType={companyKpiType} />
+                          ))}
+                        </div>
+                      )}
+                      {mListToShow.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 'bold', color: '#111', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 3, height: 12, background: '#ff7a45' }} />
+                            营销新签合同列表 ({mList.length})
+                          </div>
+                          {mListToShow.map((item: any, idx: number) => (
+                            <MobileKpiCard key={`m-${idx}`} item={item} kpiType={companyKpiType} />
+                          ))}
+                        </div>
+                      )}
+                      <InfiniteScroll loadMore={loadMoreKpiData} hasMore={hasMore} />
+                    </div>
+                  );
+                }
+
+                const list = companyKpiData.list || [];
+                if (list.length === 0) {
+                  return <div style={{ textAlign: 'center', padding: 30, color: '#bfbfbf', fontSize: 12 }}>暂无相关明细数据</div>;
+                }
+
+                const listToShow = list.slice(0, displayedCount);
+                const hasMore = displayedCount < list.length;
+
+                return (
+                  <div>
+                    {listToShow.map((item: any, idx: number) => (
+                      <MobileKpiCard key={idx} item={item} kpiType={companyKpiType} />
+                    ))}
+                    <InfiniteScroll loadMore={loadMoreKpiData} hasMore={hasMore} />
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', color: '#bfbfbf', padding: '30px 0' }}>获取公司大盘数据失败</div>
         )}
       </Popup>
     </div>

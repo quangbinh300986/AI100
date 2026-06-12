@@ -23,6 +23,9 @@ class KpiSummary(BaseModel):
     ironTriangle: KpiItem = Field(..., description="售前铁三角联动次数")
     tenderProjects: Optional[KpiItem] = Field(default=None, description="中标项目确定数")
     validLeads: KpiItem = Field(..., description="新增有效线索数")
+    stationReports: Optional[KpiItem] = Field(default=None, description="驻点前线播报")
+    middleOfficeReports: Optional[KpiItem] = Field(default=None, description="中台播报")
+    happinessCommitteeReports: Optional[KpiItem] = Field(default=None, description="幸福委播报")
 
 
 class RankingItem(BaseModel):
@@ -77,6 +80,9 @@ class DualTrackTeam(BaseModel):
     validLeadsTarget: float = Field(default=0.0, description="有效需求线索目标")
     validLeadsRate: float = Field(default=0.0, description="有效需求线索达成率")
     statusLight: str = Field(default="green", description="综合状态灯: red/yellow/green")
+    lightRate: Optional[float] = Field(default=None, description="计算指示灯所采用的汇总百分比")
+    lightFormula: Optional[str] = Field(default=None, description="指示灯计算公式描述")
+    lightProcess: Optional[str] = Field(default=None, description="指示灯计算过程描述")
 
 
 class FunnelItem(BaseModel):
@@ -108,6 +114,7 @@ class DashboardResponse(BaseModel):
     zoneRanking: list[RankingItem] = Field(default_factory=list, description="战区排名列表")
     weeklyTrend: WeeklyTrendData = Field(..., description="周趋势折线数据")
     liveFeed: list[LiveFeedItem] = Field(default_factory=list, description="实时动态播报")
+    middleOfficeFeed: list[LiveFeedItem] = Field(default_factory=list, description="中台幸福委专属播报记录")
     heroBoard: list[RankingItem] = Field(default_factory=list, description="签单先锋榜TOP10")
     marketingHeroBoard: list[RankingItem] = Field(default_factory=list, description="营销签单战将榜TOP10")
     deliveryHeroBoard: list[RankingItem] = Field(default_factory=list, description="交付签单战将榜TOP10")
@@ -115,6 +122,7 @@ class DashboardResponse(BaseModel):
     triangleBoard: list[RankingItem] = Field(default_factory=list, description="铁三角协作标杆榜TOP10")
     leadsBoard: list[RankingItem] = Field(default_factory=list, description="线索先锋榜TOP10")
     potentialLeadsBoard: list[RankingItem] = Field(default_factory=list, description="潜力线索榜TOP10")
+    stationReportsBoard: list[RankingItem] = Field(default_factory=list, description="前线驻点播报榜TOP10")
     zoneTeamsPK: dict[str, list[RankingItem]] = Field(default_factory=dict, description="战区内部战队相互PK榜单")
     dualTrackTeams: list[DualTrackTeam] = Field(default_factory=list, description="九宫格双轨战队数据")
     leadsFunnel: list[FunnelItem] = Field(default_factory=list, description="销售漏斗数据")

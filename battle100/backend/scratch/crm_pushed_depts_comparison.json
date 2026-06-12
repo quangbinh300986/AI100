@@ -1,0 +1,332 @@
+{
+  "total_pushed_count": 19,
+  "comparisons": [
+    {
+      "user_id": "lujunsong_cxk7",
+      "user_name": "卢俊松",
+      "work_hour_title": "佛山市自然资源局禅城分局",
+      "pushed_create_dept": "8bd4ffc19f9f4fe89fc6937b64a902fe",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "zhuhai_i0nx",
+      "user_name": "朱海",
+      "work_hour_title": "南雄市土地储备中心",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": true
+    },
+    {
+      "user_id": "liuluojun_4ldi",
+      "user_name": "刘罗军",
+      "work_hour_title": "台山市城乡规划院",
+      "pushed_create_dept": "a6c5a407686644189a24ee002e5bdbe7",
+      "actual_office_code": "ZD00404",
+      "actual_office_name": "四组",
+      "is_match": false
+    },
+    {
+      "user_id": "xiangbinqiang_nts9",
+      "user_name": "项斌强",
+      "work_hour_title": "广东省国土资源技术中心（广东省基础地理信息中心）",
+      "pushed_create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhangyongxiong_v43b",
+      "user_name": "张永雄",
+      "work_hour_title": "封开县南丰镇人民政府",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD008",
+      "actual_office_name": "中地城市更新技术咨询（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "xiangbinqiang_nts9",
+      "user_name": "项斌强",
+      "work_hour_title": "深汕合作区农业农村和海洋渔业局",
+      "pushed_create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "wuyaoqiang_0vub",
+      "user_name": "伍耀强",
+      "work_hour_title": "开平市自然资源局",
+      "pushed_create_dept": "402881e47ce3f929017d267cf1730d20",
+      "actual_office_code": "ZD007",
+      "actual_office_name": "中地大数据（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "wuyaoqiang_0vub",
+      "user_name": "伍耀强",
+      "work_hour_title": "南雄市土地储备中心",
+      "pushed_create_dept": "402881e47ce3f929017d267cf1730d20",
+      "actual_office_code": "ZD007",
+      "actual_office_name": "中地大数据（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "lijianpeng_tgh0",
+      "user_name": "李健鹏",
+      "work_hour_title": "开平市自然资源局",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "chenhongyuan_1ap5",
+      "user_name": "陈鸿源",
+      "work_hour_title": "茂南区自然资源局",
+      "pushed_create_dept": "b5a98fb31dca478db4bb03d7a4938289",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhangyongxiong_v43b",
+      "user_name": "张永雄",
+      "work_hour_title": "封开县公路事务中心",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD008",
+      "actual_office_name": "中地城市更新技术咨询（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "402881e48ba77a53018eb611c2d81fa5",
+      "user_name": "未知员工",
+      "work_hour_title": "广州市增城区新塘镇人民政府",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": null,
+      "actual_office_name": null,
+      "is_match": false
+    },
+    {
+      "user_id": "wanghaoliang_cspw",
+      "user_name": "王浩亮",
+      "work_hour_title": "广东中远海运重工有限公司",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": "ZD003001001",
+      "actual_office_name": "1A",
+      "is_match": false
+    },
+    {
+      "user_id": "chenhaolong_4n4c",
+      "user_name": "陈浩龙",
+      "work_hour_title": "广东中远海运重工有限公司",
+      "pushed_create_dept": "70fa1ec9c4ed465fabbb51c39d335adc",
+      "actual_office_code": "ZD006",
+      "actual_office_name": "不动产代理测绘部",
+      "is_match": false
+    },
+    {
+      "user_id": "chenyujian_njkw",
+      "user_name": "陈宇健",
+      "work_hour_title": "佛山市三水区大塘镇自然资源所",
+      "pushed_create_dept": "402881e485a5bd79018602032d222591",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "huangshanxing_ln3d",
+      "user_name": "黄善行",
+      "work_hour_title": "佛山市自然资源局高明分局",
+      "pushed_create_dept": "402881e485a5bd79018602032d222591",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "lijianpeng_tgh0",
+      "user_name": "李健鹏",
+      "work_hour_title": "开平市月山镇人民政府",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhengzipeng_okbl",
+      "user_name": "郑子鹏",
+      "work_hour_title": "清远市清城区石角镇人民政府",
+      "pushed_create_dept": "b4f1be9287f548eca194d9b56354d3f0",
+      "actual_office_code": "ZD020",
+      "actual_office_name": "清远分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "zhuhai_i0nx",
+      "user_name": "朱海",
+      "work_hour_title": "广州市规划和自然资源局番禺区分局",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": true
+    }
+  ],
+  "mismatch_count": 17,
+  "mismatches": [
+    {
+      "user_id": "lujunsong_cxk7",
+      "user_name": "卢俊松",
+      "work_hour_title": "佛山市自然资源局禅城分局",
+      "pushed_create_dept": "8bd4ffc19f9f4fe89fc6937b64a902fe",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "liuluojun_4ldi",
+      "user_name": "刘罗军",
+      "work_hour_title": "台山市城乡规划院",
+      "pushed_create_dept": "a6c5a407686644189a24ee002e5bdbe7",
+      "actual_office_code": "ZD00404",
+      "actual_office_name": "四组",
+      "is_match": false
+    },
+    {
+      "user_id": "xiangbinqiang_nts9",
+      "user_name": "项斌强",
+      "work_hour_title": "广东省国土资源技术中心（广东省基础地理信息中心）",
+      "pushed_create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhangyongxiong_v43b",
+      "user_name": "张永雄",
+      "work_hour_title": "封开县南丰镇人民政府",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD008",
+      "actual_office_name": "中地城市更新技术咨询（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "xiangbinqiang_nts9",
+      "user_name": "项斌强",
+      "work_hour_title": "深汕合作区农业农村和海洋渔业局",
+      "pushed_create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "wuyaoqiang_0vub",
+      "user_name": "伍耀强",
+      "work_hour_title": "开平市自然资源局",
+      "pushed_create_dept": "402881e47ce3f929017d267cf1730d20",
+      "actual_office_code": "ZD007",
+      "actual_office_name": "中地大数据（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "wuyaoqiang_0vub",
+      "user_name": "伍耀强",
+      "work_hour_title": "南雄市土地储备中心",
+      "pushed_create_dept": "402881e47ce3f929017d267cf1730d20",
+      "actual_office_code": "ZD007",
+      "actual_office_name": "中地大数据（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "lijianpeng_tgh0",
+      "user_name": "李健鹏",
+      "work_hour_title": "开平市自然资源局",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "chenhongyuan_1ap5",
+      "user_name": "陈鸿源",
+      "work_hour_title": "茂南区自然资源局",
+      "pushed_create_dept": "b5a98fb31dca478db4bb03d7a4938289",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhangyongxiong_v43b",
+      "user_name": "张永雄",
+      "work_hour_title": "封开县公路事务中心",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD008",
+      "actual_office_name": "中地城市更新技术咨询（广东）有限公司",
+      "is_match": false
+    },
+    {
+      "user_id": "402881e48ba77a53018eb611c2d81fa5",
+      "user_name": "未知员工",
+      "work_hour_title": "广州市增城区新塘镇人民政府",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": null,
+      "actual_office_name": null,
+      "is_match": false
+    },
+    {
+      "user_id": "wanghaoliang_cspw",
+      "user_name": "王浩亮",
+      "work_hour_title": "广东中远海运重工有限公司",
+      "pushed_create_dept": "ZD009",
+      "actual_office_code": "ZD003001001",
+      "actual_office_name": "1A",
+      "is_match": false
+    },
+    {
+      "user_id": "chenhaolong_4n4c",
+      "user_name": "陈浩龙",
+      "work_hour_title": "广东中远海运重工有限公司",
+      "pushed_create_dept": "70fa1ec9c4ed465fabbb51c39d335adc",
+      "actual_office_code": "ZD006",
+      "actual_office_name": "不动产代理测绘部",
+      "is_match": false
+    },
+    {
+      "user_id": "chenyujian_njkw",
+      "user_name": "陈宇健",
+      "work_hour_title": "佛山市三水区大塘镇自然资源所",
+      "pushed_create_dept": "402881e485a5bd79018602032d222591",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "huangshanxing_ln3d",
+      "user_name": "黄善行",
+      "work_hour_title": "佛山市自然资源局高明分局",
+      "pushed_create_dept": "402881e485a5bd79018602032d222591",
+      "actual_office_code": "ZD013",
+      "actual_office_name": "佛山分公司",
+      "is_match": false
+    },
+    {
+      "user_id": "lijianpeng_tgh0",
+      "user_name": "李健鹏",
+      "work_hour_title": "开平市月山镇人民政府",
+      "pushed_create_dept": "a1701d356ef84e339e3f8dbb0e06099f",
+      "actual_office_code": "ZD009",
+      "actual_office_name": "市场战略部",
+      "is_match": false
+    },
+    {
+      "user_id": "zhengzipeng_okbl",
+      "user_name": "郑子鹏",
+      "work_hour_title": "清远市清城区石角镇人民政府",
+      "pushed_create_dept": "b4f1be9287f548eca194d9b56354d3f0",
+      "actual_office_code": "ZD020",
+      "actual_office_name": "清远分公司",
+      "is_match": false
+    }
+  ]
+}

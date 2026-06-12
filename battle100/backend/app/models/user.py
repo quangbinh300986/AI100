@@ -15,7 +15,7 @@ class UserRole(str, enum.Enum):
     TARGET_OFFICER = "target_officer"          # 目标官
     DIGITAL_SPECIALIST = "digital_specialist"  # 数字专员
     TEAM_LEADER = "team_leader"                # 战队长
-    STAFF = "staff"                            # 普通员工
+    STAFF = "staff"                            # 队员
     MARKETING_STAFF = "marketing_staff"        # 营销
     TECH_MARKETING = "tech_marketing"          # 技术营销
 

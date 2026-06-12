@@ -65,6 +65,10 @@ export default function GroupWeeklyReport() {
   const [isSaved, setIsSaved] = useState(false)
   const [savedTime, setSavedTime] = useState('')
 
+  // AI 后台生成状态
+  const [aiGeneratingStatus, setAiGeneratingStatus] = useState<'idle' | 'running' | 'success' | 'failed'>('idle')
+  const pollingTimerRef = useRef<any>(null)
+
   // 4. 加载初始数据：所有战队和三级巴选项
   useEffect(() => {
     // 战队列表拉取
@@ -163,10 +167,83 @@ export default function GroupWeeklyReport() {
     setSavedTime('')
   }
 
+  // 检查后台 AI 生成状态
+  const checkAiGeneratingStatus = async (targetMonday: string, targetTeamId: string, targetThirdBar: string) => {
+    try {
+      let url = `/reports/weekly/generate-status?start_date=${targetMonday}`
+      const teamParam = targetTeamId !== 'all' ? targetTeamId : null
+      const barParam = targetThirdBar !== 'all' ? targetThirdBar : null
+      if (teamParam) {
+        url += `&team_id=${teamParam}`
+      }
+      if (barParam) {
+        url += `&third_class_bar=${encodeURIComponent(barParam)}`
+      }
+      const res = await get<any>(url)
+      const status = res?.status || 'idle'
+      if (status === 'success') {
+        setAiGeneratingStatus('idle')
+        Toast.show({ icon: 'success', content: 'AI 团队周报后台生成并自动存盘成功！' })
+        fetchGroupReport() // 刷新重新加载数据
+        return true
+      } else if (status === 'failed') {
+        setAiGeneratingStatus('idle')
+        Toast.show({ icon: 'fail', content: `AI 团队周报生成失败：${res?.error || '未知错误'}` })
+        return true
+      } else if (status === 'running') {
+        setAiGeneratingStatus('running')
+        return false
+      }
+      setAiGeneratingStatus('idle')
+      return true
+    } catch (err) {
+      console.error('查询 AI 状态失败:', err)
+      return false
+    }
+  }
+
+  // 启动状态轮询
+  const startStatusPolling = (targetMonday: string, targetTeamId: string, targetThirdBar: string) => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current)
+    }
+    checkAiGeneratingStatus(targetMonday, targetTeamId, targetThirdBar)
+
+    pollingTimerRef.current = setInterval(async () => {
+      const isDone = await checkAiGeneratingStatus(targetMonday, targetTeamId, targetThirdBar)
+      if (isDone && pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current)
+        pollingTimerRef.current = null
+      }
+    }, 5000)
+  }
+
   // 监听筛选改变，自动加载
   useEffect(() => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current)
+      pollingTimerRef.current = null
+    }
+    setAiGeneratingStatus('idle')
+
     fetchGroupReport()
+
+    // 检查是否已经在后台生成中
+    checkAiGeneratingStatus(mondayStr, selectedTeamId, selectedThirdBar).then((isDone) => {
+      if (!isDone) {
+        startStatusPolling(mondayStr, selectedTeamId, selectedThirdBar)
+      }
+    })
   }, [mondayStr, selectedTeamId, selectedThirdBar])
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current)
+      }
+    }
+  }, [])
 
   // 6. 前后周切换
   const handlePrevWeek = () => {
@@ -183,11 +260,10 @@ export default function GroupWeeklyReport() {
 
   // 7. 触发 AI 智能生成
   const handleAiGenerate = async () => {
-    setActionLoading(true)
+    setAiGeneratingStatus('running')
     Toast.show({
-      icon: 'loading',
-      content: 'AI 正在并发提取 CRM 数据并总结周报中，请稍候...',
-      duration: 0
+      content: '已在后台启动 AI 生成任务，请稍候...',
+      duration: 2000
     })
     
     let url = `/reports/weekly/generate-group-report?start_date=${mondayStr}`
@@ -202,35 +278,16 @@ export default function GroupWeeklyReport() {
     }
 
     try {
-      const res = await post<any>(url, {})
-      const data = res?.data ? res.data : res
-      if (data) {
-        setContent(data.content || '')
-        setMetrics(data.metrics || {
-          marketing_signed: 0,
-          delivery_signed: 0,
-          win_bids: 0,
-          happiness_count: 0,
-          triangle_count: 0,
-          valid_leads: 0,
-          potential_leads: 0,
-          production_value: 0,
-          receive_value: 0
-        })
-        setIsSaved(false)
-        setSavedTime('')
-        Toast.clear()
-        Toast.show({ icon: 'success', content: '团队周报智能整理生成成功！' })
-      }
+      await post<any>(url, {})
+      // 启动轮询
+      startStatusPolling(mondayStr, selectedTeamId, selectedThirdBar)
     } catch (err: any) {
       console.error(err)
-      Toast.clear()
+      setAiGeneratingStatus('idle')
       Toast.show({
         icon: 'fail',
-        content: err?.response?.data?.detail || 'AI 生成团队周报失败，请确认该战队在当周是否有活跃成员及动作数据'
+        content: err?.response?.data?.detail || 'AI 生成团队周报失败，请稍后重试'
       })
-    } finally {
-      setActionLoading(false)
     }
   }
 
@@ -535,7 +592,21 @@ export default function GroupWeeklyReport() {
       ) : (
         <div style={{ padding: '0 12px' }}>
           {/* 状态指示框 */}
-          {isSaved ? (
+          {aiGeneratingStatus === 'running' ? (
+            <div style={{
+              textAlign: 'center',
+              padding: 10,
+              color: '#fa8c16',
+              fontSize: 12,
+              fontWeight: 'bold',
+              backgroundColor: '#fff7e6',
+              borderRadius: 8,
+              border: '1px solid #ffd591',
+              marginBottom: 12
+            }}>
+              ⚡ AI 正在后台整理生成周报中，您可以继续编辑或浏览旧数据...
+            </div>
+          ) : isSaved ? (
             <div style={{
               textAlign: 'center',
               padding: 10,
@@ -623,10 +694,13 @@ export default function GroupWeeklyReport() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
             <Button
               block
-              loading={actionLoading}
+              loading={aiGeneratingStatus === 'running'}
+              disabled={aiGeneratingStatus === 'running'}
               onClick={handleAiGenerate}
               style={{
-                background: 'linear-gradient(135deg, #722ed1, #3f1a68)',
+                background: aiGeneratingStatus === 'running' 
+                  ? '#d9d9d9' 
+                  : 'linear-gradient(135deg, #722ed1, #3f1a68)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '12px',
@@ -635,7 +709,7 @@ export default function GroupWeeklyReport() {
                 boxShadow: '0 4px 10px rgba(114,46,209,0.2)'
               }}
             >
-              ⚡ AI 智能生成团队周报
+              {aiGeneratingStatus === 'running' ? '⚡ AI 正在后台分析生成中...' : '⚡ AI 智能生成团队周报'}
             </Button>
 
             <div style={{ display: 'flex', gap: 10 }}>

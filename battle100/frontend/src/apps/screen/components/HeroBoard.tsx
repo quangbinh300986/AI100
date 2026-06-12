@@ -10,9 +10,10 @@ interface HeroBoardProps {
   triangleBoard?: RankingItem[]
   leadsBoard?: RankingItem[]
   potentialLeadsBoard?: RankingItem[]
+  stationReportsBoard?: RankingItem[]
 }
 
-type TabType = 'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle'
+type TabType = 'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle' | 'station_reports'
 
 const HeroBoard: React.FC<HeroBoardProps> = ({
   theme = 'theme-light-red',
@@ -22,7 +23,8 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
   happinessBoard = [],
   triangleBoard = [],
   leadsBoard = [],
-  potentialLeadsBoard = []
+  potentialLeadsBoard = [],
+  stationReportsBoard = []
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('marketing_signing')
   const timerRef = useRef<any>(null)
@@ -45,6 +47,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
         if (prev === 'leads') return 'potential_leads'
         if (prev === 'potential_leads') return 'happiness'
         if (prev === 'happiness') return 'triangle'
+        if (prev === 'triangle') return 'station_reports'
         return 'marketing_signing'
       })
     }, 8000)
@@ -96,6 +99,14 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
           unit: '次',
           isFloat: false,
           list: triangleBoard.length > 0 ? triangleBoard : defaultTriangle,
+          color: '#fa8c16'
+        }
+      case 'station_reports':
+        return {
+          title: '📢 周前线驻点播报榜 (当周前线快报次数)',
+          unit: '次',
+          isFloat: false,
+          list: stationReportsBoard.length > 0 ? stationReportsBoard : defaultTriangle,
           color: '#fa541c'
         }
       case 'marketing_signing':
@@ -156,15 +167,15 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
       >
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           {[
-            { id: 'marketing_signing', label: '营销签单战将' },
-            { id: 'delivery_signing', label: '交付签单战将' },
-            { id: 'leads', label: '线索先锋' },
-            { id: 'potential_leads', label: '潜力线索战将' },
-            { id: 'happiness', label: '幸福动作卷王' },
-            { id: 'triangle', label: '铁三角协作' },
+            { id: 'marketing_signing', label: '营销签单战将', gradient: 'linear-gradient(90deg, #b71c1c 0%, #ff4d4f 100%)', shadow: 'rgba(183,28,28,0.25)' },
+            { id: 'delivery_signing', label: '交付签单战将', gradient: 'linear-gradient(90deg, #08979c 0%, #36cfc9 100%)', shadow: 'rgba(8,151,156,0.25)' },
+            { id: 'leads', label: '线索先锋', gradient: 'linear-gradient(90deg, #1890ff 0%, #69c0ff 100%)', shadow: 'rgba(24,144,255,0.25)' },
+            { id: 'potential_leads', label: '潜力线索战将', gradient: 'linear-gradient(90deg, #eb2f96 0%, #ff85c0 100%)', shadow: 'rgba(235,47,150,0.25)' },
+            { id: 'happiness', label: '幸福动作卷王', gradient: 'linear-gradient(90deg, #52c41a 0%, #95de64 100%)', shadow: 'rgba(82,196,26,0.25)' },
+            { id: 'triangle', label: '铁三角协作', gradient: 'linear-gradient(90deg, #fa8c16 0%, #ffd591 100%)', shadow: 'rgba(250,140,22,0.25)' },
+            { id: 'station_reports', label: '驻点播报', gradient: 'linear-gradient(90deg, #fa541c 0%, #ff9c6e 100%)', shadow: 'rgba(250,84,28,0.25)' },
           ].map((tab) => {
             const isActive = activeTab === tab.id
-            const isDelivery = tab.id === 'delivery_signing'
             return (
               <button
                 key={tab.id}
@@ -172,11 +183,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                 style={{
                   border: 'none',
                   outline: 'none',
-                  background: isActive
-                    ? isDelivery
-                      ? 'linear-gradient(90deg, #08979c 0%, #36cfc9 100%)'
-                      : 'linear-gradient(90deg, #b71c1c 0%, #ff4d4f 100%)'
-                    : 'rgba(0,0,0,0.04)',
+                  background: isActive ? tab.gradient : 'rgba(0,0,0,0.04)',
                   color: isActive ? '#ffffff' : 'var(--text-secondary, #666666)',
                   padding: '0.4rem 0.6rem',
                   borderRadius: '6px',
@@ -184,11 +191,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
                   fontWeight: 'bold',
                   fontSize: '0.8rem',
                   transition: 'all 0.3s ease',
-                  boxShadow: isActive
-                    ? isDelivery
-                      ? '0 2px 8px rgba(8,151,156,0.25)'
-                      : '0 2px 8px rgba(183,28,28,0.25)'
-                    : 'none',
+                  boxShadow: isActive ? `0 2px 8px ${tab.shadow}` : 'none',
                 }}
               >
                 {tab.label}

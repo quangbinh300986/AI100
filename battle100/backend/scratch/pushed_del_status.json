@@ -1,0 +1,140 @@
+{
+  "total_count": 19,
+  "del_count": 19,
+  "active_count": 0,
+  "details": [
+    {
+      "id": "26697e4012030a83283cd62205dea0a9",
+      "user_id": "lujunsong_cxk7",
+      "create_time": "2026-06-09 21:59:22",
+      "is_del": "1",
+      "title": "佛山市自然资源局禅城分局"
+    },
+    {
+      "id": "27d02299aec4507460ea0e742a6be82e",
+      "user_id": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:52",
+      "is_del": "1",
+      "title": "南雄市土地储备中心"
+    },
+    {
+      "id": "683fee49ea50f4c92b18c035a20c010b",
+      "user_id": "liuluojun_4ldi",
+      "create_time": "2026-06-09 21:59:34",
+      "is_del": "1",
+      "title": "台山市城乡规划设计院"
+    },
+    {
+      "id": "6a36d99343feed3b0532c21611abb57d",
+      "user_id": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "is_del": "1",
+      "title": "广东省国土资源技术中心（广东省基础地理信息中心）"
+    },
+    {
+      "id": "6a592d194aed701be19211da988bff6c",
+      "user_id": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:19",
+      "is_del": "1",
+      "title": "封开县南丰镇人民政府"
+    },
+    {
+      "id": "6eb50c65188e2af955eba87d9fbf0501",
+      "user_id": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "is_del": "1",
+      "title": "深汕合作区农业农村和海洋渔业局"
+    },
+    {
+      "id": "72b94052fb5c91270f0f2c6c834f5585",
+      "user_id": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:59:02",
+      "is_del": "1",
+      "title": "开平市自然资源局"
+    },
+    {
+      "id": "9efc4e1ded8b219b1c03fb3b7a8f5346",
+      "user_id": "wuyaoqiang_0vub",
+      "create_time": "2026-06-09 21:58:51",
+      "is_del": "1",
+      "title": "南雄市土地储备中心"
+    },
+    {
+      "id": "a3da8f33d0a0fa7434f374da9e460bc1",
+      "user_id": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:58:56",
+      "is_del": "1",
+      "title": "开平市自然资源局"
+    },
+    {
+      "id": "ae4321f6a467ddb8d40bbe1c17376178",
+      "user_id": "chenhongyuan_1ap5",
+      "create_time": "2026-06-09 21:58:39",
+      "is_del": "1",
+      "title": "茂南区自然资源局"
+    },
+    {
+      "id": "b9b4bf0577ca73dc05b9c68b22ef3c90",
+      "user_id": "zhangyongxiong_v43b",
+      "create_time": "2026-06-09 21:59:00",
+      "is_del": "1",
+      "title": "封开县公路事务中心"
+    },
+    {
+      "id": "c69953a675f1cadd029b5a3b50c738a5",
+      "user_id": "402881e48ba77a53018eb611c2d81fa5",
+      "create_time": "2026-06-09 21:58:46",
+      "is_del": "1",
+      "title": "广州市增城区新塘镇人民政府"
+    },
+    {
+      "id": "c6ebda7eef68ac92e7e46811b2ade751",
+      "user_id": "wanghaoliang_cspw",
+      "create_time": "2026-06-09 21:59:07",
+      "is_del": "1",
+      "title": "广东中远海运重工有限公司"
+    },
+    {
+      "id": "d6217876f2792fd8dc8eb6230dcc5b44",
+      "user_id": "chenhaolong_4n4c",
+      "create_time": "2026-06-09 21:59:07",
+      "is_del": "1",
+      "title": "广东中远海运重工有限公司"
+    },
+    {
+      "id": "d6bc6f56b632b68c544c22acfba3e981",
+      "user_id": "chenyujian_njkw",
+      "create_time": "2026-06-09 21:59:26",
+      "is_del": "1",
+      "title": "佛山市三水区大塘镇自然资源所"
+    },
+    {
+      "id": "e7025da5bbe0e87b489c70b77ffc8c80",
+      "user_id": "huangshanxing_ln3d",
+      "create_time": "2026-06-09 21:59:37",
+      "is_del": "1",
+      "title": "佛山市自然资源局高明分局"
+    },
+    {
+      "id": "f16c36412c62170a6fc92887530462bf",
+      "user_id": "lijianpeng_tgh0",
+      "create_time": "2026-06-09 21:59:39",
+      "is_del": "1",
+      "title": "开平市月山镇人民政府"
+    },
+    {
+      "id": "f5974a1226f0cb610e3858fa2fac19f2",
+      "user_id": "zhengzipeng_okbl",
+      "create_time": "2026-06-09 22:04:51",
+      "is_del": "1",
+      "title": "清远市清城区石角镇人民政府"
+    },
+    {
+      "id": "fa71a1a5d6a2a964b1cf688854317037",
+      "user_id": "zhuhai_i0nx",
+      "create_time": "2026-06-09 21:58:54",
+      "is_del": "1",
+      "title": "广州市规划和自然资源局番禺区分局"
+    }
+  ]
+}

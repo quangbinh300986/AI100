@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   Table,
   Tag,
@@ -17,9 +17,7 @@ import {
   DatePicker,
   Descriptions,
   Checkbox,
-  Tabs,
-  Alert,
-  Radio
+  Tabs
 } from 'antd'
 import {
   DeleteOutlined,
@@ -27,9 +25,8 @@ import {
   SyncOutlined,
   FilterOutlined,
   EyeOutlined,
-  FileTextOutlined,
   DownloadOutlined,
-  CopyOutlined
+  SearchOutlined
 } from '@ant-design/icons'
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -38,6 +35,25 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 
 const { Text } = Typography
+
+// 统一防闪烁、支持多行排版及最大高度限制的可滚动单元格 tooltip 渲染辅助函数
+const renderEllipsisText = (content: string, options?: { color?: string, fontWeight?: string }) => {
+  if (!content || content === '—') return '—';
+  return (
+    <Text
+      ellipsis={{
+        tooltip: {
+          title: <div style={{ whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto' }}>{content}</div>,
+          overlayClassName: 'tooltip-no-pointer-events',
+          mouseLeaveDelay: 0.1
+        }
+      }}
+      style={options?.color || options?.fontWeight ? { color: options.color, fontWeight: options.fontWeight } : undefined}
+    >
+      {content}
+    </Text>
+  );
+};
 
 
 
@@ -95,8 +111,8 @@ const WeeklyReports: React.FC = () => {
   // 是否为全局管理权限角色
   const isGlobalUser = user?.role === 'admin' || user?.role === 'target_officer';
 
-  // 当前活动 Tab：'report' 为员工填报周报汇总，'crm' 为 CRM 业务数据汇总
-  const [activeTab, setActiveTab] = useState<'report' | 'crm'>('report')
+  // 当前活动 Tab：'report' 为员工填报周报汇总，'report_horizontal' 为团队周报汇总横板，'crm' 为 CRM 业务数据汇总
+  const [activeTab, setActiveTab] = useState<'report' | 'report_horizontal' | 'crm' | 'crm_horizontal'>('report')
 
   // CRM 业务汇总相关状态
   const [crmReports, setCrmReports] = useState<any[]>([])
@@ -105,6 +121,20 @@ const WeeklyReports: React.FC = () => {
   const [crmPageSize, setCrmPageSize] = useState(10)
   const [crmTotal, setCrmTotal] = useState(0)
 
+  // CRM 业务汇总横板相关独立状态，所有注释必须使用中文
+  const [crmHorizontalReports, setCrmHorizontalReports] = useState<any[]>([])
+  const [crmHorizontalLoading, setCrmHorizontalLoading] = useState(false)
+  const [crmHorizontalPage, setCrmHorizontalPage] = useState(1)
+  const [crmHorizontalPageSize, setCrmHorizontalPageSize] = useState(8) // 横板每页默认展示 8 个人(列)
+  const [crmHorizontalTotal, setCrmHorizontalTotal] = useState(0)
+
+  // 团队周报汇总横板相关独立状态，所有注释必须使用中文
+  const [weeklyHorizontalReports, setWeeklyHorizontalReports] = useState<any[]>([])
+  const [weeklyHorizontalLoading, setWeeklyHorizontalLoading] = useState(false)
+  const [weeklyHorizontalPage, setWeeklyHorizontalPage] = useState(1)
+  const [weeklyHorizontalPageSize, setWeeklyHorizontalPageSize] = useState(8) // 横板每页默认展示 8 个人(列)
+  const [weeklyHorizontalTotal, setWeeklyHorizontalTotal] = useState(0)
+
   // 个人 CRM 业务详情弹窗状态
   const [crmViewVisible, setCrmViewVisible] = useState(false)
   const [viewingCrmReport, setViewingCrmReport] = useState<any>(null)
@@ -112,6 +142,11 @@ const WeeklyReports: React.FC = () => {
   // 三级巴筛选状态
   const [weeklyThirdBar, setWeeklyThirdBar] = useState<string>('all')
   const [thirdClassBarOptions, setThirdClassBarOptions] = useState<{ label: string; value: string }[]>([])
+
+  // 人名多选筛选状态与成员下拉选项
+  const [searchNames, setSearchNames] = useState<string[]>([])
+  const [allUsers, setAllUsers] = useState<any[]>([])
+
 
   // 周复盘汇总相关状态，默认当前周
   const [weeklyDate, setWeeklyDate] = useState<dayjs.Dayjs>(() => dayjs())
@@ -170,7 +205,14 @@ const WeeklyReports: React.FC = () => {
     actual: true,
     rate: true,
     highlights: true,
-    blockers: true
+    blockers: true,
+    crm_active_projects: true,
+    crm_milestone_tasks: true,
+    crm_suspended_projects: true,
+    crm_no_contract_warning: true,
+    crm_unbilled_warning: true,
+    crm_unreceived_warning: true,
+    crm_health_diagnosis: true
   })
 
   // AI 助手智能整理状态
@@ -178,33 +220,53 @@ const WeeklyReports: React.FC = () => {
   const [aiOptimizeModalVisible, setAiOptimizeModalVisible] = useState(false)
   const [aiOptimizeForm] = Form.useForm()
 
-  // ⚡ 团队（战队与三级巴）整体周报相关状态
-  const [groupReportVisible, setGroupReportVisible] = useState(false)
-  const [groupReportLoading, setGroupReportLoading] = useState(false)
-  const [groupReportContent, setGroupReportContent] = useState('')
-  const [hasSavedReport, setHasSavedReport] = useState(false)
-  const [savedReportTime, setSavedReportTime] = useState('')
-  const [previewMode, setPreviewMode] = useState<'edit' | 'preview'>('edit')
-  const [dingSending, setDingSending] = useState(false)
-  const [groupMetrics, setGroupMetrics] = useState<any>({
-    marketing_signed: 0,
-    delivery_signed: 0,
-    win_bids: 0,
-    happiness_count: 0,
-    triangle_count: 0,
-    valid_leads: 0,
-    potential_leads: 0,
-    production_value: 0,
-    receive_value: 0
-  })
 
-  const [groupPdfExporting, setGroupPdfExporting] = useState(false)
-  const [groupDocxExporting, setGroupDocxExporting] = useState(false)
   const [userPdfExporting, setUserPdfExporting] = useState(false)
   const [userDocxExporting, setUserDocxExporting] = useState(false)
 
+  // 动态计算在当前战队和三级巴过滤下可选的成员姓名列表
+  const memberOptions = useMemo(() => {
+    if (!allUsers || allUsers.length === 0) return []
+    
+    const filtered = allUsers.filter((u: any) => {
+      // 1. 战队/小组筛选过滤
+      // 如果是非全局角色，强制传递自身的 teamId 进行校验
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId
+      if (targetTeamId && targetTeamId !== 'all') {
+        if (String(u.team_id) !== String(targetTeamId)) {
+          return false
+        }
+      }
+      
+      // 2. 三级巴筛选过滤
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        if (u.third_class_bar !== weeklyThirdBar) {
+          return false
+        }
+      }
+      
+      return true
+    })
+
+    const names = Array.from(new Set(filtered.map((u: any) => u.name).filter(Boolean))) as string[]
+    names.sort()
+    return names.map(name => ({ label: name, value: name }))
+  }, [allUsers, weeklyTeamId, weeklyThirdBar, isGlobalUser, user])
+
+  // 当可选成员名单发生变化时，自动将已选中但不符合新筛选范围的人名剔除
+  useEffect(() => {
+    if (searchNames.length > 0) {
+      const validNames = memberOptions.map(opt => opt.value)
+      const filtered = searchNames.filter(name => validNames.includes(name))
+      if (filtered.length !== searchNames.length) {
+        setSearchNames(filtered)
+      }
+    }
+  }, [memberOptions])
+
   const handleAiOptimizeWeekly = async () => {
     const values = weeklyForm.getFieldsValue()
+    const target_plan = isMarketing ? values.sales_plan : values.delivery_plan
     const actual = isMarketing ? values.sales_actual : values.delivery_actual
     const highlights = isMarketing ? values.sales_highlights : values.delivery_highlights
     const blockers = isMarketing ? values.sales_blockers : values.delivery_blockers
@@ -226,6 +288,7 @@ const WeeklyReports: React.FC = () => {
     try {
       const res = await post<any>('/llm/agents/extractor/chat', {
         variables: {
+          target_plan: target_plan || '',
           actual: actual || '',
           highlights: highlights || '',
           blockers: blockers || '',
@@ -298,177 +361,9 @@ const WeeklyReports: React.FC = () => {
     message.success('已成功将 AI 整理优化后的内容填回周报表单！')
   }
 
-  // 判定是否有生成团队整体周报的权限
-  const allowedGroupReport = ['admin', 'target_officer', 'team_leader', 'digital_specialist'].includes(user?.role || '')
 
-  // 获取当前所选团队名称
-  const getGroupNameText = () => {
-    if (weeklyThirdBar && weeklyThirdBar !== 'all') {
-      return weeklyThirdBar
-    }
-    if (weeklyTeamId && weeklyTeamId !== 'all') {
-      const opt = TEAM_OPTIONS.find(o => o.value === weeklyTeamId)
-      return opt ? opt.label : ''
-    }
-    return ''
-  }
 
-  // 触发生成或获取团队已存整体周报
-  const handleGenerateGroupReport = async () => {
-    setGroupReportLoading(true)
-    try {
-      const [mon] = getMondayAndSunday(weeklyDate)
-      const startDateStr = mon.format('YYYY-MM-DD')
-      let url = `/reports/weekly/group-report?start_date=${startDateStr}`
-      if (weeklyTeamId && weeklyTeamId !== 'all') {
-        url += `&team_id=${weeklyTeamId}`
-      }
-      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
-        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
-      }
-      
-      try {
-        const res = await get<any>(url)
-        const data = res?.data ? res.data : res
-        if (data && data.id) {
-          setGroupReportContent(data.content)
-          setGroupMetrics({
-            marketing_signed: data.marketing_signed,
-            delivery_signed: data.delivery_signed,
-            win_bids: data.win_bids,
-            happiness_count: data.happiness_count,
-            triangle_count: data.triangle_count,
-            valid_leads: data.valid_leads,
-            potential_leads: data.potential_leads,
-            production_value: data.production_value,
-            receive_value: data.receive_value
-          })
-          setHasSavedReport(true)
-          setSavedReportTime(dayjs(data.updated_at || data.created_at).format('YYYY-MM-DD HH:mm:ss'))
-          setGroupReportVisible(true)
-          setGroupReportLoading(false)
-          return
-        }
-      } catch (err: any) {
-        console.error("获取团队存盘周报异常:", err)
-        const status = err?.response?.status || err?.status
-        const detail = err?.response?.data?.detail || ''
-        if (status === 404 || detail.includes('未找到该周') || detail.includes('不存在') || detail.includes('Not Found')) {
-          // 若无存盘周报，直接自动调用 AI 智能生成
-          await triggerAiGenerateGroupReport()
-          return
-        }
-        throw err
-      }
-    } catch (err: any) {
-      console.error(err)
-      message.error(err?.response?.data?.detail || '获取团队整体周报快照失败')
-    } finally {
-      setGroupReportLoading(false)
-    }
-  }
 
-  // 强制/重新由 AI 智能生成整体周报
-  const triggerAiGenerateGroupReport = async () => {
-    setGroupReportLoading(true)
-    try {
-      const [mon] = getMondayAndSunday(weeklyDate)
-      const startDateStr = mon.format('YYYY-MM-DD')
-      let url = `/reports/weekly/generate-group-report?start_date=${startDateStr}`
-      if (weeklyTeamId && weeklyTeamId !== 'all') {
-        url += `&team_id=${weeklyTeamId}`
-      }
-      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
-        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
-      }
-      
-      const res = await post<any>(url, {})
-      const data = res?.data ? res.data : res
-      if (data) {
-        setGroupReportContent(data.content || '')
-        setGroupMetrics(data.metrics || {
-          marketing_signed: 0,
-          delivery_signed: 0,
-          win_bids: 0,
-          happiness_count: 0,
-          triangle_count: 0,
-          valid_leads: 0,
-          potential_leads: 0,
-          production_value: 0,
-          receive_value: 0
-        })
-        setHasSavedReport(false)
-        setSavedReportTime('')
-        setGroupReportVisible(true)
-        message.success('AI 团队整体周报智能整理生成完毕！')
-      }
-    } catch (err: any) {
-      console.error(err)
-      message.error(err?.response?.data?.detail || 'AI 生成团队周报失败，请确认该团队是否有已激活成员及相关数据')
-    } finally {
-      setGroupReportLoading(false)
-    }
-  }
-
-  // 保存整体周报至系统数据库
-  const handleSaveGroupReport = async () => {
-    setGroupReportLoading(true)
-    try {
-      const [mon, sun] = getMondayAndSunday(weeklyDate)
-      const payload = {
-        team_id: weeklyTeamId !== 'all' ? parseInt(weeklyTeamId) : null,
-        third_class_bar: weeklyThirdBar !== 'all' ? weeklyThirdBar : null,
-        start_date: mon.format('YYYY-MM-DD'),
-        end_date: sun.format('YYYY-MM-DD'),
-        content: groupReportContent,
-        marketing_signed: groupMetrics.marketing_signed,
-        delivery_signed: groupMetrics.delivery_signed,
-        win_bids: groupMetrics.win_bids,
-        happiness_count: groupMetrics.happiness_count,
-        triangle_count: groupMetrics.triangle_count,
-        valid_leads: groupMetrics.valid_leads,
-        potential_leads: groupMetrics.potential_leads,
-        production_value: groupMetrics.production_value,
-        receive_value: groupMetrics.receive_value
-      }
-      
-      const res = await post<any>('/reports/weekly/save-group-report', payload)
-      const data = res?.data ? res.data : res
-      if (data) {
-        setHasSavedReport(true)
-        setSavedReportTime(dayjs(data.updated_at || data.created_at).format('YYYY-MM-DD HH:mm:ss'))
-        message.success('团队整体周报及数据指标快照已成功存盘！')
-      }
-    } catch (err: any) {
-      console.error(err)
-      message.error(err?.response?.data?.detail || '保存团队整体周报失败')
-    } finally {
-      setGroupReportLoading(false)
-    }
-  }
-
-  // 一键导出为 Markdown 文件
-  const handleExportGroupReportFile = () => {
-    try {
-      const groupName = getGroupNameText()
-      const [mon] = getMondayAndSunday(weeklyDate)
-      const dateStr = mon.format('YYYY-MM-DD')
-      const filename = `${groupName || '团队'}_${dateStr}_整体复盘周报.md`
-      
-      const blob = new Blob([groupReportContent], { type: 'text/markdown;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', filename)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      message.success('整体周报已导出为 Markdown 文件')
-    } catch (err) {
-      console.error(err)
-      message.error('导出文件失败')
-    }
-  }
 
   // 统一的 PDF 导出逻辑 (基于 DOM 元素边界映射的智能分页，从 DOM 语义结构层面杜绝跨页断裂)
   const handleExportPDF = async (elementId: string, filename: string, setLoader: (loading: boolean) => void) => {
@@ -596,40 +491,7 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
-  // 团队整体周报的 Word 导出 (调用后端 docx_exporter)
-  const handleExportGroupDocx = async () => {
-    const groupName = getGroupNameText()
-    const [mon] = getMondayAndSunday(weeklyDate)
-    const dateStr = mon.format('YYYY-MM-DD')
-    const title = `${groupName || '团队'}_${dateStr}_整体复盘周报`
-    
-    setGroupDocxExporting(true)
-    try {
-      const res = await post<any>('/reports/weekly/export-docx', {
-        title: title,
-        metrics: groupMetrics,
-        content: groupReportContent
-      }, {
-        responseType: 'blob'
-      })
-      
-      const blob = res as unknown as Blob
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `${title}.docx`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      message.success('Word 文档导出成功！')
-    } catch (err: any) {
-      console.error('导出 Word 异常:', err)
-      message.error(err?.response?.data?.detail || '导出 Word 文档失败')
-    } finally {
-      setGroupDocxExporting(false)
-    }
-  }
+
 
   // 个人周报的 Word 导出 (拼接 Markdown 内容后调用后端接口)
   const handleExportUserDocx = async () => {
@@ -678,95 +540,7 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
-  // 一键复制 Markdown 文本
-  const handleCopyGroupReportText = async () => {
-    try {
-      await navigator.clipboard.writeText(groupReportContent)
-      message.success('整体周报 Markdown 文本已复制到剪贴板')
-    } catch (err) {
-      console.error(err)
-      message.error('浏览器拒绝了复制操作，请手动选择复制')
-    }
-  }
 
-  // 一键复制并同步发送至钉钉机器人，且自动完成系统数据库存盘
-  const handleCopyAndSendToDingtalk = async () => {
-    let copySuccess = false
-    try {
-      await navigator.clipboard.writeText(groupReportContent)
-      copySuccess = true
-    } catch (err) {
-      console.error(err)
-    }
-
-    setDingSending(true)
-    const [mon, sun] = getMondayAndSunday(weeklyDate)
-    const startDateStr = mon.format('YYYY-MM-DD')
-
-    // 1. 自动存盘到系统数据库
-    try {
-      const savePayload = {
-        team_id: weeklyTeamId !== 'all' ? parseInt(weeklyTeamId) : null,
-        third_class_bar: weeklyThirdBar !== 'all' ? weeklyThirdBar : null,
-        start_date: startDateStr,
-        end_date: sun.format('YYYY-MM-DD'),
-        content: groupReportContent,
-        marketing_signed: groupMetrics.marketing_signed,
-        delivery_signed: groupMetrics.delivery_signed,
-        win_bids: groupMetrics.win_bids,
-        happiness_count: groupMetrics.happiness_count,
-        triangle_count: groupMetrics.triangle_count,
-        valid_leads: groupMetrics.valid_leads,
-        potential_leads: groupMetrics.potential_leads,
-        production_value: groupMetrics.production_value,
-        receive_value: groupMetrics.receive_value
-      }
-      
-      const saveRes = await post<any>('/reports/weekly/save-group-report', savePayload)
-      const saveData = saveRes?.data ? saveRes.data : saveRes
-      if (saveData) {
-        setHasSavedReport(true)
-        setSavedReportTime(dayjs(saveData.updated_at || saveData.created_at).format('YYYY-MM-DD HH:mm:ss'))
-      }
-    } catch (err: any) {
-      console.error(err)
-      const errMsg = err.response?.data?.detail || '保存失败，请重试'
-      if (copySuccess) {
-        message.warn(`周报已复制到剪贴板，但同步存盘至系统数据库失败：${errMsg}`)
-      } else {
-        message.error(`同步存盘至系统数据库失败：${errMsg}`)
-      }
-      setDingSending(false)
-      return // 若存盘失败则直接中断，不再尝试向钉钉推送
-    }
-
-    // 2. 发送到钉钉机器人
-    try {
-      await post('/reports/weekly/send-group-report-to-dingtalk', {
-        group_name: getGroupNameText(),
-        start_date: startDateStr,
-        metrics: groupMetrics,
-        content: groupReportContent,
-        redirect_url: window.location.origin + '/admin/weekly-reports'
-      })
-
-      if (copySuccess) {
-        message.success('整体周报已复制、成功存盘数据库，并已同步推送至钉钉！')
-      } else {
-        message.success('整体周报已成功存盘数据库并推送至钉钉！(剪贴板复制失败，请手动复制)')
-      }
-    } catch (err: any) {
-      console.error(err)
-      const errMsg = err.response?.data?.detail || '推送失败，请重试'
-      if (copySuccess) {
-        message.warn(`周报已复制并成功存盘至系统数据库，但同步推送至钉钉机器人失败：${errMsg}`)
-      } else {
-        message.warn(`周报已成功存盘至系统数据库，但同步推送至钉钉机器人失败：${errMsg}`)
-      }
-    } finally {
-      setDingSending(false)
-    }
-  }
 
   // 动态权限校验函数 (支持系统管理员 admin 与默认配置兜底)
   const hasPermission = (perm: string) => {
@@ -814,11 +588,11 @@ const WeeklyReports: React.FC = () => {
           delivery_actual: data.delivery_actual,
           sales_actual: data.sales_actual
         })
-        message.success('已自动提取本周您的交付及销售实际数据！')
+        message.success('已成功导入上周实际完成及本周播报数据！')
       }
     } catch (err) {
       console.error(err)
-      message.error('自动提取当周播报数据失败')
+      message.error('导入上周周报与本周播报数据失败')
     } finally {
       setWeeklyExtractLoading(false)
     }
@@ -834,18 +608,70 @@ const WeeklyReports: React.FC = () => {
       const data = res?.data ? res.data : res
       if (data) {
         setCrmPreviewData(data)
-        // 根据获取到的数据是否为空，智能初始化勾选状态
-        const actualVal = isMarketing ? data.sales_actual : data.delivery_actual
-        const rateVal = isMarketing ? data.sales_rate : data.delivery_rate
-        const highlightsVal = isMarketing ? data.sales_highlights : data.delivery_highlights
-        const blockersVal = isMarketing ? data.sales_blockers : data.delivery_blockers
+        
+        // 尝试从 localStorage 读取上一次勾选的配置以实现“系统记住勾选偏好”
+        const savedKeysStr = localStorage.getItem(isMarketing ? 'crm_selected_keys_marketing' : 'crm_selected_keys_delivery')
+        let loadedKeys: Record<string, boolean> | null = null
+        if (savedKeysStr) {
+          try {
+            loadedKeys = JSON.parse(savedKeysStr)
+          } catch (e) {
+            console.error('解析本地保存的 CRM 勾选状态失败', e)
+          }
+        }
 
-        setCrmSelectedKeys({
-          actual: !!actualVal && !isDummyCrmActual(actualVal, isMarketing),
-          rate: !!rateVal && rateVal !== '月度新签与回款指标正在统计中' && rateVal !== '月度指标正在统计中' && rateVal.trim() !== '',
-          highlights: !!highlightsVal && highlightsVal !== '1. 本周销售签约及商务拓展平稳推进。' && highlightsVal !== '1. 交付工作处于正常开发推进中，开发交付无积压。' && highlightsVal.trim() !== '',
-          blockers: !!blockersVal && blockersVal !== '1. 目前名下意向商机及收款合同暂无重大异常阻碍。' && blockersVal !== '1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。' && blockersVal.trim() !== ''
-        })
+        if (loadedKeys) {
+          // 将已保存的勾选状态和当前状态结合（确保新增的 key 不会因为旧配置而丢失）
+          setCrmSelectedKeys({
+            actual: loadedKeys.actual !== undefined ? loadedKeys.actual : true,
+            rate: loadedKeys.rate !== undefined ? loadedKeys.rate : true,
+            highlights: loadedKeys.highlights !== undefined ? loadedKeys.highlights : true,
+            blockers: loadedKeys.blockers !== undefined ? loadedKeys.blockers : true,
+            crm_active_projects: loadedKeys.crm_active_projects !== undefined ? loadedKeys.crm_active_projects : true,
+            crm_milestone_tasks: loadedKeys.crm_milestone_tasks !== undefined ? loadedKeys.crm_milestone_tasks : true,
+            crm_suspended_projects: loadedKeys.crm_suspended_projects !== undefined ? loadedKeys.crm_suspended_projects : true,
+            crm_no_contract_warning: loadedKeys.crm_no_contract_warning !== undefined ? loadedKeys.crm_no_contract_warning : true,
+            crm_unbilled_warning: loadedKeys.crm_unbilled_warning !== undefined ? loadedKeys.crm_unbilled_warning : true,
+            crm_unreceived_warning: loadedKeys.crm_unreceived_warning !== undefined ? loadedKeys.crm_unreceived_warning : true,
+            crm_health_diagnosis: loadedKeys.crm_health_diagnosis !== undefined ? loadedKeys.crm_health_diagnosis : true
+          })
+        } else {
+          // 首次或无本地保存配置时，使用智能诊断规则进行初次高亮勾选推荐
+          const actualVal = isMarketing ? data.sales_actual : data.delivery_actual
+          const rateVal = isMarketing ? data.sales_rate : data.delivery_rate
+          const highlightsVal = isMarketing ? data.sales_highlights : data.delivery_highlights
+          const blockersVal = isMarketing ? data.sales_blockers : data.delivery_blockers
+
+          if (isMarketing) {
+            setCrmSelectedKeys({
+              actual: !!actualVal && !isDummyCrmActual(actualVal, true),
+              rate: !!rateVal && rateVal !== '月度新签与回款指标正在统计中' && rateVal.trim() !== '',
+              highlights: !!highlightsVal && highlightsVal !== '1. 本周销售签约及商务拓展平稳推进。' && highlightsVal.trim() !== '',
+              blockers: !!blockersVal && blockersVal !== '1. 目前名下意向商机及收款合同暂无重大异常阻碍。' && blockersVal.trim() !== '',
+              crm_active_projects: true,
+              crm_milestone_tasks: true,
+              crm_suspended_projects: true,
+              crm_no_contract_warning: true,
+              crm_unbilled_warning: true,
+              crm_unreceived_warning: true,
+              crm_health_diagnosis: true
+            })
+          } else {
+            setCrmSelectedKeys({
+              actual: true,
+              blockers: true,
+              rate: !!rateVal && rateVal !== '月度指标正在统计中' && rateVal.trim() !== '',
+              highlights: !!highlightsVal && highlightsVal !== '1. 交付工作处于正常开发推进中，开发交付无积压。' && highlightsVal.trim() !== '',
+              crm_active_projects: !!data.crm_active_projects && data.crm_active_projects !== '—',
+              crm_milestone_tasks: !!data.crm_milestone_tasks && data.crm_milestone_tasks !== '—',
+              crm_suspended_projects: !!data.crm_suspended_projects && data.crm_suspended_projects !== '—',
+              crm_no_contract_warning: !!data.crm_no_contract_warning && data.crm_no_contract_warning !== '—',
+              crm_unbilled_warning: !!data.crm_unbilled_warning && data.crm_unbilled_warning !== '—',
+              crm_unreceived_warning: !!data.crm_unreceived_warning && data.crm_unreceived_warning !== '—',
+              crm_health_diagnosis: !!data.crm_health_diagnosis && data.crm_health_diagnosis !== '—' && !data.crm_health_diagnosis.includes('工作饱和度与项目实施状态正常')
+            })
+          }
+        }
         setCrmPreviewVisible(true)
       } else {
         message.warning('未拉取到任何有效的 CRM 数据')
@@ -862,35 +688,20 @@ const WeeklyReports: React.FC = () => {
   const handleConfirmImportCrm = () => {
     if (!crmPreviewData) return
 
+    // 保存用户的勾选状态以实现“系统记住勾选结果”
+    localStorage.setItem(
+      isMarketing ? 'crm_selected_keys_marketing' : 'crm_selected_keys_delivery',
+      JSON.stringify(crmSelectedKeys)
+    )
+
     const currentValues = weeklyForm.getFieldsValue()
     const updateValues: Record<string, any> = {}
 
-    // 1. 处理实际完成 (actual)
-    if (crmSelectedKeys.actual) {
-      if (!isMarketing) {
-        const currentActual = currentValues.delivery_actual || ''
-        const crmActual = crmPreviewData.delivery_actual || ''
-        
-        const isCurrentDummy = isDummyBroadcast(currentActual) || currentActual === (DEFAULT_TEMPLATES.delivery_actual || '')
-        const isCrmDummy = isDummyCrmActual(crmActual, false)
-
-        let combinedActual = ''
-        if (!isCurrentDummy && !isCrmDummy) {
-          combinedActual = `${currentActual}\n\n${crmActual}`
-        } else if (!isCurrentDummy) {
-          combinedActual = currentActual
-        } else if (!isCrmDummy) {
-          combinedActual = crmActual
-        } else {
-          combinedActual = crmActual || currentActual
-        }
-        if (combinedActual) {
-          updateValues.delivery_actual = combinedActual
-        }
-      } else {
+    if (isMarketing) {
+      // 营销岗：保持原先 4 大项导入逻辑
+      if (crmSelectedKeys.actual) {
         const currentActual = currentValues.sales_actual || ''
         const crmActual = crmPreviewData.sales_actual || ''
-        
         const isCurrentDummy = isDummyBroadcast(currentActual) || currentActual === (DEFAULT_TEMPLATES.sales_actual || '')
         const isCrmDummy = isDummyCrmActual(crmActual, true)
 
@@ -908,29 +719,90 @@ const WeeklyReports: React.FC = () => {
           updateValues.sales_actual = combinedActual
         }
       }
-    }
+      
+      if (crmSelectedKeys.blockers) {
+        const crmBlockers = crmPreviewData.sales_blockers || ''
+        if (crmBlockers) {
+          updateValues.sales_blockers = crmBlockers
+        }
+      }
+    } else {
+      // 交付岗：按 7 项 CRM 细粒度指标导入
+      // 1. 实际完成 (将正在实施项目进度与里程碑明细拼接)
+      let prefix = ''
+      const deliveryActual = crmPreviewData.delivery_actual || ''
+      const match = deliveryActual.match(/^【📊 CRM 本周业绩快照】：.*?\n\n/)
+      if (match) {
+        prefix = match[0]
+      }
 
-    // 2. 处理计划达成率说明 (rate)
-    if (crmSelectedKeys.rate) {
-      const key = isMarketing ? 'sales_rate' : 'delivery_rate'
-      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
-        updateValues[key] = crmPreviewData[key]
+      const actualParts: string[] = []
+      if (crmSelectedKeys.crm_active_projects && crmPreviewData.crm_active_projects && crmPreviewData.crm_active_projects !== '—') {
+        actualParts.push(`目前负责跟进的正在实施项目进度情况如下：\n${crmPreviewData.crm_active_projects}`)
+      }
+      if (crmSelectedKeys.crm_milestone_tasks && crmPreviewData.crm_milestone_tasks && crmPreviewData.crm_milestone_tasks !== '—') {
+        actualParts.push(`本周项目子任务及里程碑节点交付动作明细：\n${crmPreviewData.crm_milestone_tasks}`)
+      }
+
+      let crmActual = ''
+      if (actualParts.length > 0) {
+        crmActual = prefix + actualParts.join('\n\n')
+      }
+
+      if (crmActual) {
+        const currentActual = currentValues.delivery_actual || ''
+        const isCurrentDummy = isDummyBroadcast(currentActual) || currentActual === (DEFAULT_TEMPLATES.delivery_actual || '')
+        updateValues.delivery_actual = isCurrentDummy ? crmActual : `${currentActual}\n\n${crmActual}`
+      }
+
+      // 2. 卡点难点 (将暂停项目、超期未签合同、有进度未开票、已开票未回款以及健康度诊断 5 项拼接)
+      const diagnosisText = (crmSelectedKeys.crm_health_diagnosis && crmPreviewData.crm_health_diagnosis && crmPreviewData.crm_health_diagnosis !== '—' && !crmPreviewData.crm_health_diagnosis.includes('工作饱和度与项目实施状态正常')) 
+        ? `【🚨 个人工作饱和度与项目健康度诊断】：\n${crmPreviewData.crm_health_diagnosis}` 
+        : ''
+
+      const blockerParts: string[] = []
+      if (crmSelectedKeys.crm_suspended_projects && crmPreviewData.crm_suspended_projects && crmPreviewData.crm_suspended_projects !== '—') {
+        blockerParts.push(`交付难点：项目处于暂停或异常挂起状态：\n${crmPreviewData.crm_suspended_projects}`)
+      }
+      if (crmSelectedKeys.crm_no_contract_warning && crmPreviewData.crm_no_contract_warning && crmPreviewData.crm_no_contract_warning !== '—') {
+        blockerParts.push(`预设立警（超期未签合同项目）：\n${crmPreviewData.crm_no_contract_warning}`)
+      }
+      if (crmSelectedKeys.crm_unbilled_warning && crmPreviewData.crm_unbilled_warning && crmPreviewData.crm_unbilled_warning !== '—') {
+        blockerParts.push(`交付卡点（有进度未开票项目）：\n${crmPreviewData.crm_unbilled_warning}`)
+      }
+      if (crmSelectedKeys.crm_unreceived_warning && crmPreviewData.crm_unreceived_warning && crmPreviewData.crm_unreceived_warning !== '—') {
+        blockerParts.push(`收欠款预警（已开票未回款项目）：\n${crmPreviewData.crm_unreceived_warning}`)
+      }
+
+      let crmBlockers = ''
+      const combinedBlockers = blockerParts.join('\n\n')
+      if (diagnosisText && combinedBlockers) {
+        crmBlockers = `${diagnosisText}\n\n${combinedBlockers}`
+      } else if (diagnosisText) {
+        crmBlockers = diagnosisText
+      } else if (combinedBlockers) {
+        crmBlockers = combinedBlockers
+      }
+
+      if (crmBlockers) {
+        const currentBlockers = currentValues.delivery_blockers || ''
+        const isCurrentDummy = currentBlockers.includes('暂无重大的技术难点') || currentBlockers === (DEFAULT_TEMPLATES.delivery_blockers || '')
+        updateValues.delivery_blockers = isCurrentDummy ? crmBlockers : `${currentBlockers}\n\n${crmBlockers}`
       }
     }
 
-    // 3. 处理工作亮点 (highlights)
-    if (crmSelectedKeys.highlights) {
-      const key = isMarketing ? 'sales_highlights' : 'delivery_highlights'
-      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
-        updateValues[key] = crmPreviewData[key]
+    // 共通指标：仅营销岗处理计划达成率说明 (rate) 与工作亮点 (highlights)（交付岗不要这两项）
+    if (isMarketing) {
+      if (crmSelectedKeys.rate) {
+        if (crmPreviewData.sales_rate !== undefined && crmPreviewData.sales_rate !== null && crmPreviewData.sales_rate !== '') {
+          updateValues.sales_rate = crmPreviewData.sales_rate
+        }
       }
-    }
 
-    // 4. 处理工作卡点/难点 (blockers)
-    if (crmSelectedKeys.blockers) {
-      const key = isMarketing ? 'sales_blockers' : 'delivery_blockers'
-      if (crmPreviewData[key] !== undefined && crmPreviewData[key] !== null && crmPreviewData[key] !== '') {
-        updateValues[key] = crmPreviewData[key]
+      if (crmSelectedKeys.highlights) {
+        if (crmPreviewData.sales_highlights !== undefined && crmPreviewData.sales_highlights !== null && crmPreviewData.sales_highlights !== '') {
+          updateValues.sales_highlights = crmPreviewData.sales_highlights
+        }
       }
     }
 
@@ -1032,6 +904,56 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 自动保存周复盘草稿核心方法，所有注释必须使用中文
+  const handleAutoSaveDraft = async () => {
+    // 只有当弹窗处于打开状态时，才执行自动保存
+    if (!weeklyWriteVisible) return
+    try {
+      const values = weeklyForm.getFieldsValue()
+      const [mon, sun] = getMondayAndSunday(weeklyDate)
+      const payload = {
+        ...values,
+        start_date: mon.format('YYYY-MM-DD'),
+        end_date: sun.format('YYYY-MM-DD'),
+        status: 'draft'
+      }
+      await post<any>('/reports/weekly', payload)
+      console.log('【自动存盘】个人周复盘草稿已自动保存（后台静默）')
+    } catch (err) {
+      console.error('【自动存盘】后台自动保存草稿失败', err)
+    }
+  }
+
+  // 自动保存草稿侦听器：包含60秒定时及窗口失去焦点/标签页隐藏，所有注释必须使用中文
+  useEffect(() => {
+    let intervalId: any = null
+
+    const handleWindowBlurOrHide = () => {
+      if (weeklyWriteVisible) {
+        handleAutoSaveDraft()
+      }
+    }
+
+    if (weeklyWriteVisible) {
+      // 1. 每隔60秒自动执行一次草稿暂存
+      intervalId = setInterval(() => {
+        handleAutoSaveDraft()
+      }, 60000)
+
+      // 2. 监听浏览器标签隐藏与浏览器窗口失去焦点事件
+      document.addEventListener('visibilitychange', handleWindowBlurOrHide)
+      window.addEventListener('blur', handleWindowBlurOrHide)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+      document.removeEventListener('visibilitychange', handleWindowBlurOrHide)
+      window.removeEventListener('blur', handleWindowBlurOrHide)
+    }
+  }, [weeklyWriteVisible, weeklyDate])
+
   // 加载选定战队与选定周一的周复盘汇总
   const loadWeeklyReports = async () => {
     setWeeklyLoading(true)
@@ -1047,6 +969,9 @@ const WeeklyReports: React.FC = () => {
       }
       if (weeklyThirdBar && weeklyThirdBar !== 'all') {
         url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
       }
       
       const res = await get<any>(url)
@@ -1171,6 +1096,9 @@ const WeeklyReports: React.FC = () => {
       if (weeklyThirdBar && weeklyThirdBar !== 'all') {
         url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
       }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
       
       const res = await get<any>(url)
       const data = res?.data ? res.data : res
@@ -1191,6 +1119,84 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 加载选定战队与选定周一的 CRM 业务数据汇总 (横板专用的分页拉取)，所有注释必须使用中文
+  const loadCrmHorizontalReports = async () => {
+    setCrmHorizontalLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/crm-summary?start_date=${startDateStr}&page=${crmHorizontalPage}&page_size=${crmHorizontalPageSize}`
+      // 如果是非全局角色，强制传递自身的 teamId 进行校验
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        setCrmHorizontalReports(data.items)
+        setCrmHorizontalTotal(data.total || 0)
+      } else {
+        setCrmHorizontalReports([])
+        setCrmHorizontalTotal(0)
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('加载 CRM 数据汇总横板失败')
+      setCrmHorizontalReports([])
+      setCrmHorizontalTotal(0)
+    } finally {
+      setCrmHorizontalLoading(false)
+    }
+  }
+
+  // 加载选定战队与选定周一的周报汇总 (横板专用的分页拉取)，所有注释必须使用中文
+  const loadWeeklyHorizontalReports = async () => {
+    setWeeklyHorizontalLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/summary?start_date=${startDateStr}&page=${weeklyHorizontalPage}&page_size=${weeklyHorizontalPageSize}`
+      // 如果是非全局角色，强制传递自身的 teamId 进行校验
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const res = await get<any>(url)
+      const data = res?.data ? res.data : res
+      if (data && data.items) {
+        setWeeklyHorizontalReports(data.items)
+        setWeeklyHorizontalTotal(data.total || 0)
+      } else {
+        setWeeklyHorizontalReports([])
+        setWeeklyHorizontalTotal(0)
+      }
+    } catch (err) {
+      console.error(err)
+      message.error('加载团队周报汇总横板失败')
+      setWeeklyHorizontalReports([])
+      setWeeklyHorizontalTotal(0)
+    } finally {
+      setWeeklyHorizontalLoading(false)
+    }
+  }
+
   // 加载系统所有的三级巴选项
   const loadThirdClassBars = async () => {
     try {
@@ -1207,6 +1213,18 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 加载系统所有的成员选项
+  const loadAllUsers = async () => {
+    try {
+      const res = await get<any>('/users?page=1&page_size=2000')
+      if (res && res.items) {
+        setAllUsers(res.items)
+      }
+    } catch (err) {
+      console.error('加载系统成员列表失败:', err)
+    }
+  }
+
   // 打开 CRM 查看详情 Modal
   const openCrmViewModal = (record: any) => {
     setViewingCrmReport(record)
@@ -1215,15 +1233,34 @@ const WeeklyReports: React.FC = () => {
 
   useEffect(() => {
     loadThirdClassBars()
+    loadAllUsers()
   }, [])
 
   useEffect(() => {
     if (activeTab === 'report') {
       loadWeeklyReports()
-    } else {
+    } else if (activeTab === 'report_horizontal') {
+      loadWeeklyHorizontalReports()
+    } else if (activeTab === 'crm') {
       loadCrmReports()
+    } else if (activeTab === 'crm_horizontal') {
+      loadCrmHorizontalReports()
     }
-  }, [activeTab, weeklyDate, weeklyTeamId, weeklyThirdBar, weeklyPage, weeklyPageSize, crmPage, crmPageSize])
+  }, [
+    activeTab, 
+    weeklyDate, 
+    weeklyTeamId, 
+    weeklyThirdBar, 
+    weeklyPage, 
+    weeklyPageSize, 
+    weeklyHorizontalPage,
+    weeklyHorizontalPageSize,
+    crmPage, 
+    crmPageSize, 
+    crmHorizontalPage, 
+    crmHorizontalPageSize, 
+    searchNames
+  ])
 
   useEffect(() => {
     checkMyReport()
@@ -1232,6 +1269,11 @@ const WeeklyReports: React.FC = () => {
   const [mon, sun] = getMondayAndSunday(weeklyDate)
   const selectedMonday = mon.format('YYYY-MM-DD')
   const selectedSunday = sun.format('YYYY-MM-DD')
+
+  const isMarketingRecord = (record: any) => {
+    return record.user_position_type === 'marketing' || 
+      ['target_officer', 'marketing_staff', 'tech_marketing'].includes(record.user_role || '');
+  }
 
   const weeklyColumns = [
     {
@@ -1245,174 +1287,74 @@ const WeeklyReports: React.FC = () => {
     },
     {
       title: '本周目标计划',
-      children: [
-        {
-          title: '项目交付计划',
-          dataIndex: 'delivery_plan',
-          key: 'delivery_plan',
-          width: 220,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售计划',
-          dataIndex: 'sales_plan',
-          key: 'sales_plan',
-          width: 220,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      key: 'weekly_plan',
+      width: 220,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.sales_plan : record.delivery_plan;
+        return renderEllipsisText(content);
+      }
     },
     {
       title: '本周实际完成',
-      children: [
-        {
-          title: '项目交付实际',
-          dataIndex: 'delivery_actual',
-          key: 'delivery_actual',
-          width: 250,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售实际完成',
-          dataIndex: 'sales_actual',
-          key: 'sales_actual',
-          width: 250,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      key: 'weekly_actual',
+      width: 250,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.sales_actual : record.delivery_actual;
+        return renderEllipsisText(content);
+      }
     },
     {
-      title: '达成情况',
-      children: [
-        {
-          title: '项目达成率',
-          dataIndex: 'delivery_rate',
-          key: 'delivery_rate',
-          width: 110,
-          align: 'center' as const,
-          render: (text: string) => text ? (
-            <Tag color="blue" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
-              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
-                {text}
-              </Text>
-            </Tag>
-          ) : '—',
-        },
-        {
-          title: '销售达成率',
-          dataIndex: 'sales_rate',
-          key: 'sales_rate',
-          width: 110,
-          align: 'center' as const,
-          render: (text: string) => text ? (
-            <Tag color="geekblue" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
-              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
-                {text}
-              </Text>
-            </Tag>
-          ) : '—',
-        },
-      ],
+      title: '达成率',
+      key: 'weekly_rate',
+      width: 110,
+      align: 'center' as const,
+      render: (_: any, record: any) => {
+        const isMarketingUser = isMarketingRecord(record);
+        const content = isMarketingUser ? record.sales_rate : record.delivery_rate;
+        return content ? (
+          <Tag color={isMarketingUser ? "geekblue" : "blue"} style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
+            <Text ellipsis={{ tooltip: { title: <div style={{ whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto' }}>{content}</div>, overlayClassName: 'tooltip-no-pointer-events', mouseLeaveDelay: 0.1 } }} style={{ color: 'inherit', fontSize: 'inherit' }}>
+              {content}
+            </Text>
+          </Tag>
+        ) : '—';
+      }
     },
     {
       title: '本周亮点',
-      children: [
-        {
-          title: '项目亮点',
-          dataIndex: 'delivery_highlights',
-          key: 'delivery_highlights',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售亮点',
-          dataIndex: 'sales_highlights',
-          key: 'sales_highlights',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      key: 'weekly_highlights',
+      width: 200,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.sales_highlights : record.delivery_highlights;
+        return renderEllipsisText(content);
+      }
     },
     {
       title: '本周卡点',
-      children: [
-        {
-          title: '项目难点',
-          dataIndex: 'delivery_blockers',
-          key: 'delivery_blockers',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售难点',
-          dataIndex: 'sales_blockers',
-          key: 'sales_blockers',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      key: 'weekly_blockers',
+      width: 200,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.sales_blockers : record.delivery_blockers;
+        return renderEllipsisText(content);
+      }
     },
     {
       title: '支持协调需求',
-      children: [
-        {
-          title: '项目侧',
-          dataIndex: 'delivery_support',
-          key: 'delivery_support',
-          width: 180,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售侧',
-          dataIndex: 'sales_support',
-          key: 'sales_support',
-          width: 180,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      key: 'weekly_support',
+      width: 180,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.sales_support : record.delivery_support;
+        return renderEllipsisText(content);
+      }
     },
     {
-      title: '下周计划目标',
-      children: [
-        {
-          title: '项目交付计划',
-          dataIndex: 'next_delivery_plan',
-          key: 'next_delivery_plan',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售计划',
-          dataIndex: 'next_sales_plan',
-          key: 'next_sales_plan',
-          width: 200,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      title: '下周目标计划',
+      key: 'weekly_next_plan',
+      width: 200,
+      render: (_: any, record: any) => {
+        const content = isMarketingRecord(record) ? record.next_sales_plan : record.next_delivery_plan;
+        return renderEllipsisText(content);
+      }
     },
     {
       title: '状态',
@@ -1496,121 +1438,57 @@ const WeeklyReports: React.FC = () => {
       render: (text: string) => text || '—',
     },
     {
-      title: 'CRM 业务完成情况',
-      children: [
-        {
-          title: '项目交付实际 (负责在研/里程碑)',
-          dataIndex: 'delivery_actual',
-          key: 'delivery_actual',
-          width: 300,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售实际完成 (合同/回款/客户拜访)',
-          dataIndex: 'sales_actual',
-          key: 'sales_actual',
-          width: 300,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      title: '正在实施项目进度',
+      dataIndex: 'crm_active_projects',
+      key: 'crm_active_projects',
+      width: 250,
+      render: (text: string) => renderEllipsisText(text),
     },
     {
-      title: '达成情况',
-      children: [
-        {
-          title: '项目达成率说明',
-          dataIndex: 'delivery_rate',
-          key: 'delivery_rate',
-          width: 130,
-          render: (text: string) => text ? (
-            <Tag color="cyan" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
-              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
-                {text}
-              </Text>
-            </Tag>
-          ) : '—',
-        },
-        {
-          title: '销售达成率说明',
-          dataIndex: 'sales_rate',
-          key: 'sales_rate',
-          width: 130,
-          render: (text: string) => text ? (
-            <Tag color="purple" style={{ maxWidth: '100%', display: 'inline-flex', alignItems: 'center' }}>
-              <Text ellipsis={{ tooltip: text }} style={{ color: 'inherit', fontSize: 'inherit' }}>
-                {text}
-              </Text>
-            </Tag>
-          ) : '—',
-        },
-      ],
+      title: '里程碑与交付动作明细',
+      dataIndex: 'crm_milestone_tasks',
+      key: 'crm_milestone_tasks',
+      width: 300,
+      render: (text: string) => renderEllipsisText(text),
     },
     {
-      title: '工作亮点',
-      children: [
-        {
-          title: '项目亮点 (自动诊断)',
-          dataIndex: 'delivery_highlights',
-          key: 'delivery_highlights',
-          width: 250,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-        {
-          title: '销售亮点 (自动诊断)',
-          dataIndex: 'sales_highlights',
-          key: 'sales_highlights',
-          width: 250,
-          render: (text: string) => (
-            <Text ellipsis={{ tooltip: text }}>{text || '—'}</Text>
-          ),
-        },
-      ],
+      title: '暂停或异常挂起项目',
+      dataIndex: 'crm_suspended_projects',
+      key: 'crm_suspended_projects',
+      width: 250,
+      render: (text: string) => renderEllipsisText(text, { color: '#faad14', fontWeight: '500' }),
     },
     {
-      title: '异常与卡点预警',
-      children: [
-        {
-          title: '项目难点 (预设立/超期/未开票/未到账)',
-          dataIndex: 'delivery_blockers',
-          key: 'delivery_blockers',
-          width: 400,
-          render: (text: string) => {
-            if (!text) return '—';
-            // 判断是否具有严重问题的警示关键字，如预设立未签、开票未到账、到期未开票
-            const isWarning = text.includes('预设立预警') || text.includes('未开发票') || text.includes('未回款') || text.includes('交付卡点') || text.includes('收付款触发节点') || text.includes('未回款到账');
-            return (
-              <div style={{ color: isWarning ? '#ff4d4f' : 'inherit', fontWeight: isWarning ? '500' : 'normal' }}>
-                <Text ellipsis={{ tooltip: text }} style={{ color: isWarning ? '#ff4d4f' : 'inherit' }}>
-                  {text}
-                </Text>
-              </div>
-            );
-          },
-        },
-        {
-          title: '销售难点 (项目终止/商务阻碍)',
-          dataIndex: 'sales_blockers',
-          key: 'sales_blockers',
-          width: 250,
-          render: (text: string) => {
-            if (!text) return '—';
-            const isWarning = text.includes('中止') || text.includes('预警') || text.includes('阻碍');
-            return (
-              <div style={{ color: isWarning ? '#faad14' : 'inherit', fontWeight: isWarning ? '500' : 'normal' }}>
-                <Text ellipsis={{ tooltip: text }} style={{ color: isWarning ? '#faad14' : 'inherit' }}>
-                  {text}
-                </Text>
-              </div>
-            );
-          },
-        },
-      ],
+      title: '预设立立警 (超期未签合同)',
+      dataIndex: 'crm_no_contract_warning',
+      key: 'crm_no_contract_warning',
+      width: 300,
+      render: (text: string) => renderEllipsisText(text, { color: '#ff4d4f', fontWeight: '500' }),
+    },
+    {
+      title: '交付卡点 (有进度未开票)',
+      dataIndex: 'crm_unbilled_warning',
+      key: 'crm_unbilled_warning',
+      width: 300,
+      render: (text: string) => renderEllipsisText(text, { color: '#faad14', fontWeight: '500' }),
+    },
+    {
+      title: '收欠款预警 (已开票未回款)',
+      dataIndex: 'crm_unreceived_warning',
+      key: 'crm_unreceived_warning',
+      width: 300,
+      render: (text: string) => renderEllipsisText(text, { color: '#ff4d4f', fontWeight: '500' }),
+    },
+    {
+      title: '饱和度与健康度诊断',
+      dataIndex: 'crm_health_diagnosis',
+      key: 'crm_health_diagnosis',
+      width: 350,
+      render: (text: string) => {
+        if (!text || text === '—') return '—';
+        const isAlert = text.includes('红色警报') || text.includes('黄色预警');
+        return renderEllipsisText(text, isAlert ? { color: '#ff4d4f', fontWeight: '500' } : undefined);
+      },
     },
     {
       title: '操作',
@@ -1637,7 +1515,7 @@ const WeeklyReports: React.FC = () => {
               <strong>汇总过滤：</strong>
             </Space>
           </Col>
-          <Col xs={24} sm={8} md={6}>
+          <Col xs={24} sm={12} md={5}>
             <DatePicker
               picker="week"
               placeholder="选择填报周"
@@ -1646,32 +1524,66 @@ const WeeklyReports: React.FC = () => {
               onChange={(val) => {
                 if (val) {
                   setWeeklyDate(val)
+                  setWeeklyPage(1)
+                  setCrmPage(1)
+                  setCrmHorizontalPage(1)
+                  setWeeklyHorizontalPage(1)
                 }
               }}
               allowClear={false}
             />
           </Col>
-          <Col xs={24} sm={8} md={6}>
+          <Col xs={24} sm={12} md={5}>
             <Select
               style={{ width: '100%' }}
               placeholder="按战队/小组筛选"
               value={weeklyTeamId}
               onChange={(val) => {
                 setWeeklyTeamId(val)
+                setWeeklyPage(1)
+                setCrmPage(1)
+                setCrmHorizontalPage(1)
+                setWeeklyHorizontalPage(1)
               }}
               disabled={!isGlobalUser} // 只有管理员/目标官允许切换战队，非全局角色被锁定
               options={TEAM_OPTIONS}
             />
           </Col>
-          <Col xs={24} sm={8} md={6}>
+          <Col xs={24} sm={12} md={5}>
             <Select
               style={{ width: '100%' }}
               placeholder="按三级巴筛选"
               value={weeklyThirdBar}
               onChange={(val) => {
                 setWeeklyThirdBar(val)
+                setWeeklyPage(1)
+                setCrmPage(1)
+                setCrmHorizontalPage(1)
+                setWeeklyHorizontalPage(1)
               }}
               options={thirdClassBarOptions}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={5}>
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              style={{ width: '100%' }}
+              placeholder="按人名多选筛选"
+              value={searchNames}
+              onChange={(vals) => {
+                setSearchNames(vals)
+                setWeeklyPage(1)
+                setCrmPage(1)
+                setCrmHorizontalPage(1)
+                setWeeklyHorizontalPage(1)
+              }}
+              options={memberOptions}
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              maxTagCount="responsive"
             />
           </Col>
           <Col>
@@ -1690,7 +1602,15 @@ const WeeklyReports: React.FC = () => {
               )}
               <Button
                 type="primary"
-                onClick={activeTab === 'report' ? loadWeeklyReports : loadCrmReports}
+                onClick={
+                  activeTab === 'report' 
+                    ? loadWeeklyReports 
+                    : activeTab === 'report_horizontal'
+                    ? loadWeeklyHorizontalReports
+                    : activeTab === 'crm'
+                    ? loadCrmReports
+                    : loadCrmHorizontalReports
+                }
                 icon={<SyncOutlined />}
               >
                 刷新周汇总
@@ -1705,22 +1625,7 @@ const WeeklyReports: React.FC = () => {
                   {hasMineReport ? '修改我的周报' : '填写我的周报'}
                 </Button>
               )}
-              {allowedGroupReport && (
-                <Button
-                  type="primary"
-                  style={{
-                    backgroundColor: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#13c2c2',
-                    borderColor: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#13c2c2',
-                    color: weeklyTeamId === 'all' && weeklyThirdBar === 'all' ? undefined : '#fff'
-                  }}
-                  disabled={weeklyTeamId === 'all' && weeklyThirdBar === 'all'}
-                  icon={<FileTextOutlined />}
-                  loading={groupReportLoading}
-                  onClick={handleGenerateGroupReport}
-                >
-                  生成【{getGroupNameText() || '未选'}】整体周报
-                </Button>
-              )}
+
             </Space>
           </Col>
           <Col style={{ marginLeft: 'auto' }}>
@@ -1734,7 +1639,7 @@ const WeeklyReports: React.FC = () => {
         <Tabs
           type="card"
           activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as 'report' | 'crm')}
+          onChange={(key) => setActiveTab(key as 'report' | 'report_horizontal' | 'crm' | 'crm_horizontal')}
           style={{ marginBottom: 16 }}
           items={[
             {
@@ -1762,8 +1667,229 @@ const WeeklyReports: React.FC = () => {
                     showSizeChanger: true,
                     showTotal: (total) => `共 ${total} 条数据`
                   }}
-                  scroll={{ x: 3100 }}
+                  scroll={{ x: 1870 }}
+                  sticky={{ offsetScroll: 0, getContainer: () => (document.querySelector('.ant-layout-content') as HTMLElement) || window }}
                   locale={{ emptyText: '该周内此小组/战队暂无提交的周复盘数据' }}
+                />
+              )
+            },
+            {
+              key: 'report_horizontal',
+              label: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>👥 团队周报汇总横板</span>,
+              children: (
+                <Table
+                  dataSource={[
+                    { key: 'plan', dimension: '🎯 本周目标计划' },
+                    { key: 'actual', dimension: '🔥 本周实际完成' },
+                    { key: 'highlights', dimension: '🏆 本周工作亮点' },
+                    { key: 'blockers', dimension: '🚧 本周工作卡点/难点' },
+                    { key: 'support', dimension: '🤝 需要支持协调' },
+                    { key: 'next_plan', dimension: '🚀 下周工作目标' }
+                  ]}
+                  columns={[
+                    {
+                      title: '指标/维度',
+                      dataIndex: 'dimension',
+                      key: 'dimension',
+                      width: 150,
+                      fixed: 'left' as const,
+                      align: 'center' as const,
+                      render: (text: string) => <strong>{text}</strong>,
+                    },
+                    ...weeklyHorizontalReports.map((record: any) => {
+                      return {
+                        title: (
+                          <Space direction="vertical" size={2} style={{ textAlign: 'center', width: '100%' }}>
+                            <strong>{record.user_name}</strong>
+                            <Tag color={record.user_position_type === 'marketing' ? 'orange' : 'green'} style={{ margin: 0 }}>
+                              {record.user_position_type === 'marketing' ? '营销岗' : '交付岗'}
+                            </Tag>
+                          </Space>
+                        ),
+                        key: record.user_id,
+                        width: 260,
+                        render: (_: any, row: any) => {
+                          const isMarketingUser = record.user_position_type === 'marketing' ||
+                            ['target_officer', 'marketing_staff', 'tech_marketing'].includes(record.user_role || '');
+                          
+                          let val = '';
+                          switch (row.key) {
+                            case 'plan':
+                              val = isMarketingUser ? record.sales_plan : record.delivery_plan;
+                              break;
+                            case 'actual':
+                              val = isMarketingUser ? record.sales_actual : record.delivery_actual;
+                              break;
+                            case 'highlights':
+                              val = isMarketingUser ? record.sales_highlights : record.delivery_highlights;
+                              break;
+                            case 'blockers':
+                              val = isMarketingUser ? record.sales_blockers : record.delivery_blockers;
+                              break;
+                            case 'support':
+                              val = isMarketingUser ? record.sales_support : record.delivery_support;
+                              break;
+                            case 'next_plan':
+                              val = isMarketingUser ? record.next_sales_plan : record.next_delivery_plan;
+                              break;
+                          }
+                          return (
+                            <div style={{
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-all',
+                              maxHeight: '250px',
+                              overflowY: 'auto',
+                              overflowX: 'hidden',
+                              fontSize: '12.5px',
+                              width: '100%',
+                              minWidth: '220px',
+                              maxWidth: '250px',
+                              boxSizing: 'border-box',
+                              textAlign: 'left'
+                            }}>
+                              {val || '—'}
+                            </div>
+                          );
+                        }
+                      }
+                    })
+                  ]}
+                  loading={weeklyHorizontalLoading}
+                  pagination={{
+                    current: weeklyHorizontalPage,
+                    pageSize: weeklyHorizontalPageSize,
+                    total: weeklyHorizontalTotal,
+                    onChange: (p, ps) => {
+                      setWeeklyHorizontalPage(p)
+                      setWeeklyHorizontalPageSize(ps)
+                    },
+                    pageSizeOptions: ['4', '6', '8', '10', '15'],
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 人`
+                  }}
+                  bordered
+                  scroll={{ x: 'max-content' }}
+                  sticky={{ offsetScroll: 0, getContainer: () => (document.querySelector('.ant-layout-content') as HTMLElement) || window }}
+                  locale={{ emptyText: '该周内此小组/战队暂无提交的周复盘数据' }}
+                />
+              )
+            },
+            {
+              key: 'crm_horizontal',
+              label: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>👥 CRM 数据汇总横板</span>,
+              children: (
+                <Table
+                  dataSource={[
+                    { key: 'active_projects', dimension: '💻 正在实施项目进度' },
+                    { key: 'milestone_tasks', dimension: '🎯 里程碑与交付动作' },
+                    { key: 'suspended_projects', dimension: '⚠️ 暂停或异常挂起项目' },
+                    { key: 'no_contract_warning', dimension: '🔴 合同超期未签预警' },
+                    { key: 'unbilled_warning', dimension: '🟡 有进度未开票卡点' },
+                    { key: 'unreceived_warning', dimension: '🔴 已开票未回款预警' },
+                    { key: 'health_diagnosis', dimension: '🩺 饱和度与健康度诊断' }
+                  ]}
+                  columns={[
+                    {
+                      title: '指标/维度',
+                      dataIndex: 'dimension',
+                      key: 'dimension',
+                      width: 170,
+                      fixed: 'left' as const,
+                      align: 'center' as const,
+                      render: (text: string) => <strong>{text}</strong>,
+                    },
+                    ...crmHorizontalReports.map((record: any) => {
+                      return {
+                        title: (
+                          <Space direction="vertical" size={2} style={{ textAlign: 'center', width: '100%' }}>
+                            <strong>{record.user_name}</strong>
+                            <Tag color={record.position_type === 'marketing' ? 'orange' : 'green'} style={{ margin: 0 }}>
+                              {record.position_type === 'marketing' ? '营销岗' : '交付岗'}
+                            </Tag>
+                          </Space>
+                        ),
+                        key: record.user_id,
+                        width: 280,
+                        render: (_: any, row: any) => {
+                          let val = '';
+                          let isAlert = false;
+                          let isWarning = false;
+                          
+                          switch (row.key) {
+                            case 'active_projects':
+                              val = record.crm_active_projects;
+                              break;
+                            case 'milestone_tasks':
+                              val = record.crm_milestone_tasks;
+                              break;
+                            case 'suspended_projects':
+                              val = record.crm_suspended_projects;
+                              isWarning = val && val !== '—';
+                              break;
+                            case 'no_contract_warning':
+                              val = record.crm_no_contract_warning;
+                              isAlert = val && val !== '—';
+                              break;
+                            case 'unbilled_warning':
+                              val = record.crm_unbilled_warning;
+                              isWarning = val && val !== '—';
+                              break;
+                            case 'unreceived_warning':
+                              val = record.crm_unreceived_warning;
+                              isAlert = val && val !== '—';
+                              break;
+                            case 'health_diagnosis':
+                              val = record.crm_health_diagnosis;
+                              isAlert = val && (val.includes('异常') || val.includes('风险') || val.includes('超负荷'));
+                              isWarning = val && (val.includes('警告') || val.includes('偏低'));
+                              break;
+                          }
+
+                          if (!val || val === '—') return '—';
+
+                          let colorStyle = undefined;
+                          if (isAlert) {
+                            colorStyle = { color: '#ff4d4f', fontWeight: '500' };
+                          } else if (isWarning) {
+                            colorStyle = { color: '#faad14', fontWeight: '500' };
+                          }
+
+                          return (
+                            <div style={{
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-all',
+                              maxHeight: '200px', // 内容太长时展示滑动条限制高度
+                              overflowY: 'auto',
+                              overflowX: 'hidden', // 限制禁止横向滑动条，防止遮挡文字
+                              fontSize: '12.5px',
+                              width: '250px', // 限制最大列宽最多这么宽
+                              textAlign: 'left',
+                              ...colorStyle
+                            }}>
+                              {val}
+                            </div>
+                          );
+                        }
+                      }
+                    })
+                  ]}
+                  loading={crmHorizontalLoading}
+                  pagination={{
+                    current: crmHorizontalPage,
+                    pageSize: crmHorizontalPageSize,
+                    total: crmHorizontalTotal,
+                    onChange: (p, ps) => {
+                      setCrmHorizontalPage(p)
+                      setCrmHorizontalPageSize(ps)
+                    },
+                    pageSizeOptions: ['4', '6', '8', '10', '15'],
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 人`
+                  }}
+                  bordered
+                  scroll={{ x: 'max-content' }}
+                  sticky={{ offsetScroll: 0, getContainer: () => (document.querySelector('.ant-layout-content') as HTMLElement) || window }}
+                  locale={{ emptyText: '当前战队/三级巴暂无成员的当周 CRM 业务数据' }}
                 />
               )
             },
@@ -1788,7 +1914,8 @@ const WeeklyReports: React.FC = () => {
                     showSizeChanger: true,
                     showTotal: (total) => `共 ${total} 条数据`
                   }}
-                  scroll={{ x: 2500 }}
+                  scroll={{ x: 2590 }}
+                  sticky={{ offsetScroll: 0, getContainer: () => (document.querySelector('.ant-layout-content') as HTMLElement) || window }}
                   locale={{ emptyText: '该周内此小组/战队暂无匹配的 CRM 业务数据' }}
                 />
               )
@@ -2036,24 +2163,49 @@ const WeeklyReports: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>🔥 当周项目交付实际 (CRM)</div>
-                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#f6ffed' }}>
-                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 80, fontFamily: 'monospace' }}>{viewingCrmReport.delivery_actual || '暂无数据'}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>1、目前负责跟进的正在实施项目进度情况</div>
+                  <Card size="small" style={{ marginBottom: 12 }} headStyle={{ background: '#f6ffed' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, fontFamily: 'monospace' }}>{viewingCrmReport.crm_active_projects || '—'}</div>
                   </Card>
 
-                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>📈 月度指标达成率 (CRM)</div>
-                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#e6f7ff' }}>
-                    <div><strong>{viewingCrmReport.delivery_rate || '暂无统计指标'}</strong></div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>2、本周项目子任务及里程碑节点交付动作明细</div>
+                  <Card size="small" style={{ marginBottom: 12 }} headStyle={{ background: '#e6f7ff' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, fontFamily: 'monospace' }}>{viewingCrmReport.crm_milestone_tasks || '—'}</div>
                   </Card>
 
-                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>✨ 当周工作亮点 (CRM 诊断)</div>
-                  <Card size="small" style={{ marginBottom: 16 }} headStyle={{ background: '#fffb8f' }}>
-                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50 }}>{viewingCrmReport.delivery_highlights || '开发交付无积压'}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#faad14' }}>3、处于暂停或异常挂起状态的项目</div>
+                  <Card size="small" style={{ marginBottom: 12, border: viewingCrmReport.crm_suspended_projects && viewingCrmReport.crm_suspended_projects !== '—' ? '1px solid #ffe58f' : '1px solid #f0f0f0' }} headStyle={{ background: '#fffbe6' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, color: viewingCrmReport.crm_suspended_projects && viewingCrmReport.crm_suspended_projects !== '—' ? '#d46b08' : 'inherit', fontWeight: viewingCrmReport.crm_suspended_projects && viewingCrmReport.crm_suspended_projects !== '—' ? '500' : 'normal' }}>
+                      {viewingCrmReport.crm_suspended_projects || '—'}
+                    </div>
                   </Card>
 
-                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#1677ff' }}>⚠️ 项目卡点与异常预警 (包含预设立、已到节点未开票、已开票未回款等)</div>
-                  <Card size="small" style={{ marginBottom: 16, border: '1px solid #ffa39e' }} headStyle={{ background: '#fff1f0' }}>
-                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 50, color: viewingCrmReport.delivery_blockers?.includes('1. 本周项目') ? 'inherit' : '#cf1322', fontWeight: viewingCrmReport.delivery_blockers?.includes('1. 本周项目') ? 'normal' : '500' }}>{viewingCrmReport.delivery_blockers || '无异常'}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#ff4d4f' }}>4、预设立立警 (超期未签合同)</div>
+                  <Card size="small" style={{ marginBottom: 12, border: viewingCrmReport.crm_no_contract_warning && viewingCrmReport.crm_no_contract_warning !== '—' ? '1px solid #ffa39e' : '1px solid #f0f0f0' }} headStyle={{ background: '#fff1f0' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, color: viewingCrmReport.crm_no_contract_warning && viewingCrmReport.crm_no_contract_warning !== '—' ? '#cf1322' : 'inherit', fontWeight: viewingCrmReport.crm_no_contract_warning && viewingCrmReport.crm_no_contract_warning !== '—' ? '500' : 'normal' }}>
+                      {viewingCrmReport.crm_no_contract_warning || '—'}
+                    </div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#faad14' }}>5、交付卡点 (有进度未开票)</div>
+                  <Card size="small" style={{ marginBottom: 12, border: viewingCrmReport.crm_unbilled_warning && viewingCrmReport.crm_unbilled_warning !== '—' ? '1px solid #ffe58f' : '1px solid #f0f0f0' }} headStyle={{ background: '#fffbe6' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, color: viewingCrmReport.crm_unbilled_warning && viewingCrmReport.crm_unbilled_warning !== '—' ? '#d46b08' : 'inherit', fontWeight: viewingCrmReport.crm_unbilled_warning && viewingCrmReport.crm_unbilled_warning !== '—' ? '500' : 'normal' }}>
+                      {viewingCrmReport.crm_unbilled_warning || '—'}
+                    </div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#ff4d4f' }}>6、收欠款预警 (已开票未回款)</div>
+                  <Card size="small" style={{ marginBottom: 12, border: viewingCrmReport.crm_unreceived_warning && viewingCrmReport.crm_unreceived_warning !== '—' ? '1px solid #ffa39e' : '1px solid #f0f0f0' }} headStyle={{ background: '#fff1f0' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, color: viewingCrmReport.crm_unreceived_warning && viewingCrmReport.crm_unreceived_warning !== '—' ? '#cf1322' : 'inherit', fontWeight: viewingCrmReport.crm_unreceived_warning && viewingCrmReport.crm_unreceived_warning !== '—' ? '500' : 'normal' }}>
+                      {viewingCrmReport.crm_unreceived_warning || '—'}
+                    </div>
+                  </Card>
+
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '16px 0 8px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px', color: '#722ed1' }}>7、个人工作饱和度与项目健康度诊断</div>
+                  <Card size="small" style={{ marginBottom: 16, border: viewingCrmReport.crm_health_diagnosis && (viewingCrmReport.crm_health_diagnosis.includes('红色警报') || viewingCrmReport.crm_health_diagnosis.includes('黄色预警')) ? '1px solid #d3adf7' : '1px solid #f0f0f0' }} headStyle={{ background: '#f9f0ff' }}>
+                    <div style={{ whiteSpace: 'pre-wrap', minHeight: 40, color: viewingCrmReport.crm_health_diagnosis && (viewingCrmReport.crm_health_diagnosis.includes('红色警报') || viewingCrmReport.crm_health_diagnosis.includes('黄色预警')) ? '#531dab' : 'inherit', fontWeight: viewingCrmReport.crm_health_diagnosis && (viewingCrmReport.crm_health_diagnosis.includes('红色警报') || viewingCrmReport.crm_health_diagnosis.includes('黄色预警')) ? '500' : 'normal' }}>
+                      {viewingCrmReport.crm_health_diagnosis || '工作饱和度与项目实施状态正常。'}
+                    </div>
                   </Card>
                 </>
               )}
@@ -2104,7 +2256,7 @@ const WeeklyReports: React.FC = () => {
                 loading={weeklyExtractLoading}
                 onClick={handleAutoExtractWeekly}
               >
-                一键导入当周播报数据
+                导入上周周报和本周播报
               </Button>
               <Button
                 type="primary"
@@ -2227,6 +2379,7 @@ const WeeklyReports: React.FC = () => {
             </Space>
           }
           open={crmPreviewVisible}
+          zIndex={1100}
           onOk={handleConfirmImportCrm}
           onCancel={() => setCrmPreviewVisible(false)}
           okText="确认填入选中的数据"
@@ -2270,83 +2423,222 @@ const WeeklyReports: React.FC = () => {
 
           {/* 2. 各维度展示卡片 */}
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            
-            {/* 实际完成 */}
-            <Card
-              size="small"
-              title={
-                <Checkbox 
-                  checked={crmSelectedKeys.actual} 
-                  onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, actual: e.target.checked })}
+            {isMarketing ? (
+              <>
+                {/* 实际完成 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.actual} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, actual: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>📅 当周实际完成 (销售签约与拜访)</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.actual ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' } }}
                 >
-                  <span style={{ fontWeight: 'bold' }}>📅 当周实际完成 ({isMarketing ? '销售签约与拜访' : '项目推进与交付'})</span>
-                </Checkbox>
-              }
-              style={{ border: crmSelectedKeys.actual ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              styles={{ body: { backgroundColor: crmSelectedKeys.actual ? '#f0f7ff' : '#fafafa' } }}
-            >
-              <div style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
-                {isMarketing ? crmPreviewData?.sales_actual : crmPreviewData?.delivery_actual}
-              </div>
-            </Card>
+                  <div style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.sales_actual}
+                  </div>
+                </Card>
 
-            {/* 指标达成率 */}
-            <Card
-              size="small"
-              title={
-                <Checkbox 
-                  checked={crmSelectedKeys.rate} 
-                  onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, rate: e.target.checked })}
+                {/* 指标达成率 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.rate} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, rate: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>📈 本月计划达成率指标</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.rate ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' } }}
                 >
-                  <span style={{ fontWeight: 'bold' }}>📈 本月计划达成率指标</span>
-                </Checkbox>
-              }
-              style={{ border: crmSelectedKeys.rate ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              styles={{ body: { backgroundColor: crmSelectedKeys.rate ? '#f0f7ff' : '#fafafa' } }}
-            >
-              <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
-                {isMarketing ? crmPreviewData?.sales_rate : crmPreviewData?.delivery_rate}
-              </div>
-            </Card>
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.sales_rate}
+                  </div>
+                </Card>
 
-            {/* 工作亮点 */}
-            <Card
-              size="small"
-              title={
-                <Checkbox 
-                  checked={crmSelectedKeys.highlights} 
-                  onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, highlights: e.target.checked })}
+                {/* 工作亮点 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.highlights} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, highlights: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>✨ 当周工作亮点 (自动诊断建议)</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.highlights ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' } }}
                 >
-                  <span style={{ fontWeight: 'bold' }}>✨ 当周工作亮点 (自动诊断建议)</span>
-                </Checkbox>
-              }
-              style={{ border: crmSelectedKeys.highlights ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              styles={{ body: { backgroundColor: crmSelectedKeys.highlights ? '#f0f7ff' : '#fafafa' } }}
-            >
-              <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
-                {isMarketing ? crmPreviewData?.sales_highlights : crmPreviewData?.delivery_highlights}
-              </div>
-            </Card>
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.sales_highlights}
+                  </div>
+                </Card>
 
-            {/* 工作卡点 */}
-            <Card
-              size="small"
-              title={
-                <Checkbox 
-                  checked={crmSelectedKeys.blockers} 
-                  onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, blockers: e.target.checked })}
+                {/* 工作卡点 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.blockers} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, blockers: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>⚠️ 当周工作卡点与异常难点</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.blockers ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' } }}
                 >
-                  <span style={{ fontWeight: 'bold' }}>⚠️ 当周工作卡点与异常难点 (包括预设立超期警示)</span>
-                </Checkbox>
-              }
-              style={{ border: crmSelectedKeys.blockers ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
-              styles={{ body: { backgroundColor: crmSelectedKeys.blockers ? '#f0f7ff' : '#fafafa' } }}
-            >
-              <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
-                {isMarketing ? crmPreviewData?.sales_blockers : crmPreviewData?.delivery_blockers}
-              </div>
-            </Card>
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.sales_blockers}
+                  </div>
+                </Card>
+              </>
+            ) : (
+              <>
 
+
+                {/* 3. 正在实施项目进度情况 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_active_projects} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_active_projects: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>📅 目前负责跟进的正在实施项目进度情况</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_active_projects ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_active_projects ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', maxHeight: '120px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_active_projects || '—'}
+                  </div>
+                </Card>
+
+                {/* 4. 本周项目子任务及里程碑节点交付动作明细 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_milestone_tasks} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_milestone_tasks: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold' }}>🗓 本周项目子任务及里程碑节点交付动作明细</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_milestone_tasks ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_milestone_tasks ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', maxHeight: '120px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_milestone_tasks || '—'}
+                  </div>
+                </Card>
+
+                {/* 5. 处于暂停或异常挂起状态的项目 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_suspended_projects} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_suspended_projects: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold', color: '#faad14' }}>⚠️ 处于暂停或异常挂起状态的项目</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_suspended_projects ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_suspended_projects ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_suspended_projects || '—'}
+                  </div>
+                </Card>
+
+                {/* 6. 预设立立警 (超期未签合同) */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_no_contract_warning} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_no_contract_warning: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold', color: '#ff4d4f' }}>🚨 预设立立警 (超期未签合同)</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_no_contract_warning ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_no_contract_warning ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_no_contract_warning || '—'}
+                  </div>
+                </Card>
+
+                {/* 7. 交付卡点 (有进度未开票) */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_unbilled_warning} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_unbilled_warning: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold', color: '#faad14' }}>⚠️ 交付卡点 (有进度未开票)</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_unbilled_warning ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_unbilled_warning ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_unbilled_warning || '—'}
+                  </div>
+                </Card>
+
+                {/* 8. 收欠款预警 (已开票未回款) */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_unreceived_warning} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_unreceived_warning: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold', color: '#ff4d4f' }}>🚨 收欠款预警 (已开票未回款)</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_unreceived_warning ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_unreceived_warning ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_unreceived_warning || '—'}
+                  </div>
+                </Card>
+
+                {/* 9. 饱和度与健康度诊断 */}
+                <Card
+                  size="small"
+                  title={
+                    <Checkbox 
+                      checked={crmSelectedKeys.crm_health_diagnosis} 
+                      onChange={(e) => setCrmSelectedKeys({ ...crmSelectedKeys, crm_health_diagnosis: e.target.checked })}
+                    >
+                      <span style={{ fontWeight: 'bold', color: '#ff4d4f' }}>🩺 饱和度与健康度诊断</span>
+                    </Checkbox>
+                  }
+                  style={{ border: crmSelectedKeys.crm_health_diagnosis ? '1px solid #1677ff' : '1px solid #f0f0f0' }}
+                  styles={{ body: { backgroundColor: crmSelectedKeys.crm_health_diagnosis ? '#f0f7ff' : '#fafafa' } }}
+                >
+                  <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px', padding: '8px', border: '1px dashed #d9d9d9', borderRadius: '4px', backgroundColor: '#fff' }}>
+                    {crmPreviewData?.crm_health_diagnosis || '—'}
+                  </div>
+                </Card>
+              </>
+            )}
           </Space>
         </Modal>
 
@@ -2358,6 +2650,7 @@ const WeeklyReports: React.FC = () => {
             </Space>
           }
           open={aiOptimizeModalVisible}
+          zIndex={1100}
           onCancel={() => setAiOptimizeModalVisible(false)}
           onOk={handleConfirmAiOptimize}
           okText="确认并填回周报"
@@ -2537,248 +2830,9 @@ const WeeklyReports: React.FC = () => {
           </div>
         </Modal>
 
-        {/* ⚡ 团队（战队与三级巴）整体周报预览及指标看板 Modal */}
-        <Modal
-          title={
-            <Space>
-              <FileTextOutlined style={{ color: '#13c2c2' }} />
-              <strong>⚡ 团队整体复盘周报（当前所选：{getGroupNameText()}）</strong>
-            </Space>
-          }
-          open={groupReportVisible}
-          onCancel={() => setGroupReportVisible(false)}
-          width={1000}
-          centered
-          destroyOnClose
-          footer={[
-            <Button 
-              key="regenerate" 
-              danger 
-              ghost
-              icon={<SyncOutlined />} 
-              loading={groupReportLoading}
-              onClick={triggerAiGenerateGroupReport}
-            >
-              重新由 AI 智能生成
-            </Button>,
-            <Button 
-              key="copy" 
-              icon={<CopyOutlined />} 
-              loading={dingSending}
-              onClick={handleCopyAndSendToDingtalk}
-            >
-              一键复制并发送到钉钉
-            </Button>,
-            <Button 
-              key="export" 
-              icon={<DownloadOutlined />} 
-              onClick={handleExportGroupReportFile}
-            >
-              导出为 .md 文件
-            </Button>,
-            <Button 
-              key="export-pdf" 
-              icon={<DownloadOutlined />} 
-              loading={groupPdfExporting}
-              onClick={() => handleExportPDF('group-report-pdf-export-temp', `${getGroupNameText()}_${mon.format('YYYY-MM-DD')}_整体复盘周报.pdf`, setGroupPdfExporting)}
-            >
-              导出PDF
-            </Button>,
-            <Button 
-              key="export-docx" 
-              icon={<DownloadOutlined />} 
-              loading={groupDocxExporting}
-              onClick={handleExportGroupDocx}
-            >
-              导出Word
-            </Button>,
-            <Button 
-              key="save" 
-              type="primary" 
-              loading={groupReportLoading}
-              onClick={handleSaveGroupReport}
-            >
-              保存至系统数据库
-            </Button>,
-            <Button 
-              key="close" 
-              onClick={() => setGroupReportVisible(false)}
-            >
-              关闭
-            </Button>
-          ]}
-        >
-          <div style={{ maxHeight: '75vh', overflowY: 'auto', padding: '4px' }}>
-            <div id="group-report-modal-content" style={{ padding: '16px', backgroundColor: '#ffffff' }}>
-            {/* 1. 存盘状态 Alert (小巧单行) */}
-            <Alert
-              message={
-                <span style={{ fontSize: '12px' }}>
-                  <strong>{hasSavedReport ? "已加载系统数据库存档快照" : "当前内容由 AI 智能生成（预览）"}</strong>。
-                  {hasSavedReport 
-                    ? `（存档时间：${savedReportTime}）。您可以随时在下方直接微调，或点击“重新由 AI 智能生成”刷新内容并覆盖保存。`
-                    : "您可以在下方直接进行润色调整，确认后点击下方“保存至系统数据库”进行存盘。"
-                  }
-                </span>
-              }
-              type={hasSavedReport ? "success" : "info"}
-              showIcon
-              style={{ marginBottom: 12, padding: '6px 12px' }}
-            />
 
-            {/* 2. 九个核心财务与播报指标看板卡片 (扁平 Grid 排列，极度压缩纵向空间) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>营销新签合同额</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#389e0d' }}>
-                  {groupMetrics.marketing_signed?.toFixed(2)} 万元
-                </span>
-              </div>
-              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>交付新签合同额</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#389e0d' }}>
-                  {groupMetrics.delivery_signed?.toFixed(2)} 万元
-                </span>
-              </div>
-              <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>中标项目个数</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#096dd9' }}>
-                  {groupMetrics.win_bids} 个
-                </span>
-              </div>
-              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>幸福动作个数</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>
-                  {groupMetrics.happiness_count} 次
-                </span>
-              </div>
-              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>铁三角联动次数</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>
-                  {groupMetrics.triangle_count} 次
-                </span>
-              </div>
-              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>有效商机线索量</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d39c4' }}>
-                  {groupMetrics.valid_leads} 个
-                </span>
-              </div>
-              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>潜力商机线索量</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1d39c4' }}>
-                  {groupMetrics.potential_leads} 个
-                </span>
-              </div>
-              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>CRM 累计产值</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#c41d7f' }}>
-                  {groupMetrics.production_value?.toFixed(2)} 万元
-                </span>
-              </div>
-              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959' }}>CRM 到账回款额</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#c41d7f' }}>
-                  {groupMetrics.receive_value?.toFixed(2)} 万元
-                </span>
-              </div>
-            </div>
 
-            {/* 3. 周报文本编辑器 (带实时 Markdown 预览切换) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#262626' }}>📝 团队整体周报正文 (Markdown 文本)</div>
-              <Radio.Group 
-                value={previewMode} 
-                onChange={(e) => setPreviewMode(e.target.value)} 
-                size="small"
-                style={{ zIndex: 10 }}
-              >
-                <Radio.Button value="edit">
-                  <EditOutlined /> 编辑源码
-                </Radio.Button>
-                <Radio.Button value="preview">
-                  <EyeOutlined /> 实时预览
-                </Radio.Button>
-              </Radio.Group>
-            </div>
 
-            {previewMode === 'edit' ? (
-              <Input.TextArea
-                rows={18}
-                value={groupReportContent}
-                onChange={(e) => setGroupReportContent(e.target.value)}
-                placeholder="大模型正在分析和生成中，这可能需要一点时间..."
-                style={{ fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.6', backgroundColor: '#fafafa' }}
-                disabled={groupReportLoading}
-              />
-            ) : (
-              <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                <MarkdownPreview text={groupReportContent} />
-              </div>
-            )}
-            </div>
-          </div>
-        </Modal>
-
-        {/* 隐藏的用于 PDF 导出的整体周报渲染模板，去除了maxHeight/滚动条限制且不带Alert与Radio切换杂质 */}
-        <div style={{ position: 'absolute', top: -9999, left: -9999, width: '794px', zIndex: -100 }}>
-          <div id="group-report-pdf-export-temp" style={{ padding: '32px', backgroundColor: '#ffffff', minHeight: '297mm' }}>
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#102a4c', margin: '0 0 8px 0' }}>
-                📅 团队整体复盘周报（{getGroupNameText()}）
-              </h1>
-              <div style={{ fontSize: '13px', color: '#595959' }}>
-                时间跨度：{selectedMonday} ~ {selectedSunday}
-              </div>
-            </div>
-
-            {/* 九宫格数据看板 */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
-              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>营销新签合同额</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#389e0d' }}>{groupMetrics.marketing_signed?.toFixed(2)} 万元</span>
-              </div>
-              <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>交付新签合同额</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#389e0d' }}>{groupMetrics.delivery_signed?.toFixed(2)} 万元</span>
-              </div>
-              <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>中标项目个数</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#096dd9' }}>{groupMetrics.win_bids} 个</span>
-              </div>
-              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>幸福动作个数</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#d46b08' }}>{groupMetrics.happiness_count} 次</span>
-              </div>
-              <div style={{ background: '#fffbe6', border: '1px solid #ffd591', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>铁三角联动次数</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#d46b08' }}>{groupMetrics.triangle_count} 次</span>
-              </div>
-              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>有效商机线索量</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1d39c4' }}>{groupMetrics.valid_leads} 个</span>
-              </div>
-              <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>潜力商机线索量</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1d39c4' }}>{groupMetrics.potential_leads} 个</span>
-              </div>
-              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>CRM 累计产值</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#c41d7f' }}>{groupMetrics.production_value?.toFixed(2)} 万元</span>
-              </div>
-              <div style={{ background: '#fff0f6', border: '1px solid #ffadd2', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#595959', marginBottom: '4px' }}>CRM 到账回款额</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#c41d7f' }}>{groupMetrics.receive_value?.toFixed(2)} 万元</span>
-              </div>
-            </div>
-
-            {/* 周报 Markdown 正文，使用无高度限制且完全垂直展开的预览组件 */}
-            <div style={{ borderTop: '2px solid #f0f0f0', paddingTop: '16px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#262626', marginBottom: '12px' }}>📝 团队整体周报正文</div>
-              <MarkdownPreview text={groupReportContent} />
-            </div>
-          </div>
-        </div>
 
         {/* 隐藏的用于 PDF 导出的个人周复盘渲染模板 */}
         <div style={{ position: 'absolute', top: -9999, left: -9999, width: '794px', zIndex: -100 }}>

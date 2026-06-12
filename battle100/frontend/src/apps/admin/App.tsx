@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Reports from './pages/Reports'
 import WeeklyReports from './pages/WeeklyReports'
+import TeamWeeklyReports from './pages/TeamWeeklyReports'
 import Goals from './pages/Goals'
 import Settings from './pages/Settings'
 import AdminLayout from './layouts/AdminLayout'
@@ -39,6 +40,7 @@ const App: React.FC = () => {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<Reports />} />
             <Route path="weekly-reports" element={<WeeklyReports />} />
+            <Route path="team-weekly-reports" element={<TeamWeeklyReports />} />
             <Route path="goals" element={<Goals />} />
             <Route path="settings" element={<Settings />} />
           </Route>

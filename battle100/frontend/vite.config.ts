@@ -49,6 +49,8 @@ export default defineConfig({
     // 开发服务器配置
     host: true,
     port: 3100,
+    // 允许 Cloudflare 隧道的自定义域名访问开发服务器
+    allowedHosts: ['battle100.robinlyw.com'],
     proxy: {
       // API代理到新后端端口
       '/api': {

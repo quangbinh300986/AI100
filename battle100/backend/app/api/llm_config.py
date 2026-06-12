@@ -579,7 +579,8 @@ AGENT_ROLES = [
             "     【开票进度滞后】（或【交付卡点】）项目【东莞市历史已建加油站用地治理机制与政策研究】进度已达 90.1%（已达收付款触发节点 30.0%、50.0%、20.0%），但尚未开发票，需尽快推进发票开具；\n"
             "   - 独立特殊的卡点项目单独列出：\n"
             "     【清远龙塘项目暂停】清远市龙塘镇产业园区完善用地手续技术咨询服务项目处于暂停状态，需跟进处理。\n"
-            "3. 如果分析或润色出来需要其他人或团队（不限于上级领导）支持协调的事项，请具体列出；如果没有发现需要支持的内容，该项直接返回空字符串 ''。\n\n"
+            "3. 如果分析或润色出来需要其他人或团队（不限于上级领导）支持协调的事项，请具体列出；如果没有发现需要支持的内容，该项直接返回空字符串 ''。\n"
+            "4. 在分析并整理“本周实际完成（actual）”时，你必须着重依据【本周目标计划】、传入的【当前本周实际完成】中已包含的“上周实际完成内容”与“本周播报数据”来进行梳理分析。你必须严格按照用户所撰写的“上周实际完成的内容”的书写格式、句式结构、语气和行文风格，来输出本周实际完成的内容。如果有本周播报的数据，在融入时必须翻译和包装并完全统一转换成上周实际完成内容的那种行文格式，以保证整体呈现风格的绝对协调和顺畅连贯。\n\n"
             "分析优化后，必须以 JSON 格式输出，结构如下：\n"
             "{\n"
             "  \"actual\": \"润色优化后的本周实际完成（使用 1. 2. 3. 列表形式，突出战绩与数据。绝不能漏掉原输入中的项目名称与所做动作）\",\n"
@@ -591,7 +592,8 @@ AGENT_ROLES = [
         ),
         "default_user_prompt": (
             "请对以下周报内容进行整理与润色，并以 JSON 格式返回结果：\n"
-            "【当前本周实际完成】：\n{actual}\n"
+            "【本周目标计划】：\n{target_plan}\n"
+            "【当前本周实际完成（已包含上周完成的内容与本周播报数据）】：\n{actual}\n"
             "【当前本周工作亮点】：\n{highlights}\n"
             "【当前工作卡点/难点】：\n{blockers}\n"
             "【当前需要支持协调】：\n{support}\n"
@@ -798,10 +800,10 @@ async def agent_chat(
     # 3. 决定最终的 system_prompt 与 user_prompt 模板
     if role == "extractor" and route:
         is_updated = False
-        if route.system_prompt and "【项目暂停风险】" not in route.system_prompt:
+        if route.system_prompt and "上周实际完成内容" not in route.system_prompt:
             route.system_prompt = role_def.get("default_system_prompt")
             is_updated = True
-        if route.user_prompt and "当前需要支持协调" not in route.user_prompt:
+        if route.user_prompt and "本周目标计划" not in route.user_prompt:
             route.user_prompt = role_def.get("default_user_prompt")
             is_updated = True
         

@@ -4,6 +4,7 @@
 """
 
 from datetime import date, datetime, timezone
+from typing import Optional
 import uuid
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks
@@ -215,13 +216,13 @@ async def list_reports(
 ):
     """
     获取填报列表，支持分页和筛选
-    普通员工只能看自己的，战队长只能看本战队成员的，超级管理员/目标官/数字专员可看所有
+    队员只能看自己的，战队长只能看本战队成员的，超级管理员/目标官/数字专员可看所有
     """
     query = select(DailyReport).options(selectinload(DailyReport.details))
 
     # 1. 角色权限过滤
     if current_user.role in [UserRole.STAFF.value, UserRole.MARKETING_STAFF.value, UserRole.TECH_MARKETING.value]:
-        # 普通员工（普通、营销、技术营销）强制只看自己的日报
+        # 队员（普通、营销、技术营销）强制只看自己的日报
         query = query.where(DailyReport.user_id == current_user.id)
     elif current_user.role == UserRole.TEAM_LEADER.value:
         # 战队长强制只看自己战队成员的日报
@@ -638,7 +639,7 @@ async def extract_weekly_broadcasts(
         BroadcastEvent.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead", "marketing_report", "middle_office_report", "happiness_committee"]),
         BroadcastEvent.is_deleted == False
     )
     res_self = await db.execute(stmt_self)
@@ -655,17 +656,17 @@ async def extract_weekly_broadcasts(
         DailyReport.user_id == current_user.id,
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead", "marketing_report", "middle_office_report", "happiness_committee"]),
         BroadcastEvent.is_deleted == False
     )
     res_linked = await db.execute(stmt_linked)
     broadcasts_linked = res_linked.scalars().all()
     
-    # 3. 正则兜底：查找包含“与联动人(姓名)”或“营销人员(姓名)”并包含当前用户的当周所有播报
+    # 3. 正则兜底：查找包含“与联动人(姓名)”、“营销人员(姓名)”或“协助人(姓名)”并包含当前用户的当周所有播报
     stmt_all = select(BroadcastEvent).where(
         BroadcastEvent.event_time >= start_dt,
         BroadcastEvent.event_time <= end_dt,
-        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead"]),
+        BroadcastEvent.event_type.in_(["lead_25", "lead_75", "contract_signed", "triangle", "happiness", "potential_lead", "marketing_report", "middle_office_report", "happiness_committee"]),
         BroadcastEvent.is_deleted == False
     )
     res_all = await db.execute(stmt_all)
@@ -677,6 +678,7 @@ async def extract_weekly_broadcasts(
         content = ev.content or ""
         m1 = re.search(r"与联动人\((.*?)\)", content)
         m2 = re.search(r"营销人员\((.*?)\)", content)
+        m3 = re.search(r"协助人[：:]\s*(.*?)(\n|$)", content)
         
         is_partner = False
         if m1:
@@ -685,6 +687,11 @@ async def extract_weekly_broadcasts(
                 is_partner = True
         if m2:
             partners = [n.strip() for n in re.split(r'[，,、\s]', m2.group(1)) if n.strip()]
+            if user_name in partners:
+                is_partner = True
+        if m3:
+            clean_names = m3.group(1).replace('*', '').strip()
+            partners = [n.strip() for n in re.split(r'[，,、\s]', clean_names) if n.strip()]
             if user_name in partners:
                 is_partner = True
                 
@@ -721,9 +728,16 @@ async def extract_weekly_broadcasts(
         elif ev.event_type == "contract_signed":
             prefix = "【合同签订】"
         elif ev.event_type == "triangle":
+            prefix = " Barb 【铁三角联动】" if "奋战一百天" in content_clean else "【铁三角联动】"  # 保留可能的特定战役特征，以下做标准替换
             prefix = "【铁三角联动】"
         elif ev.event_type == "happiness":
             prefix = "【幸福动作】"
+        elif ev.event_type == "marketing_report":
+            prefix = "【营销内部播报】"
+        elif ev.event_type == "middle_office_report":
+            prefix = "【中台播报】"
+        elif ev.event_type == "happiness_committee":
+            prefix = "【中台幸福委播报】"
             
         content_list.append(f"{idx}. {prefix}{content_clean}")
         
@@ -774,7 +788,14 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
         "delivery_support": "",
         "sales_support": "",
         "next_delivery_plan": "",
-        "next_sales_plan": ""
+        "next_sales_plan": "",
+        "crm_active_projects": "",
+        "crm_milestone_tasks": "",
+        "crm_suspended_projects": "",
+        "crm_no_contract_warning": "",
+        "crm_unbilled_warning": "",
+        "crm_unreceived_warning": "",
+        "crm_health_diagnosis": ""
     }
     
     try:
@@ -812,7 +833,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
             recv_val = conn.execute(recv_sql, {
                 "real_name": real_name,
                 "start_date": start_date_str,
-                "end_date": sunday.strftime('%Y-%m-%d')
+                "end_date": end_date_str
             }).scalar() or 0.0
             personal_receive = float(recv_val) # 万元
             
@@ -829,7 +850,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
             personal_warnings = []
             active_count = len(active_projects)
             
-            if active_count == 0:
+            if active_count == 0 and not is_marketing:
                 personal_warnings.append("🚨 红色警报：您目前名下无任何活跃正在实施的交付项目，需立即核实饱和度并协调新项目分配！")
             else:
                 # 检查项目本周是否进度停滞（无任何异动）
@@ -865,7 +886,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                         all_near_complete = False
                         break
                 
-                if active_count <= 2 and all_near_complete:
+                if active_count <= 2 and all_near_complete and not is_marketing:
                     personal_warnings.append(f"💡 风险提示：目前仅有 {active_count} 个正在实施项目且进度均已接近完成（当前进度≥90%），面临项目断档空仓风险，请尽快联系巴长安排新项目储备！")
 
             # 业绩快照与预警文本前缀准备
@@ -1127,11 +1148,9 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                       AND (contract_status = '0' OR contract_status IS NULL)
                       AND create_date < :one_month_ago
                 """)
-                from datetime import timedelta
-                one_month_ago_dt = (monday - timedelta(days=30)).strftime('%Y-%m-%d 23:59:59')
                 presetup_projects = conn.execute(presetup_block_sql, {
                     "real_name": real_name,
-                    "one_month_ago": one_month_ago_dt
+                    "one_month_ago": (monday - timedelta(days=30)).strftime('%Y-%m-%d 23:59:59')
                 }).mappings().all()
                 if presetup_projects:
                     for pp in presetup_projects:
@@ -1162,7 +1181,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                             f"但尚未开发票（本阶段合同款项：{money_str}万元）"
                         )
                         b_idx += 1
-
+ 
                 # 8.3 已开发票还未到账的项目
                 unreceived_bill_sql = text("""
                     SELECT DISTINCT p.project_name, br.bill_money, br.un_account_money, br.bill_create_date
@@ -1189,6 +1208,81 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 result["delivery_blockers"] = warning_text + ("\n".join(blocker_list) if blocker_list else "1. 本周项目整体推进良好，暂无重大的技术难点与交付卡点。")
                 result["sales_highlights"] = ""
                 result["sales_blockers"] = ""
+
+            # 无论什么岗位，都在最后将 7 个新增细粒度字段写好（如果有相应变量，就格式化；若没有或者为营销岗，默认为“—”）
+            # 1. 目前负责跟进的正在实施项目进度情况
+            if 'projects' in locals() and projects:
+                active_list = []
+                for idx, p in enumerate(projects, 1):
+                    active_list.append(f"{idx}. 项目【{p['project_name']}】当前总体进度：{float(p['project_progress'] or 0):.1f}%")
+                result["crm_active_projects"] = "\n".join(active_list)
+            else:
+                result["crm_active_projects"] = "—"
+ 
+            # 2. 本周项目子任务及里程碑节点交付动作明细
+            if 'tasks' in locals() and tasks:
+                task_list = []
+                for idx, t in enumerate(tasks, 1):
+                    m_tag = "【里程碑】" if t['milestone'] == '1' else ""
+                    task_list.append(f"{idx}. {m_tag}完成项目【{t['project_name']}】下的任务节点：【{t['task_name']}】")
+                result["crm_milestone_tasks"] = "\n".join(task_list)
+            else:
+                result["crm_milestone_tasks"] = "—"
+ 
+            # 3. 处于暂停或异常挂起状态的项目
+            if 'block_projects' in locals() and block_projects:
+                suspended_list = []
+                for idx, bp in enumerate(block_projects, 1):
+                    suspended_list.append(f"{idx}. 项目【{bp['project_name']}】处于暂停或异常挂起状态（备注：{bp['remarks'] or '无'}）")
+                result["crm_suspended_projects"] = "\n".join(suspended_list)
+            else:
+                result["crm_suspended_projects"] = "—"
+ 
+            # 4. 项目已立项执行超过一个月，但目前仍未签订正式合同
+            if 'presetup_projects' in locals() and presetup_projects:
+                no_contract_list = []
+                for idx, pp in enumerate(presetup_projects, 1):
+                    c_date_str = pp['create_date'].strftime('%Y-%m-%d') if pp['create_date'] else '—'
+                    no_contract_list.append(f"{idx}. 项目【{pp['project_name']}】已立项执行超过一个月，但目前仍未签订正式合同（立项时间：{c_date_str}）")
+                result["crm_no_contract_warning"] = "\n".join(no_contract_list)
+            else:
+                result["crm_no_contract_warning"] = "—"
+ 
+            # 5. 交付卡点：项目有进度但尚未开发票
+            if 'unbilled_projects' in locals() and unbilled_projects:
+                unbilled_list = []
+                for idx, up in enumerate(unbilled_projects, 1):
+                    money_val = float(up['installment_money']) / 10000.0 if up['installment_money'] is not None else None
+                    money_str = f"{money_val:,.2f}" if money_val is not None else "—"
+                    unbilled_list.append(
+                        f"{idx}. 项目【{up['project_name']}】进度已达 {float(up['project_progress'] or 0):.1f}%"
+                        f"（已达收付款触发节点 {float(up['project_progress_trigger'] or 0):.1f}%），"
+                        f"但尚未开发票（本阶段合同款项：{money_str}万元）"
+                    )
+                result["crm_unbilled_warning"] = "\n".join(unbilled_list)
+            else:
+                result["crm_unbilled_warning"] = "—"
+ 
+            # 6. 收欠款预警：项目已开发票但尚未回款到账
+            if 'unreceived_projects' in locals() and unreceived_projects:
+                unreceived_list = []
+                for idx, urp in enumerate(unreceived_projects, 1):
+                    bill_money_str = f"{float(urp['bill_money']):,.2f}" if urp['bill_money'] is not None else "—"
+                    un_money_str = f"{float(urp['un_account_money']):,.2f}" if urp['un_account_money'] is not None else "—"
+                    b_date_str = urp['bill_create_date'].strftime('%Y-%m-%d') if urp['bill_create_date'] else '—'
+                    unreceived_list.append(
+                        f"{idx}. 项目【{urp['project_name']}】已开发票但尚未回款到账"
+                        f"（开票日期：{b_date_str}，开票金额：{bill_money_str}万元，未到账金额：{un_money_str}万元）"
+                    )
+                result["crm_unreceived_warning"] = "\n".join(unreceived_list)
+            else:
+                result["crm_unreceived_warning"] = "—"
+ 
+            # 7. 个人工作饱和度与项目健康度诊断
+            if 'personal_warnings' in locals() and personal_warnings:
+                result["crm_health_diagnosis"] = "\n".join([f"{idx}. {w}" for idx, w in enumerate(personal_warnings, 1)])
+            else:
+                result["crm_health_diagnosis"] = "1. 工作饱和度与项目实施状态正常，暂无诊断预警。"
                 
     except Exception as e:
         import logging
@@ -1236,6 +1330,7 @@ async def get_weekly_reports_summary(
     start_date: date = Query(..., description="周开始日期(周一)"),
     team_id: int | None = Query(None, description="按战队/小组筛选"),
     third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     db: AsyncSession = Depends(get_db),
@@ -1281,6 +1376,16 @@ async def get_weekly_reports_summary(
         
     if third_class_bar and third_class_bar != "all":
         query = query.where(DbUser.third_class_bar == third_class_bar)
+        
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            from sqlalchemy import or_
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                query = query.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            query = query.where(DbUser.name.like(f"%{user_name}%"))
+
         
     query = query.where(WeeklyReport.start_date == start_date)
     query = query.order_by(DbUser.name.asc())
@@ -1333,6 +1438,7 @@ async def get_weekly_reports_crm_summary(
     start_date: date = Query(..., description="周开始日期(周一)"),
     team_id: int | None = Query(None, description="按战队/小组筛选"),
     third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     db: AsyncSession = Depends(get_db),
@@ -1342,7 +1448,7 @@ async def get_weekly_reports_crm_summary(
     联动 CRM 系统，根据当前登录用户的角色，智能并发拉取可见范围内所有成员的当周 CRM 业绩与进度。
     1. 系统管理员和目标官可看全员（支持按战队筛选）。
     2. 战队长可看同三级巴的队员，以及同战队成员。
-    3. 普通员工可看同三级巴或同战队成员。
+    3. 队员可看同三级巴或同战队成员。
     """
     from sqlalchemy import or_, and_
     from app.models.user import User as DbUser, PositionType
@@ -1368,7 +1474,7 @@ async def get_weekly_reports_crm_summary(
             stmt = stmt.where(DbUser.team_id == team_id)
             count_stmt = count_stmt.where(DbUser.team_id == team_id)
     else:
-        # 非全局角色（包括战队长、普通员工）：只能看同战队或同三级巴成员，以及当前用户自己
+        # 非全局角色（包括战队长、队员）：只能看同战队或同三级巴成员，以及当前用户自己
         conditions = [DbUser.id == current_user.id]
         if current_user.team_id is not None:
             conditions.append(DbUser.team_id == current_user.team_id)
@@ -1388,6 +1494,18 @@ async def get_weekly_reports_crm_summary(
     if third_class_bar and third_class_bar != "all":
         stmt = stmt.where(DbUser.third_class_bar == third_class_bar)
         count_stmt = count_stmt.where(DbUser.third_class_bar == third_class_bar)
+
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            from sqlalchemy import or_
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                stmt = stmt.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+                count_stmt = count_stmt.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            stmt = stmt.where(DbUser.name.like(f"%{user_name}%"))
+            count_stmt = count_stmt.where(DbUser.name.like(f"%{user_name}%"))
+
 
     # 2. 统计总数
     total_res = await db.execute(count_stmt)
@@ -1425,7 +1543,14 @@ async def get_weekly_reports_crm_summary(
             delivery_highlights=crm_data.get("delivery_highlights"),
             sales_highlights=crm_data.get("sales_highlights"),
             delivery_blockers=crm_data.get("delivery_blockers"),
-            sales_blockers=crm_data.get("sales_blockers")
+            sales_blockers=crm_data.get("sales_blockers"),
+            crm_active_projects=crm_data.get("crm_active_projects"),
+            crm_milestone_tasks=crm_data.get("crm_milestone_tasks"),
+            crm_suspended_projects=crm_data.get("crm_suspended_projects"),
+            crm_no_contract_warning=crm_data.get("crm_no_contract_warning"),
+            crm_unbilled_warning=crm_data.get("crm_unbilled_warning"),
+            crm_unreceived_warning=crm_data.get("crm_unreceived_warning"),
+            crm_health_diagnosis=crm_data.get("crm_health_diagnosis")
         )
 
     tasks = [fetch_user_crm_data(row) for row in rows]
@@ -2037,8 +2162,361 @@ async def save_group_weekly_report(
     return report
 
 
+# 记录正在生成的团队周报状态
+# key 格式: "team_id:third_class_bar:start_date"
+# value 格式: {"status": "running" | "success" | "failed", "error": str | None, "updated_at": datetime}
+weekly_report_tasks = {}
+
+
+async def async_generate_group_report_task(
+    start_date: date,
+    team_id: int | None,
+    third_class_bar: str | None,
+    user_id: int,
+    task_key: str
+):
+    """后台异步执行 AI 整体周报生成并自动存盘数据库的任务"""
+    from app.database import AsyncSessionLocal
+    from datetime import datetime, timezone, timedelta
+    from app.models.report import WeeklyReport, GroupWeeklyReport, DailyReport, ReportDetail, ReportStatus
+    from app.models.user import User
+    from sqlalchemy import select
+    import logging
+    import re
+
+    logger = logging.getLogger("battle100")
+    logger.info(f"开始后台 AI 团队周报生成任务: {task_key}")
+
+    async with AsyncSessionLocal() as db:
+        try:
+            # 1. 自动提取指标与上下文
+            metrics_result = await get_group_weekly_metrics(db, start_date, team_id, third_class_bar)
+            
+            user_ids = metrics_result["user_ids"]
+            if not user_ids:
+                raise Exception("该战队或三级巴下暂无激活成员，无法生成周报")
+                
+            # 2. 收集全员周报与未交日报明细
+            weekly_stmt = select(WeeklyReport, User.name).join(User, WeeklyReport.user_id == User.id).where(
+                WeeklyReport.user_id.in_(user_ids),
+                WeeklyReport.start_date == start_date,
+                WeeklyReport.status == "submitted"
+            )
+            weekly_res = await db.execute(weekly_stmt)
+            weekly_rows = weekly_res.all()
+            
+            submitted_user_ids = set()
+            weekly_contents = []
+            
+            for wr, u_name in weekly_rows:
+                submitted_user_ids.add(wr.user_id)
+                w_text = (
+                    f"--- 成员: {u_name} 的个人周复盘 ---\n"
+                    f"【项目交付实际完成】: {wr.delivery_actual or '无'}\n"
+                    f"【销售实际完成】: {wr.sales_actual or '无'}\n"
+                    f"【本周项目亮点】: {wr.delivery_highlights or '无'}\n"
+                    f"【本周销售亮点】: {wr.sales_highlights or '无'}\n"
+                    f"【本周项目难点】: {wr.delivery_blockers or '无'}\n"
+                    f"【本周销售难点】: {wr.sales_blockers or '无'}\n"
+                    f"【下周交付计划】: {wr.next_delivery_plan or '无'}\n"
+                    f"【下周销售计划】: {wr.next_sales_plan or '无'}\n"
+                )
+                weekly_contents.append(w_text)
+                
+            # 找出未交周报的成员名单
+            unsubmitted_members = []
+            unsubmitted_user_ids = []
+            for uid, uname, _ in metrics_result["members_list"]:
+                if uid not in submitted_user_ids:
+                    unsubmitted_members.append(uname)
+                    unsubmitted_user_ids.append(uid)
+                    
+            # 对于未提交周报的成员，提取他们本周全量的日报日志明细
+            daily_contents = []
+            if unsubmitted_user_ids:
+                # 查询当周已审核日报及其明细
+                daily_stmt = select(DailyReport).where(
+                    DailyReport.user_id.in_(unsubmitted_user_ids),
+                    DailyReport.report_date >= start_date,
+                    DailyReport.report_date <= (start_date + timedelta(days=6)),
+                    DailyReport.status == ReportStatus.REVIEWED
+                ).order_by(DailyReport.report_date.asc())
+                daily_res = await db.execute(daily_stmt)
+                daily_reports = daily_res.scalars().all()
+                
+                user_daily_map = {}
+                for dr in daily_reports:
+                    if dr.user_id not in user_daily_map:
+                        user_daily_map[dr.user_id] = []
+                    
+                    # 读取该日报的明细
+                    detail_stmt = select(ReportDetail).where(ReportDetail.report_id == dr.id)
+                    detail_res = await db.execute(detail_stmt)
+                    details = detail_res.scalars().all()
+                    
+                    detail_texts = []
+                    for dt in details:
+                        detail_texts.append(f"  - [{dt.detail_type}] {dt.project_name or dt.customer_name or ''}: {dt.description or ''}")
+                        
+                    dr_text = (
+                        f"【{dr.report_date.strftime('%m-%d')} 日报】:\n"
+                        f"  工作总结: {dr.work_summary or '未填'}\n"
+                        f"  核心动作明细:\n" + ("\n".join(detail_texts) if detail_texts else "  无动作明细")
+                    )
+                    user_daily_map[dr.user_id].append(dr_text)
+                    
+                for uid, uname, _ in metrics_result["members_list"]:
+                    if uid in unsubmitted_user_ids:
+                        d_reports_list = user_daily_map.get(uid, [])
+                        d_text = (
+                            f"--- 成员: {uname} (本周未提交个人周报，以下为其本周全量日报流水) ---\n"
+                            + ("\n".join(d_reports_list) if d_reports_list else "本周无已审核的日报动作") + "\n"
+                        )
+                        daily_contents.append(d_text)
+                        
+            # 3. 构造给 AI 汇总的数据文本
+            team_name_title = metrics_result["group_name"]
+            metrics = metrics_result["metrics"]
+            
+            metrics_summary_text = (
+                f"【本周 {team_name_title} 核心汇总业绩数据看板】:\n"
+                f"- 营销新签合同额: {metrics['marketing_signed']:.2f} 万元\n"
+                f"- 交付新签合同额: {metrics['delivery_signed']:.2f} 万元\n"
+                f"- 中标项目个数: {metrics['win_bids']} 个\n"
+                f"- 幸福动作个数: {metrics['happiness_count']} 次\n"
+                f"- 铁三角联动次数: {metrics['triangle_count']} 次\n"
+                f"- 有效商机线索量: {metrics['valid_leads']} 个\n"
+                f"- 潜力商机线索量: {metrics['potential_leads']} 个\n"
+                f"- CRM 累计产值: {metrics['production_value']:.2f} 万元\n"
+                f"- CRM 到账回款额: {metrics['receive_value']:.2f} 万元\n"
+            )
+            
+            crm_details = metrics_result.get("crm_details_text", "暂无 CRM 沟通或项目跟进明细")
+            
+            report_data_context = (
+                f"目前正在为团队【{team_name_title}】生成本周的整体复盘周报。\n"
+                f"时间跨度为: {start_date} ~ {start_date + timedelta(days=6)}\n\n"
+                f"{metrics_summary_text}\n"
+                f"【团队 CRM 业务明细跟进与沟通原文】:\n{crm_details}\n\n"
+                f"【已提交周报的成员复盘详情】:\n" + ("\n".join(weekly_contents) if weekly_contents else "无已提交的个人周报。\n") + "\n"
+                f"【未提交周报的成员全量已审核日报描述】:\n" + ("\n".join(daily_contents) if daily_contents else "无未提交周报的成员日报数据。\n") + "\n"
+            )
+            
+            unsubmitted_str = "、".join(unsubmitted_members) if unsubmitted_members else "无"
+            
+            # 4. 调用大模型路由进行周报编写
+            from app.llm.provider import get_provider_for_agent
+            from app.models.llm_config import AgentRoute
+            
+            provider, model_id = await get_provider_for_agent("reports")
+            
+            route_stmt = select(AgentRoute).where(AgentRoute.agent_role == "reports")
+            route_res = await db.execute(route_stmt)
+            route_obj = route_res.scalar_one_or_none()
+            
+            default_sys_prompt = (
+                "你是“百日奋战”战队及三级巴整体复盘的【战报及铁三角联动分析师】。\n"
+                "你的任务是根据提供的团队多维汇总数据（包括营销新签、交付新签、中标数、幸福动作、铁三角联动、CRM 产值、CRM 到账回款）以及每个成员的个人周报/日报工作流水，撰写并整理出一份精美、专业、条理清晰的【团队整体周报】。\n"
+                "要求：\n"
+                "1. 整体周报采用 Markdown 格式输出。内容必须切合数据，严禁虚构、夸大事实，突出团队的签约、回款以及里程碑交付成果。\n"
+                "2. 语言风格要充满战斗激情、逻辑严密，并提出下阶段重点攻坚建议。\n"
+                "3. 报告必须包含以下板块：\n"
+                "   - **一、团队本周核心业绩看板**（用 Markdown 表格展示提供给你的所有汇总指标快照，包括产值、回款、签约等）；\n"
+                "   - **二、本周工作主要战果与亮点**（结合个人周报/日报及 CRM 沟通纪要，细致描述具体项目的推进、突破、大额签约或回款情况，提及具体负责人）；\n"
+                "   - **三、交付卡点与重大业务预警**：\n"
+                "     1. 深度分析团队面临的暂停/延期项目，特别是‘已到交付节点未开票’和‘已开票未回款’的项目；\n"
+                "     2. **必须依据【正在实施项目最新进度清单】与【项目进度异动记录】对所有团队成员的工作饱和度及项目健康度进行诊断，并以专门的子标题加粗高亮输出以下警报与提示：**\n"
+                "        - 🚨 **红色警报（无项目人员）**：若有成员名下没有任何当前活跃正在实施的项目（在清单中未出现），必须高亮列出，形式如：`🚨 红色警报：[姓名] 名下无任何正在实施项目，需立即核实并安排任务！`；\n"
+                "        - ⚠️ **黄色预警（项目停滞人员）**：若有成员名下有项目，但该项目本周没有任何进度异动推进（即进度变化为0%且无任何日报推进说明），必须高亮列出，形式如：`⚠️ 黄色预警：[姓名] 负责的项目本周进度停滞，无任何推进，需重点关注！`；\n"
+                "        - 💡 **风险提示（项目空仓人员）**：若有成员名下负责的项目极少（≤ 2 个）且所有正在实施项目的当前最新进度均已接近完成（最新进度均已 ≥ 90%，包含 100% 已完工的项目），说明其即将面临‘断粮’空仓风险，必须高亮列出，形式如：`💡 风险提示：[姓名] 名下仅有 [X] 个正在实施项目且均已接近完成（当前进度≥90%），面临项目断档风险，需尽快规划新项目接入。`；\n"
+                "        - **注意**：以上警报及提示项下，【仅列出符合该预警条件的成员】。正常推进、饱和度良好的成员【绝对不要】列入上述任何异常警报列表中。如果没有任何人符合某警报条件，则直接在该警报板块下输出肯定结论（如‘✅ 经核查，全员本周均有正在实施的活跃项目，无无项目红色警报。’）。\n"
+                "   - **四、下周重点攻坚方向与计划**（结合个人下周目标给出团队攻坚计划）；\n"
+                "   - **五、需要协调与支持的事项**（明确指出当前阻碍交付或签约、回款的卡点，并点明需要上级或跨部门支持的具体事项）。\n"
+                f"4. 你必须在 Markdown 文本的最后，用专门的一行渲染 `【本周未填报人员】：{unsubmitted_str}`。"
+            )
+            
+            db_system_prompt = route_obj.system_prompt if route_obj else None
+            db_user_prompt = route_obj.user_prompt if route_obj else None
+            
+            if route_obj and route_obj.system_prompt and ("仅列出符合该预警条件的成员" not in route_obj.system_prompt or "在研项目" in route_obj.system_prompt):
+                route_obj.system_prompt = default_sys_prompt
+                db.add(route_obj)
+                await db.commit()
+                await db.refresh(route_obj)
+                db_system_prompt = route_obj.system_prompt
+                
+            system_prompt = db_system_prompt if db_system_prompt else default_sys_prompt
+            if db_user_prompt:
+                try:
+                    user_prompt = db_user_prompt.format(report_data=report_data_context)
+                except Exception:
+                    user_prompt = db_user_prompt + f"\n\n{report_data_context}"
+            else:
+                user_prompt = f"请为我们战队/三级巴撰写本周的整体分析周报，以下是团队的各项业绩指标 and 全员本周记录详情：\n\n{report_data_context}"
+                
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            ai_content = await provider.chat(messages, max_tokens=8192)
+            ai_content = re.sub(r"<think>.*?</think>", "", ai_content, flags=re.DOTALL).strip()
+
+            # 5. 自动保存到数据库
+            stmt = select(GroupWeeklyReport).where(
+                GroupWeeklyReport.start_date == start_date
+            )
+            if team_id:
+                stmt = stmt.where(GroupWeeklyReport.team_id == team_id)
+            else:
+                stmt = stmt.where(GroupWeeklyReport.team_id == None)
+                
+            if third_class_bar and third_class_bar != "all":
+                stmt = stmt.where(GroupWeeklyReport.third_class_bar == third_class_bar)
+            else:
+                stmt = stmt.where(GroupWeeklyReport.third_class_bar == None)
+                
+            res = await db.execute(stmt)
+            report = res.scalar_one_or_none()
+            
+            if report:
+                report.content = ai_content
+                report.marketing_signed = metrics.get('marketing_signed', 0.0)
+                report.delivery_signed = metrics.get('delivery_signed', 0.0)
+                report.win_bids = metrics.get('win_bids', 0)
+                report.happiness_count = metrics.get('happiness_count', 0)
+                report.triangle_count = metrics.get('triangle_count', 0)
+                report.valid_leads = metrics.get('valid_leads', 0)
+                report.potential_leads = metrics.get('potential_leads', 0)
+                report.production_value = metrics.get('production_value', 0.0)
+                report.receive_value = metrics.get('receive_value', 0.0)
+                report.updated_at = datetime.now(timezone.utc)
+            else:
+                report = GroupWeeklyReport(
+                    team_id=team_id,
+                    third_class_bar=third_class_bar if third_class_bar != "all" else None,
+                    start_date=start_date,
+                    end_date=start_date + timedelta(days=6),
+                    content=ai_content,
+                    marketing_signed=metrics.get('marketing_signed', 0.0),
+                    delivery_signed=metrics.get('delivery_signed', 0.0),
+                    win_bids=metrics.get('win_bids', 0),
+                    happiness_count=metrics.get('happiness_count', 0),
+                    triangle_count=metrics.get('triangle_count', 0),
+                    valid_leads=metrics.get('valid_leads', 0),
+                    potential_leads=metrics.get('potential_leads', 0),
+                    production_value=metrics.get('production_value', 0.0),
+                    receive_value=metrics.get('receive_value', 0.0),
+                    created_by=user_id
+                )
+                db.add(report)
+                
+            await db.commit()
+            
+            # 更新状态为 success
+            weekly_report_tasks[task_key] = {
+                "status": "success",
+                "error": None,
+                "updated_at": datetime.now(timezone.utc)
+            }
+            logger.info(f"后台 AI 团队周报生成任务成功: {task_key}")
+            
+        except Exception as e:
+            weekly_report_tasks[task_key] = {
+                "status": "failed",
+                "error": str(e),
+                "updated_at": datetime.now(timezone.utc)
+            }
+            logger.error(f"后台 AI 团队周报生成任务失败: {task_key}, 错误: {e}")
+
+
+@router.get("/weekly/generate-status", summary="查询 AI 智能生成状态")
+async def get_generate_status(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    current_user: User = Depends(get_current_user),
+):
+    """查询指定战队或三级巴在当周的 AI 智能生成后台任务状态"""
+    from app.models.user import UserRole
+    allowed_roles = [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value, "digital_specialist"]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="权限不足")
+        
+    t_str = str(team_id) if team_id else "None"
+    b_str = third_class_bar if third_class_bar and third_class_bar != "all" else "None"
+    task_key = f"{t_str}:{b_str}:{start_date.strftime('%Y-%m-%d')}"
+    
+    task = weekly_report_tasks.get(task_key)
+    if not task:
+        return {"status": "idle", "error": None}
+        
+    # 如果任务完成时间超过 10 分钟，清理掉（返回 idle 并且从字典删除），避免残留
+    if task["status"] in ["success", "failed"]:
+        task_time = task["updated_at"]
+        if (datetime.now(timezone.utc) - task_time).total_seconds() > 600:
+            weekly_report_tasks.pop(task_key, None)
+            return {"status": "idle", "error": None}
+            
+    return {
+        "status": task["status"],
+        "error": task["error"]
+    }
+
+
 @router.post("/weekly/generate-group-report", summary="AI 智能生成团队整体周报")
 async def generate_group_weekly_report(
+    background_tasks: BackgroundTasks,
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """在后台异步启动 AI 生成战队/三级巴整体周报并自动存盘"""
+    from app.models.user import UserRole
+    
+    allowed_roles = [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value, UserRole.TEAM_LEADER.value, "digital_specialist"]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="权限不足，您无权生成团队整体周报")
+        
+    t_str = str(team_id) if team_id else "None"
+    b_str = third_class_bar if third_class_bar and third_class_bar != "all" else "None"
+    task_key = f"{t_str}:{b_str}:{start_date.strftime('%Y-%m-%d')}"
+    
+    # 检查当前是否已经在生成中
+    if task_key in weekly_report_tasks and weekly_report_tasks[task_key]["status"] == "running":
+        task_time = weekly_report_tasks[task_key]["updated_at"]
+        # 超过 5 分钟的超时防呆设计，允许重新生成
+        if (datetime.now(timezone.utc) - task_time).total_seconds() < 300:
+            raise HTTPException(status_code=400, detail="该团队当周的 AI 周报正由后台整理生成中，请勿重复触发！")
+            
+    # 初始化状态为 running
+    weekly_report_tasks[task_key] = {
+        "status": "running",
+        "error": None,
+        "updated_at": datetime.now(timezone.utc)
+    }
+    
+    # 放入后台执行
+    background_tasks.add_task(
+        async_generate_group_report_task,
+        start_date,
+        team_id,
+        third_class_bar,
+        current_user.id,
+        task_key
+    )
+    
+    return {
+        "status": "processing",
+        "task_key": task_key,
+        "message": "AI 团队整体周报正在后台汇总整理中，预计需要 1-2 分钟，您可以继续处理其他工作。生成完毕后数据库将自动存盘。"
+    }
+
+
+# 下面这个是已经废弃的同步生成逻辑，重命名防止路由冲突与编译错误
+async def old_generate_group_weekly_report(
     start_date: date = Query(..., description="周开始日期(周一)"),
     team_id: int | None = Query(None, description="按战队/小组筛选"),
     third_class_bar: str | None = Query(None, description="按三级巴筛选"),
@@ -2348,3 +2826,143 @@ async def get_report(
         raise HTTPException(status_code=403, detail="无权查看他人的填报记录")
 
     return report
+
+
+class SyncToDingTalkRequest(BaseModel):
+    template_id: Optional[str] = None
+
+
+@router.post("/weekly/{report_id}/sync-to-dingtalk", summary="同步周报到钉钉工作日志")
+async def sync_weekly_report_to_dingtalk_api(
+    report_id: int,
+    req: SyncToDingTalkRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    一键同步本系统的周报到钉钉工作日志，所有注释必须使用中文
+    """
+    from app.models.report import WeeklyReport
+    from app.models.user import User as DbUser
+    from app.integrations.dingtalk import dingtalk_client
+    from app.config import settings
+
+    # 1. 查找并校验周报记录
+    stmt = select(WeeklyReport).where(WeeklyReport.id == report_id)
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="未找到对应的周报记录")
+
+    # 2. 权限校验，只能同步自己的周报
+    if report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="您无权同步他人的周报记录")
+
+    # 3. 模板 ID 获取
+    template_id = req.template_id or settings.DINGTALK_WEEKLY_REPORT_TEMPLATE_ID
+    if not template_id:
+        raise HTTPException(status_code=400, detail="未指定钉钉模板ID，且系统未配置默认模板ID")
+        
+    # 自动修正拼写错误的模板ID，解决员工复制或手工填写错误问题，所有注释必须使用中文
+    if template_id == "19cab0d8aa4c349cb1df85146edac9cf":
+        template_id = "19eab0d8aa4e349cb1df85146edac9cf"
+
+    # 4. 获取当前用户的钉钉 userid（工号）
+    db_user_stmt = select(DbUser).where(DbUser.id == current_user.id)
+    db_user_res = await db.execute(db_user_stmt)
+    db_user = db_user_res.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    dingtalk_userid = db_user.dingtalk_id
+    if not dingtalk_userid:
+        # 如果钉钉userid为空，尝试通过手机号在钉钉匹配获取，实现无感绑定
+        dingtalk_userid = await dingtalk_client.get_user_by_mobile(db_user.phone)
+        if dingtalk_userid:
+            db_user.dingtalk_id = dingtalk_userid
+            await db.commit()
+            await db.refresh(db_user)
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="无法匹配您的钉钉身份，请确保系统内注册手机号与企业钉钉所绑定的手机号一致，或请先在个人中心绑定钉钉工号"
+            )
+
+    # 5. 按照中台/幸福委周报模板的7个字段中文字样，映射组装表单内容
+    is_marketing = db_user.position_type == "marketing"
+
+    plan_val = report.sales_plan if is_marketing else report.delivery_plan
+    actual_val = report.sales_actual if is_marketing else report.delivery_actual
+    rate_val = report.sales_rate if is_marketing else report.delivery_rate
+    highlights_val = report.sales_highlights if is_marketing else report.delivery_highlights
+    blockers_val = report.sales_blockers if is_marketing else report.delivery_blockers
+    support_val = report.sales_support if is_marketing else report.delivery_support
+    next_plan_val = report.next_sales_plan if is_marketing else report.next_delivery_plan
+
+    # 格式化周报日期范围，所有注释必须使用中文
+    start_date_str = report.start_date.strftime('%Y-%m-%d') if hasattr(report.start_date, 'strftime') else str(report.start_date)
+    end_date_str = report.end_date.strftime('%Y-%m-%d') if hasattr(report.end_date, 'strftime') else str(report.end_date)
+    date_range_str = f"{start_date_str}至{end_date_str}"
+
+    contents = [
+        {"key": "周报日期", "value": date_range_str, "type": "text"},
+        {"key": "本周目标计划", "value": plan_val or "", "type": "text"},
+        {"key": "本周实际完成", "value": actual_val or "", "type": "text"},
+        {"key": "达成情况", "value": rate_val or "", "type": "text"},
+        {"key": "本周亮点", "value": highlights_val or "", "type": "text"},
+        {"key": "本周卡点", "value": blockers_val or "", "type": "text"},
+        {"key": "是否需要上级支持", "value": support_val or "", "type": "text"},
+        {"key": "下周目标", "value": next_plan_val or "", "type": "text"}
+    ]
+
+    # 6. 计算日志接收人 (to_userids)，所有注释必须使用中文
+    to_userids = []
+    
+    # 6.1 加入当前操作人（触发同步的人）的钉钉ID
+    if current_user.dingtalk_id:
+        to_userids.append(current_user.dingtalk_id)
+        
+    # 6.2 自动获取系统内所有超级管理员的钉钉ID并加入
+    stmt_admins = select(DbUser.dingtalk_id).where(
+        DbUser.role == "admin",
+        DbUser.dingtalk_id.isnot(None),
+        DbUser.dingtalk_id != ""
+    )
+    res_admins = await db.execute(stmt_admins)
+    admin_ids = res_admins.scalars().all()
+    to_userids.extend(admin_ids)
+    
+    # 6.3 按照三级巴和战队优先级逻辑，拉取队友的钉钉ID并加入
+    # 如果有三级巴设定，则只添加三级巴的队友作为接收人，不再包含战队其他成员。如果没有三级巴，才把整个战队的队友作为接收人。所有注释必须使用中文。
+    has_third_bar = db_user.third_class_bar and db_user.third_class_bar.strip() != "" and db_user.third_class_bar.strip().lower() != "all"
+    
+    if has_third_bar:
+        # 6.3.1 若有三级巴，仅将同属该三级巴的队友设为接收人
+        stmt_teammates = select(DbUser.dingtalk_id).where(
+            DbUser.third_class_bar == db_user.third_class_bar.strip(),
+            DbUser.dingtalk_id.isnot(None),
+            DbUser.dingtalk_id != ""
+        )
+        res_teammates = await db.execute(stmt_teammates)
+        teammate_ids = res_teammates.scalars().all()
+        to_userids.extend(teammate_ids)
+    elif db_user.team_id:
+        # 6.3.2 若无三级巴但有所属战队，则将该战队内的所有队友（含战队长、专员等）设为接收人
+        stmt_teammates = select(DbUser.dingtalk_id).where(
+            DbUser.team_id == db_user.team_id,
+            DbUser.dingtalk_id.isnot(None),
+            DbUser.dingtalk_id != ""
+        )
+        res_teammates = await db.execute(stmt_teammates)
+        teammate_ids = res_teammates.scalars().all()
+        to_userids.extend(teammate_ids)
+                
+    # 6.4 过滤空值，进行去重，且必须排除发件人（创建人）自己，因为钉钉要求接收人列表中不能含有日志创建人
+    to_userids = list(set([uid for uid in to_userids if uid and uid != dingtalk_userid]))
+
+    # 7. 调用钉钉工作日志填报 API 填报数据
+    success, err_msg = await dingtalk_client.save_report(template_id, dingtalk_userid, contents, to_userids=to_userids)
+    if not success:
+        raise HTTPException(status_code=500, detail=err_msg)
+
+    return {"message": "已成功同步填报至您的钉钉工作日志"}

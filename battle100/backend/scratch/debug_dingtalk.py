@@ -29,7 +29,7 @@ async def main():
         if json_data:
             print("Payload JSON 数据:")
             import json
-            print(json.dumps(json_data, ensure_ascii=False, indent=2))
+            print(json.dumps(json_data, ensure_ascii=True, indent=2))
         
         # 调用真实请求
         resp = await original_post(self, url, *args, **kwargs)

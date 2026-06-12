@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload, aliased
 
 from app.config import settings
 from app.database import get_db
+from app.api.deps import get_current_user
 from app.models.user import User, UserRole, PositionType
 from app.models.report import DailyReport, ReportStatus, ReportDetail, DetailType
 from app.models.organization import Team, Zone
@@ -566,13 +567,53 @@ async def get_dashboard_overview(
     pct_tenders = round((val_tenders / 150) * 100, 2)
     kpi_tenders = KpiItem(value=val_tenders, target=150, percentage=pct_tenders)
 
+    # 统计全公司驻点前线播报累计次数，所有注释必须使用中文
+    from app.models.broadcast import BroadcastEvent, EventType
+    station_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+        BroadcastEvent.is_deleted == False
+    )
+    station_reports_res = await db.execute(station_reports_stmt)
+    val_station_reports = int(station_reports_res.scalar() or 0)
+    pct_station_reports = round((val_station_reports / 300) * 100, 2)
+    kpi_station_reports = KpiItem(value=val_station_reports, target=300, percentage=pct_station_reports)
+
+    # 统计全公司中台播报累计次数，所有注释必须使用中文
+    mo_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == 'middle_office_report',
+        BroadcastEvent.is_deleted == False
+    )
+    mo_reports_res = await db.execute(mo_reports_stmt)
+    val_mo_reports = int(mo_reports_res.scalar() or 0)
+    pct_mo_reports = round((val_mo_reports / 500) * 100, 2)
+    kpi_mo_reports = KpiItem(value=val_mo_reports, target=500, percentage=pct_mo_reports)
+
+    # 统计全公司幸福委播报累计次数，所有注释必须使用中文
+    hc_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == 'happiness_committee',
+        BroadcastEvent.is_deleted == False
+    )
+    hc_reports_res = await db.execute(hc_reports_stmt)
+    val_hc_reports = int(hc_reports_res.scalar() or 0)
+    pct_hc_reports = round((val_hc_reports / 600) * 100, 2)
+    kpi_hc_reports = KpiItem(value=val_hc_reports, target=600, percentage=pct_hc_reports)
+
     kpi_summary = KpiSummary(
         potentialLeads=kpi_potential_leads,
         newContracts=kpi_contracts,
         happinessActions=kpi_happiness,
         ironTriangle=kpi_triangle,
         tenderProjects=kpi_tenders,
-        validLeads=kpi_leads
+        validLeads=kpi_leads,
+        stationReports=kpi_station_reports,
+        middleOfficeReports=kpi_mo_reports,
+        happinessCommitteeReports=kpi_hc_reports
     )
 
     # 2. 战区赛马竞速榜 (当周新签达成率排名，每周一清零)
@@ -765,6 +806,7 @@ async def get_dashboard_overview(
     trend_triangle = []
     trend_leads = []
 
+    today = date.today()
     running_contracts = 0.0
     running_base_target = 0.0
     running_challenge_target = 0.0
@@ -828,7 +870,9 @@ async def get_dashboard_overview(
         w_row = w_actual_res.one()
         
         trend_dates.append(f"第{week_num}周")
-        trend_contracts.append(round(running_contracts, 2))
+        # 如果该周尚未开始，则不添加累计实际新签，以截断折线图
+        if s_date <= today:
+            trend_contracts.append(round(running_contracts, 2))
         trend_contracts_target.append(round(running_base_target, 2))
         trend_contracts_challenge_target.append(round(running_challenge_target, 2))
         trend_happiness.append(int(w_row.happiness))
@@ -860,18 +904,57 @@ async def get_dashboard_overview(
     )
     feed_details = feed_details_res.scalars().all()
 
-    # 查询近期的驻点人员播报，免审核，直接展示在大屏和大盘中
+    # 查询近期的驻点人员播报与中台幸福委播报，免审核，直接展示在大屏和大盘中
     from app.models.broadcast import BroadcastEvent
     station_events_res = await db.execute(
         select(BroadcastEvent)
         .where(
-            BroadcastEvent.event_type == 'station_report',
+            BroadcastEvent.event_type.in_(['station_report', 'happiness_committee', 'middle_office_report']),
             BroadcastEvent.is_deleted == False
         )
         .order_by(BroadcastEvent.created_at.desc())
         .limit(10)
     )
     station_events = station_events_res.scalars().all()
+
+    # 4.1 查询中台幸福委专属播报记录，免审核，直接展示在大屏和看板中，所有注释必须使用中文
+    middle_office_events_res = await db.execute(
+        select(BroadcastEvent)
+        .where(
+            BroadcastEvent.event_type.in_(['happiness_committee', 'middle_office_report']),
+            BroadcastEvent.is_deleted == False
+        )
+        .order_by(BroadcastEvent.created_at.desc())
+        .limit(10)
+    )
+    middle_office_events = middle_office_events_res.scalars().all()
+    
+    middle_office_feed = []
+    for ev in middle_office_events:
+        ts = ev.created_at if ev.created_at else datetime.now(timezone.utc)
+        local_time = ts + timedelta(hours=8)
+        time_str = local_time.strftime("%m-%d %H:%M")
+        
+        # 剥离前面的【二级分类】并提取到 station_category 传给前端，所有注释必须使用中文
+        raw_content = ev.content or ""
+        cleaned_msg = raw_content
+        sub_cat = None
+        if raw_content.startswith("【") and "】" in raw_content:
+            end_idx = raw_content.find("】")
+            sub_cat = raw_content[1:end_idx].strip()
+            cleaned_msg = raw_content[end_idx + 1:].strip()
+            
+        middle_office_feed.append(
+            LiveFeedItem(
+                id=ev.id,
+                content=cleaned_msg,
+                time=time_str,
+                type="happiness_committee" if ev.event_type == 'happiness_committee' else "middle_office_report",
+                attachment_urls=ev.attachment_urls,
+                is_urgent=ev.is_urgent,
+                station_category=sub_cat
+            )
+        )
 
     # 合并两类数据并按时间倒序排列，取最新的10条
     items_to_sort = []
@@ -896,15 +979,32 @@ async def get_dashboard_overview(
         obj_id = obj.id
 
         if item_type == "event":
-            # 驻点播报
-            category_names = {
-                "policy": "🏛️最新政策",
-                "deployment": "📋会议部署",
-                "intelligence": "🔍情报信息",
-            }
-            cat_label = category_names.get(obj.station_category, "驻点播报")
-            content = f"【驻点播报】我司在【{obj.station_location}】发布了『{cat_label}』：{obj.project_name}。正文：{obj.content}"
-            feed_type = "station_report"
+            # 区分不同类型的广播事件：驻点播报、中台幸福委播报，所有注释必须使用中文
+            if obj.event_type == 'station_report':
+                category_names = {
+                    "policy": "🏛️最新政策",
+                    "deployment": "📋会议部署",
+                    "intelligence": "🔍情报信息",
+                }
+                cat_label = category_names.get(obj.station_category, "驻点播报")
+                # 如果是重大会议部署，仅在大屏滚动播报中显示其会议主题部分，所有注释必须使用中文
+                clean_body = obj.content or ""
+                if obj.station_category == 'deployment' and clean_body and "【会议主题】" in clean_body:
+                    import re
+                    match = re.search(r"(【会议主题】[\s\S]*?)(?=【|$)", clean_body)
+                    if match:
+                        clean_body = match.group(1).strip()
+                content = f"【驻点播报】我司在【{obj.station_location}】发布了『{cat_label}』：{obj.project_name}。正文：{clean_body}"
+                feed_type = "station_report"
+            elif obj.event_type == 'happiness_committee':
+                content = f"【幸福委播报】{obj.content}"
+                feed_type = "happiness_committee"
+            elif obj.event_type == 'middle_office_report':
+                content = f"【中台播报】{obj.content}"
+                feed_type = "middle_office_report"
+            else:
+                content = obj.content or ""
+                feed_type = "info"
             att_urls = obj.attachment_urls
             is_urg = obj.is_urgent
         else:
@@ -1291,6 +1391,56 @@ async def get_dashboard_overview(
                     trend="up" if idx == 0 else "same"
                 )
             )
+    
+    # 7.7. 周前线驻点播报榜 TOP 15 (支持按战队、三级巴及躺平榜反向排序，全部注释使用中文)
+    import datetime as dt
+    start_datetime = dt.datetime.combine(start_of_week, dt.time.min)
+    end_datetime = dt.datetime.combine(end_of_week, dt.time.max)
+    from app.models.broadcast import BroadcastEvent, EventType
+
+    station_stmt = (
+        select(
+            User.name,
+            Team.name.label("team_name"),
+            func.coalesce(func.count(BroadcastEvent.id), 0).label("score")
+        ).select_from(User)
+        .join(Team, User.team_id == Team.id)
+        .outerjoin(
+            BroadcastEvent,
+            (User.id == BroadcastEvent.user_id) & 
+            (BroadcastEvent.event_type == EventType.STATION_REPORT.value) &
+            (BroadcastEvent.is_deleted == False) &
+            (BroadcastEvent.created_at >= start_datetime) &
+            (BroadcastEvent.created_at <= end_datetime)
+        )
+        .where(User.is_active == True)
+    )
+    if team_id is not None:
+        station_stmt = station_stmt.where(User.team_id == team_id)
+    if third_class_bar is not None and third_class_bar != "":
+        station_stmt = station_stmt.where(User.third_class_bar == third_class_bar)
+        
+    station_stmt = (
+        station_stmt.group_by(User.id, User.name, Team.name)
+        .order_by(order_direction)
+        .limit(15)
+    )
+    
+    station_query = await db.execute(station_stmt)
+    station_rows = station_query.all()
+
+    station_reports_board = []
+    for idx, row in enumerate(station_rows):
+        if is_lying_flat or row.score > 0:
+            station_reports_board.append(
+                RankingItem(
+                    rank=idx + 1,
+                    name=row.name,
+                    teamName=row.team_name,
+                    score=float(row.score),
+                    trend="up" if idx == 0 else "same"
+                )
+            )
 
     # 8. 生成双轨动力 3x3 战队卡片数据
     team_leaders_map = {
@@ -1383,16 +1533,80 @@ async def get_dashboard_overview(
         leads_actual = team_leads_actual_map.get(t.id, 0)
         leads_rate = (leads_actual / leads_target * 100) if leads_target > 0 else 0.0
         
-        # 综合状态灯
-        avg_rate = (m_rate + d_rate) / 2
-        if m_target == 0 and d_target == 0:
-            light = "red"
-        elif avg_rate >= 80:
-            light = "green"
-        elif avg_rate >= 40:
-            light = "yellow"
+        # 状态灯逻辑改用本周以前的汇总完成百分比
+        STANDARD_WEEKS = {
+            1: (date(2026, 6, 1), date(2026, 6, 7)),
+            2: (date(2026, 6, 8), date(2026, 6, 14)),
+            3: (date(2026, 6, 15), date(2026, 6, 21)),
+            4: (date(2026, 6, 22), date(2026, 6, 28)),
+            5: (date(2026, 6, 29), date(2026, 7, 5)),
+            6: (date(2026, 7, 6), date(2026, 7, 12)),
+            7: (date(2026, 7, 13), date(2026, 7, 19)),
+            8: (date(2026, 7, 20), date(2026, 7, 26)),
+            9: (date(2026, 7, 27), date(2026, 8, 2)),
+            10: (date(2026, 8, 3), date(2026, 8, 9)),
+            11: (date(2026, 8, 10), date(2026, 8, 16)),
+            12: (date(2026, 8, 17), date(2026, 8, 23)),
+            13: (date(2026, 8, 24), date(2026, 8, 30)),
+            14: (date(2026, 8, 31), date(2026, 9, 6)),
+            15: (date(2026, 9, 7), date(2026, 9, 8))
+        }
+        
+        today = date.today()
+        current_week = 1
+        for w, (s_date, e_date) in STANDARD_WEEKS.items():
+            if s_date <= today <= e_date:
+                current_week = w
+                break
         else:
-            light = "red"
+            if today < STANDARD_WEEKS[1][0]:
+                current_week = 0
+            else:
+                current_week = 15
+        
+        light = "red"
+        light_rate = 0.0
+        light_formula = "无 (战役第 1 周，无上周累计数据)"
+        light_process = "当前处于第 1 周，无本周以前的汇总历史数据，完成百分比默认为 0.00%"
+        
+        if current_week > 1:
+            end_date_limit = STANDARD_WEEKS[current_week - 1][1]
+            m_actual_last = await get_team_weekly_marketing_actual(db, date(2026, 6, 1), end_date_limit, t.id)
+            d_actual_last = await get_team_weekly_delivery_actual(db, date(2026, 6, 1), end_date_limit, t.id)
+            
+            target_stmt = select(
+                func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0),
+                func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
+            ).where(
+                WeeklyTarget.team_id == t.id,
+                WeeklyTarget.week_number < current_week
+            )
+            target_res = await db.execute(target_stmt)
+            m_target_last, d_target_last = target_res.one()
+            m_target_last = float(m_target_last)
+            d_target_last = float(d_target_last)
+            
+            if m_target_last > 0:
+                total_target = m_target_last + d_target_last
+                pct = (m_actual_last + d_actual_last) / total_target * 100 if total_target > 0 else 0.0
+            else:
+                pct = d_actual_last / d_target_last * 100 if d_target_last > 0 else 0.0
+                
+            if pct >= 80.0:
+                light = "green"
+            elif pct >= 50.0:
+                light = "yellow"
+            else:
+                light = "red"
+                
+            # 计算详细过程
+            light_rate = round(pct, 2)
+            if m_target_last > 0:
+                light_formula = "(本周以前营销实际累计 + 本周以前交付实际累计) / (本周以前营销保底目标累计 + 本周以前交付保底目标累计) * 100%"
+                light_process = f"({round(m_actual_last, 2)} + {round(d_actual_last, 2)}) / ({round(m_target_last, 2)} + {round(d_target_last, 2)}) * 100% = {light_rate}%"
+            else:
+                light_formula = "本周以前交付实际累计 / 本周以前交付保底目标累计 * 100% (无营销目标)"
+                light_process = f"{round(d_actual_last, 2)} / {round(d_target_last, 2)} * 100% = {light_rate}%"
             
         dual_track_teams.append({
             "teamId": t.id,
@@ -1407,7 +1621,10 @@ async def get_dashboard_overview(
             "validLeadsActual": leads_actual,
             "validLeadsTarget": round(leads_target, 2),
             "validLeadsRate": round(leads_rate, 2),
-            "statusLight": light
+            "statusLight": light,
+            "lightRate": light_rate,
+            "lightFormula": light_formula,
+            "lightProcess": light_process
         })
     
     # 截取前9名保证3x3网格
@@ -1439,7 +1656,11 @@ async def get_dashboard_overview(
             FROM zdcrm_business_opportunity
             WHERE is_del = '0'
               AND (is_suspension = '0' OR is_suspension IS NULL)
-              AND progress IN (5, 10, 25, 50, 75, 90)
+              AND (
+                (progress IN (5, 10, 25, 50) AND create_time >= '2026-01-01 00:00:00')
+                OR
+                (progress IN (75, 90) AND create_time >= '2026-06-01 00:00:00')
+              )
             GROUP BY progress
         """)
         funnel_rows = crm_cur.fetchall()
@@ -1451,7 +1672,19 @@ async def get_dashboard_overview(
         N_25 = counts_map.get(25, 0)
         N_50 = counts_map.get(50, 0)
         N_75 = counts_map.get(75, 0)
-        N_90 = counts_map.get(90, 0)
+        
+        # 正式签约 (90%) 改为从我们系统取已审核的、签订合同的个数（2026-6-1日以后），所有注释必须使用中文
+        n90_stmt = select(
+            func.count(func.distinct(ReportDetail.crm_opportunity_id))
+        ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+            DailyReport.status == ReportStatus.REVIEWED,
+            ReportDetail.detail_type == DetailType.CONTRACT,
+            ReportDetail.crm_opportunity_id.isnot(None),
+            ReportDetail.crm_opportunity_id != "",
+            DailyReport.report_date >= date(2026, 6, 1)
+        )
+        n90_res = await db.execute(n90_stmt)
+        N_90 = int(n90_res.scalar() or 0)
         
         # 按照附件 2 对齐的阶段与转化率逻辑计算
         rate_5 = round((N_10 / N_5) * 100, 2) if N_5 > 0 else 0.0
@@ -1470,13 +1703,14 @@ async def get_dashboard_overview(
             FunnelItem(stage="90%", name="正式签约", count=N_90, rate=rate_90),
         ]
         
-        # B. 提取预计金额 50万以上（expect_money >= 50）的重要商机列表
+        # B. 提取预计金额 50万以上（expect_money >= 50）的重要商机列表（限定在 2026-06-01 之后），所有注释必须使用中文
         crm_cur.execute("""
             SELECT id, name, customer_name, expect_money, progress
             FROM zdcrm_business_opportunity
             WHERE expect_money >= 50
               AND is_del = '0'
               AND (is_suspension = '0' OR is_suspension IS NULL)
+              AND create_time >= '2026-06-01 00:00:00'
             ORDER BY create_time DESC
             LIMIT 15
         """)
@@ -1547,6 +1781,7 @@ async def get_dashboard_overview(
         zoneRanking=zone_ranking,
         weeklyTrend=weekly_trend,
         liveFeed=live_feed,
+        middleOfficeFeed=middle_office_feed,
         heroBoard=hero_board,
         marketingHeroBoard=marketing_hero_board,
         deliveryHeroBoard=delivery_hero_board,
@@ -1554,6 +1789,7 @@ async def get_dashboard_overview(
         triangleBoard=triangle_board,
         leadsBoard=leads_board,
         potentialLeadsBoard=potential_leads_board,
+        stationReportsBoard=station_reports_board,
         zoneTeamsPK=zone_teams_pk,
         dualTrackTeams=dual_track_teams,
         leadsFunnel=leads_funnel,
@@ -1652,6 +1888,7 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     2. 所属战队营销/交付双轨及过程指标进度
     3. 个人核心KPI目标达成进度（根据岗位动态呈现）
     """
+    from datetime import date, datetime, timezone, timedelta
     from app.models.report import ReportDetail, DetailType, ReportStatus
 
     # ====== 1. 公司盘数据 ======
@@ -1694,11 +1931,73 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     val_leads = int(c_row.total_leads)
     pct_leads = round((val_leads / 600) * 100, 2)
 
+    # 统计全公司累计中标项目确定数 (75%)，所有注释必须使用中文
+    total_tenders_stmt = select(
+        func.coalesce(func.count(ReportDetail.id), 0)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.LEAD,
+        (ReportDetail.lead_progress.contains("75") | (ReportDetail.lead_progress == "75%"))
+    )
+    total_tenders_res = await db.execute(total_tenders_stmt)
+    val_tenders = int(total_tenders_res.scalar() or 0)
+    pct_tenders = round((val_tenders / 150) * 100, 2)
+
+    # 统计全公司潜力线索数（5%-10%），所有注释必须使用中文
+    potential_leads_details_stmt = select(
+        func.count(ReportDetail.id)
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+    )
+    potential_leads_details_res = await db.execute(potential_leads_details_stmt)
+    val_potential_leads = int(potential_leads_details_res.scalar() or 0)
+    pct_potential_leads = round((val_potential_leads / 600) * 100, 2)
+
+    # 统计全公司驻点前线播报累计次数，所有注释必须使用中文
+    from app.models.broadcast import BroadcastEvent, EventType
+    station_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+        BroadcastEvent.is_deleted == False
+    )
+    station_reports_res = await db.execute(station_reports_stmt)
+    val_station_reports = int(station_reports_res.scalar() or 0)
+    pct_station_reports = round((val_station_reports / 300) * 100, 2)
+
+    # 统计全公司中台播报累计次数，所有注释必须使用中文
+    mo_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == 'middle_office_report',
+        BroadcastEvent.is_deleted == False
+    )
+    mo_reports_res = await db.execute(mo_reports_stmt)
+    val_mo_reports = int(mo_reports_res.scalar() or 0)
+    pct_mo_reports = round((val_mo_reports / 500) * 100, 2)
+
+    # 统计全公司幸福委播报累计次数，所有注释必须使用中文
+    hc_reports_stmt = select(
+        func.count(BroadcastEvent.id)
+    ).where(
+        BroadcastEvent.event_type == 'happiness_committee',
+        BroadcastEvent.is_deleted == False
+    )
+    hc_reports_res = await db.execute(hc_reports_stmt)
+    val_hc_reports = int(hc_reports_res.scalar() or 0)
+    pct_hc_reports = round((val_hc_reports / 600) * 100, 2)
+
     company_stats = {
         "newContracts": {"value": round(val_contracts, 2), "target": total_contract_target, "percentage": pct_contracts},
         "happinessActions": {"value": val_happiness, "target": 3300, "percentage": pct_happiness},
         "ironTriangle": {"value": val_triangle, "target": 500, "percentage": pct_triangle},
-        "validLeads": {"value": val_leads, "target": 600, "percentage": pct_leads}
+        "tenderProjects": {"value": val_tenders, "target": 150, "percentage": pct_tenders},
+        "validLeads": {"value": val_leads, "target": 600, "percentage": pct_leads},
+        "potentialLeads": {"value": val_potential_leads, "target": 600, "percentage": pct_potential_leads},
+        "stationReports": {"value": val_station_reports, "target": 300, "percentage": pct_station_reports},
+        "middleOfficeReports": {"value": val_mo_reports, "target": 500, "percentage": pct_mo_reports},
+        "happinessCommitteeReports": {"value": val_hc_reports, "target": 600, "percentage": pct_hc_reports}
     }
 
     team_stats = None
@@ -1738,17 +2037,72 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
             )
             t_kpi_row = t_kpis_res.one()
 
+            # 计算当前周数以实施本周以前的汇总红黄绿灯规则
+            STANDARD_WEEKS = {
+                1: (date(2026, 6, 1), date(2026, 6, 7)),
+                2: (date(2026, 6, 8), date(2026, 6, 14)),
+                3: (date(2026, 6, 15), date(2026, 6, 21)),
+                4: (date(2026, 6, 22), date(2026, 6, 28)),
+                5: (date(2026, 6, 29), date(2026, 7, 5)),
+                6: (date(2026, 7, 6), date(2026, 7, 12)),
+                7: (date(2026, 7, 13), date(2026, 7, 19)),
+                8: (date(2026, 7, 20), date(2026, 7, 26)),
+                9: (date(2026, 7, 27), date(2026, 8, 2)),
+                10: (date(2026, 8, 3), date(2026, 8, 9)),
+                11: (date(2026, 8, 10), date(2026, 8, 16)),
+                12: (date(2026, 8, 17), date(2026, 8, 23)),
+                13: (date(2026, 8, 24), date(2026, 8, 30)),
+                14: (date(2026, 8, 31), date(2026, 9, 6)),
+                15: (date(2026, 9, 7), date(2026, 9, 8))
+            }
+            
+            today = date.today()
+            current_week = 1
+            for w, (s_date, e_date) in STANDARD_WEEKS.items():
+                if s_date <= today <= e_date:
+                    current_week = w
+                    break
+            else:
+                if today < STANDARD_WEEKS[1][0]:
+                    current_week = 0
+                else:
+                    current_week = 15
+            
+            light = "red"
+            if current_week > 1:
+                # 统计从百日战役开始至上一周结束日期的实际与基础目标数据
+                end_date_limit = STANDARD_WEEKS[current_week - 1][1]
+                m_actual_last = await get_team_weekly_marketing_actual(db, date(2026, 6, 1), end_date_limit, team.id)
+                d_actual_last = await get_team_weekly_delivery_actual(db, date(2026, 6, 1), end_date_limit, team.id)
+                
+                target_stmt = select(
+                    func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0),
+                    func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
+                ).where(
+                    WeeklyTarget.team_id == team.id,
+                    WeeklyTarget.week_number < current_week
+                )
+                target_res = await db.execute(target_stmt)
+                m_target_last, d_target_last = target_res.one()
+                m_target_last = float(m_target_last)
+                d_target_last = float(d_target_last)
+                
+                # 无营销目标的战队单独处理
+                if m_target_last > 0:
+                    total_target = m_target_last + d_target_last
+                    pct = (m_actual_last + d_actual_last) / total_target * 100 if total_target > 0 else 0.0
+                else:
+                    pct = d_actual_last / d_target_last * 100 if d_target_last > 0 else 0.0
+                    
+                if pct >= 80.0:
+                    light = "green"
+                elif pct >= 50.0:
+                    light = "yellow"
+                else:
+                    light = "red"
+                    
             m_rate = round((m_actual / m_target * 100), 2) if m_target > 0 else 0.0
             d_rate = round((d_actual / d_target * 100), 2) if d_target > 0 else 0.0
-
-            # 综合状态灯
-            avg_rate = (m_rate + d_rate) / 2
-            if avg_rate >= 80:
-                light = "green"
-            elif avg_rate >= 40:
-                light = "yellow"
-            else:
-                light = "red"
 
             team_stats = {
                 "team_id": team.id,
@@ -1885,7 +2239,6 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
         })
 
     # 计算参战天数（从2026-06-01开始，截止到2026-09-08，最多100天）
-    from datetime import date, datetime, timezone, timedelta
     campaign_start = date(2026, 6, 1)
     campaign_end = date(2026, 9, 8)
     
@@ -2000,16 +2353,67 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
             leads_actual = team_leads_actual_map.get(t.id, 0)
             leads_rate = (leads_actual / leads_target * 100) if leads_target > 0 else 0.0
             
-            # 状态灯逻辑与大盘一致
-            avg_rate = (m_rate + d_rate) / 2
-            if m_target == 0 and d_target == 0:
-                light = "red"
-            elif avg_rate >= 80:
-                light = "green"
-            elif avg_rate >= 40:
-                light = "yellow"
+            # 状态灯逻辑改用本周以前的汇总完成百分比
+            STANDARD_WEEKS = {
+                1: (date(2026, 6, 1), date(2026, 6, 7)),
+                2: (date(2026, 6, 8), date(2026, 6, 14)),
+                3: (date(2026, 6, 15), date(2026, 6, 21)),
+                4: (date(2026, 6, 22), date(2026, 6, 28)),
+                5: (date(2026, 6, 29), date(2026, 7, 5)),
+                6: (date(2026, 7, 6), date(2026, 7, 12)),
+                7: (date(2026, 7, 13), date(2026, 7, 19)),
+                8: (date(2026, 7, 20), date(2026, 7, 26)),
+                9: (date(2026, 7, 27), date(2026, 8, 2)),
+                10: (date(2026, 8, 3), date(2026, 8, 9)),
+                11: (date(2026, 8, 10), date(2026, 8, 16)),
+                12: (date(2026, 8, 17), date(2026, 8, 23)),
+                13: (date(2026, 8, 24), date(2026, 8, 30)),
+                14: (date(2026, 8, 31), date(2026, 9, 6)),
+                15: (date(2026, 9, 7), date(2026, 9, 8))
+            }
+            
+            today = date.today()
+            current_week = 1
+            for w, (s_date, e_date) in STANDARD_WEEKS.items():
+                if s_date <= today <= e_date:
+                    current_week = w
+                    break
             else:
-                light = "red"
+                if today < STANDARD_WEEKS[1][0]:
+                    current_week = 0
+                else:
+                    current_week = 15
+            
+            light = "red"
+            if current_week > 1:
+                end_date_limit = STANDARD_WEEKS[current_week - 1][1]
+                m_actual_last = await get_team_weekly_marketing_actual(db, date(2026, 6, 1), end_date_limit, t.id)
+                d_actual_last = await get_team_weekly_delivery_actual(db, date(2026, 6, 1), end_date_limit, t.id)
+                
+                target_stmt = select(
+                    func.coalesce(func.sum(WeeklyTarget.marketing_base_target), 0),
+                    func.coalesce(func.sum(WeeklyTarget.delivery_base_target), 0)
+                ).where(
+                    WeeklyTarget.team_id == t.id,
+                    WeeklyTarget.week_number < current_week
+                )
+                target_res = await db.execute(target_stmt)
+                m_target_last, d_target_last = target_res.one()
+                m_target_last = float(m_target_last)
+                d_target_last = float(d_target_last)
+                
+                if m_target_last > 0:
+                    total_target = m_target_last + d_target_last
+                    pct = (m_actual_last + d_actual_last) / total_target * 100 if total_target > 0 else 0.0
+                else:
+                    pct = d_actual_last / d_target_last * 100 if d_target_last > 0 else 0.0
+                    
+                if pct >= 80.0:
+                    light = "green"
+                elif pct >= 50.0:
+                    light = "yellow"
+                else:
+                    light = "red"
                 
             teams_data.append({
                 "team_id": t.id,
@@ -2431,6 +2835,7 @@ async def get_team_contracts(
     team_id: int,
     contract_type: str = Query(..., description="合同类型: marketing(营销) 或 delivery(交付)"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     直连本地填报明细数据，获取战队营销或交付新签合同项目的列表
@@ -2511,13 +2916,14 @@ async def get_team_contracts(
             "partner_name": r.partner_name or "—",
             "description": r.description or "—",
         })
-    return await fetch_and_clean_descriptions(db, result)
+    return await populate_social_info(db, current_user.id, await fetch_and_clean_descriptions(db, result), "report_detail")
 
 
 @router.get("/team-triangles", summary="获取战队售前铁三角联动明细列表")
 async def get_team_triangles(
     team_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     直连本地填报明细数据，获取战队售前铁三角联动项目的明细列表
@@ -2620,13 +3026,14 @@ async def get_team_triangles(
             "partner_name": partner_name_val,
             "description": r.description or "—",
         })
-    return await fetch_and_clean_descriptions(db, result)
+    return await populate_social_info(db, current_user.id, await fetch_and_clean_descriptions(db, result), "report_detail")
 
 
 @router.get("/team-happiness", summary="获取战队客户幸福标准动作明细列表")
 async def get_team_happiness(
     team_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     直连本地填报明细数据，获取战队客户幸福标准动作的明细列表
@@ -2670,22 +3077,89 @@ async def get_team_happiness(
             "level": f"{r.happiness_level} 分" if r.happiness_level is not None else "—",
             "description": r.description or "—",
         })
-    return await fetch_and_clean_descriptions(db, result)
+    return await populate_social_info(db, current_user.id, await fetch_and_clean_descriptions(db, result), "report_detail")
+
+
+async def populate_social_info(db: AsyncSession, user_id: int, list_items: list, target_type: str) -> list:
+    """
+    批量为 KPI 列表项注入社交点赞与评论统计数据。所有注释必须使用中文。
+    """
+    if not list_items:
+        return list_items
+
+    from app.models.broadcast import KpiLike, KpiComment
+    from sqlalchemy import select, func
+
+    # 提取所有记录的 ID
+    record_ids = [item["id"] for item in list_items if "id" in item]
+    if not record_ids:
+        return list_items
+
+    try:
+        # 1. 批量查询点赞总数
+        likes_query = (
+            select(KpiLike.target_id, func.count(KpiLike.id).label("count"))
+            .where(
+                KpiLike.target_id.in_(record_ids),
+                KpiLike.target_type == target_type
+            )
+            .group_by(KpiLike.target_id)
+        )
+        likes_res = await db.execute(likes_query)
+        likes_map = {r.target_id: r.count for r in likes_res.all()}
+
+        # 2. 批量查询评论总数
+        comments_query = (
+            select(KpiComment.target_id, func.count(KpiComment.id).label("count"))
+            .where(
+                KpiComment.target_id.in_(record_ids),
+                KpiComment.target_type == target_type
+            )
+            .group_by(KpiComment.target_id)
+        )
+        comments_res = await db.execute(comments_query)
+        comments_map = {r.target_id: r.count for r in comments_res.all()}
+
+        # 3. 批量查询当前登录用户是否已点赞
+        my_likes_query = select(KpiLike.target_id).where(
+            KpiLike.target_id.in_(record_ids),
+            KpiLike.target_type == target_type,
+            KpiLike.user_id == user_id
+        )
+        my_likes_res = await db.execute(my_likes_query)
+        my_likes_set = set(my_likes_res.scalars().all())
+    except Exception:
+        # 兜底防止由于未迁移建表引起系统崩溃
+        likes_map = {}
+        comments_map = {}
+        my_likes_set = set()
+
+    # 4. 注入到每个项中
+    for item in list_items:
+        r_id = item.get("id")
+        item["target_type"] = target_type
+        item["like_count"] = likes_map.get(r_id, 0)
+        item["comment_count"] = comments_map.get(r_id, 0)
+        item["is_liked"] = r_id in my_likes_set
+
+    return list_items
 
 
 @router.get("/company-kpi-detail", summary="获取全公司 KPI 明细数据")
 async def get_company_kpi_detail(
-    kpi_type: str = Query(..., description="KPI类型: contracts(合同新签), happiness(客户幸福动作), triangle(铁三角联动), leads(有效商机线索)"),
+    kpi_type: str = Query(..., description="KPI类型: contracts(合同新签), happiness(客户幸福动作), triangle(铁三角联动), leads(有效商机线索), middle_office_report(中台播报), happiness_committee(幸福委播报)"),
     team_id: int | None = Query(None, description="按战队筛选"),
     week: int | None = Query(None, description="按周筛选 (1-15)"),
     reporter_name: str | None = Query(None, description="按提报人筛选"),
     keyword: str | None = Query(None, description="按客户或描述搜索"),
     db: AsyncSession = Depends(get_db),
+    current_user: "User" = Depends(get_current_user),
 ):
     """
     获取全公司级别的 KPI 指标明细列表及相关统计数据，所有注释必须使用中文
     """
     from app.models.user import User, PositionType
+    from app.api.deps import get_current_user
     from app.models.report import DailyReport, ReportDetail, ReportStatus, DetailType
     from app.models.organization import Team
     from sqlalchemy.orm import aliased
@@ -2718,13 +3192,108 @@ async def get_company_kpi_detail(
     teams_res = await db.execute(teams_query)
     teams_list = [{"id": r.id, "name": r.name} for r in teams_res.all()]
 
-    reporters_query = (
-        select(User.name)
-        .join(DailyReport, User.id == DailyReport.user_id)
-        .where(DailyReport.status == ReportStatus.REVIEWED)
-        .distinct()
-        .order_by(User.name)
-    )
+    # 动态构建提报人列表过滤条件，仅包含在此 KPI 类型下确实有提报数据的用户
+    if kpi_type == "contracts":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.CONTRACT
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type == "happiness":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.HAPPINESS
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type == "triangle":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.TRIANGLE
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type == "leads":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.LEAD,
+                (ReportDetail.lead_progress.contains("25") | (ReportDetail.lead_progress == "25%"))
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type == "potential_leads":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.POTENTIAL_LEAD
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type == "tenders":
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .join(ReportDetail, DailyReport.id == ReportDetail.report_id)
+            .where(
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.LEAD,
+                (ReportDetail.lead_progress.contains("75") | (ReportDetail.lead_progress == "75%"))
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    elif kpi_type in ["station_reports", "middle_office_report", "happiness_committee"]:
+        from app.models.broadcast import BroadcastEvent, EventType
+        event_type_map = {
+            "station_reports": EventType.STATION_REPORT.value,
+            "middle_office_report": "middle_office_report",
+            "happiness_committee": "happiness_committee"
+        }
+        target_event_type = event_type_map[kpi_type]
+        reporters_query = (
+            select(User.name)
+            .join(BroadcastEvent, BroadcastEvent.user_id == User.id)
+            .where(
+                BroadcastEvent.event_type == target_event_type,
+                BroadcastEvent.is_deleted == False
+            )
+            .distinct()
+            .order_by(User.name)
+        )
+    else:
+        reporters_query = (
+            select(User.name)
+            .join(DailyReport, User.id == DailyReport.user_id)
+            .where(DailyReport.status == ReportStatus.REVIEWED)
+            .distinct()
+            .order_by(User.name)
+        )
+    
     reporters_res = await db.execute(reporters_query)
     reporters_list = [r.name for r in reporters_res.all()]
 
@@ -2851,11 +3420,16 @@ async def get_company_kpi_detail(
 
         delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
         marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
+        
+        # 批量注入社交统计字段
+        delivery_list_social = await populate_social_info(db, current_user.id, delivery_list_clean, "report_detail")
+        marketing_list_social = await populate_social_info(db, current_user.id, marketing_list_clean, "report_detail")
+
         result_data.update({
             "delivery_total": round(delivery_total, 2),
             "marketing_total": round(marketing_total, 2),
-            "delivery_list": delivery_list_clean,
-            "marketing_list": marketing_list_clean
+            "delivery_list": delivery_list_social,
+            "marketing_list": marketing_list_social
         })
         return result_data
 
@@ -2906,9 +3480,11 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
         list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data_clean, "report_detail")
         result_data.update({
-            "total": len(list_data_clean),
-            "list": list_data_clean
+            "total": len(list_data_social),
+            "list": list_data_social
         })
         return result_data
 
@@ -3022,9 +3598,11 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
         list_data_clean = await fetch_and_clean_descriptions(db, list_data)
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data_clean, "report_detail")
         result_data.update({
-            "total": len(list_data_clean),
-            "list": list_data_clean
+            "total": len(list_data_social),
+            "list": list_data_social
         })
         return result_data
 
@@ -3079,10 +3657,13 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
         list_data_clean = await fetch_and_clean_descriptions(db, list_data)
-        return {
-            "total": len(list_data_clean),
-            "list": list_data_clean
-        }
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data_clean, "report_detail")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
 
     elif kpi_type == "potential_leads":
         stmt = (
@@ -3133,10 +3714,13 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
         list_data_clean = await fetch_and_clean_descriptions(db, list_data)
-        return {
-            "total": len(list_data_clean),
-            "list": list_data_clean
-        }
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data_clean, "report_detail")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
 
     elif kpi_type == "tenders":
         stmt = (
@@ -3188,10 +3772,219 @@ async def get_company_kpi_detail(
                 "description": r.description or "—",
             })
         list_data_clean = await fetch_and_clean_descriptions(db, list_data)
-        return {
-            "total": len(list_data_clean),
-            "list": list_data_clean
-        }
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data_clean, "report_detail")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
+
+    elif kpi_type == "station_reports":
+        from app.models.broadcast import BroadcastEvent, EventType
+        from app.models.organization import Team
+        from app.models.user import User
+        import datetime as dt
+
+        stmt = (
+            select(
+                BroadcastEvent.id,
+                BroadcastEvent.created_at,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                BroadcastEvent.station_location,
+                BroadcastEvent.station_category,
+                BroadcastEvent.content,
+            )
+            .select_from(BroadcastEvent)
+            .outerjoin(User, BroadcastEvent.user_id == User.id)
+            .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+            .where(
+                BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+                BroadcastEvent.is_deleted == False,
+            )
+        )
+
+        if team_id is not None:
+            stmt = stmt.where(BroadcastEvent.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            s_datetime = dt.datetime.combine(s_date, dt.time.min)
+            e_datetime = dt.datetime.combine(e_date, dt.time.max)
+            stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(BroadcastEvent.content.contains(keyword) | BroadcastEvent.station_location.contains(keyword))
+
+        stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            category_names = {
+                "policy": "🏛️最新政策",
+                "deployment": "📋会议部署",
+                "intelligence": "🔍情报信息",
+            }
+            cat_label = category_names.get(r.station_category, "驻点播报")
+            # 如果是重大会议部署，仅在大屏指标列表中展示其会议主题部分，所有注释必须使用中文
+            clean_desc = r.content or "—"
+            if r.station_category == 'deployment' and clean_desc and "【会议主题】" in clean_desc:
+                import re
+                match = re.search(r"(【会议主题】[\s\S]*?)(?=【|$)", clean_desc)
+                if match:
+                    clean_desc = match.group(1).strip()
+            list_data.append({
+                "id": r.id,
+                "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                "reporter_name": r.reporter_name or "—",
+                "team_name": r.team_name or "—",
+                "customer_name": f"【{r.station_location or '—'}】({cat_label})",
+                "description": clean_desc,
+            })
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data, "broadcast_event")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
+
+    elif kpi_type == "middle_office_report":
+        from app.models.broadcast import BroadcastEvent
+        from app.models.organization import Team
+        from app.models.user import User
+        import datetime as dt
+
+        stmt = (
+            select(
+                BroadcastEvent.id,
+                BroadcastEvent.created_at,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                BroadcastEvent.station_location,
+                BroadcastEvent.station_category,
+                BroadcastEvent.content,
+            )
+            .select_from(BroadcastEvent)
+            .outerjoin(User, BroadcastEvent.user_id == User.id)
+            .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+            .where(
+                BroadcastEvent.event_type == 'middle_office_report',
+                BroadcastEvent.is_deleted == False,
+            )
+        )
+
+        if team_id is not None:
+            stmt = stmt.where(BroadcastEvent.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            s_datetime = dt.datetime.combine(s_date, dt.time.min)
+            e_datetime = dt.datetime.combine(e_date, dt.time.max)
+            stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(BroadcastEvent.content.contains(keyword))
+
+        stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            raw_content = r.content or ""
+            cleaned_msg = raw_content
+            sub_cat = r.station_category or "—"
+            if not r.station_category and raw_content.startswith("【") and "】" in raw_content:
+                end_idx = raw_content.find("】")
+                sub_cat = raw_content[1:end_idx].strip()
+                cleaned_msg = raw_content[end_idx + 1:].strip()
+            
+            list_data.append({
+                "id": r.id,
+                "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                "reporter_name": r.reporter_name or "—",
+                "team_name": r.team_name or "—",
+                "station_category": sub_cat,
+                "description": cleaned_msg,
+            })
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data, "broadcast_event")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
+
+    elif kpi_type == "happiness_committee":
+        from app.models.broadcast import BroadcastEvent
+        from app.models.organization import Team
+        from app.models.user import User
+        import datetime as dt
+
+        stmt = (
+            select(
+                BroadcastEvent.id,
+                BroadcastEvent.created_at,
+                User.name.label("reporter_name"),
+                Team.name.label("team_name"),
+                BroadcastEvent.station_location,
+                BroadcastEvent.station_category,
+                BroadcastEvent.content,
+            )
+            .select_from(BroadcastEvent)
+            .outerjoin(User, BroadcastEvent.user_id == User.id)
+            .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+            .where(
+                BroadcastEvent.event_type == 'happiness_committee',
+                BroadcastEvent.is_deleted == False,
+            )
+        )
+
+        if team_id is not None:
+            stmt = stmt.where(BroadcastEvent.team_id == team_id)
+        if week is not None and week in STANDARD_WEEKS:
+            s_date, e_date = STANDARD_WEEKS[week]
+            s_datetime = dt.datetime.combine(s_date, dt.time.min)
+            e_datetime = dt.datetime.combine(e_date, dt.time.max)
+            stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+        if reporter_name:
+            stmt = stmt.where(User.name == reporter_name)
+        if keyword:
+            stmt = stmt.where(BroadcastEvent.content.contains(keyword))
+
+        stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+        res = await db.execute(stmt)
+        rows = res.all()
+
+        list_data = []
+        for r in rows:
+            raw_content = r.content or ""
+            cleaned_msg = raw_content
+            sub_cat = r.station_category or "—"
+            if not r.station_category and raw_content.startswith("【") and "】" in raw_content:
+                end_idx = raw_content.find("】")
+                sub_cat = raw_content[1:end_idx].strip()
+                cleaned_msg = raw_content[end_idx + 1:].strip()
+            
+            list_data.append({
+                "id": r.id,
+                "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                "reporter_name": r.reporter_name or "—",
+                "team_name": r.team_name or "—",
+                "station_category": sub_cat,
+                "description": cleaned_msg,
+            })
+        # 批量注入社交统计字段
+        list_data_social = await populate_social_info(db, current_user.id, list_data, "broadcast_event")
+        result_data.update({
+            "total": len(list_data_social),
+            "list": list_data_social
+        })
+        return result_data
 
     else:
         raise HTTPException(status_code=400, detail="无效的 KPI 类型")
@@ -3199,7 +3992,7 @@ async def get_company_kpi_detail(
 
 @router.get("/company-kpi-detail/export", summary="导出全公司 KPI 明细数据")
 async def export_company_kpi_detail(
-    kpi_type: str = Query(..., description="KPI类型: contracts, happiness, triangle, leads, tenders"),
+    kpi_type: str = Query(..., description="KPI类型: contracts, happiness, triangle, leads, tenders, middle_office_report, happiness_committee"),
     team_id: int | None = Query(None, description="按战队筛选"),
     week: int | None = Query(None, description="按周筛选 (1-15)"),
     reporter_name: str | None = Query(None, description="按提报人筛选"),
@@ -3729,6 +4522,221 @@ async def export_company_kpi_detail(
                     "description": "播报内容"
                 }, inplace=True)
             sheet_name = "中标项目明细"
+        elif kpi_type == "station_reports":
+            from app.models.broadcast import BroadcastEvent, EventType
+            from app.models.organization import Team
+            from app.models.user import User
+            import datetime as dt
+
+            stmt = (
+                select(
+                    BroadcastEvent.id,
+                    BroadcastEvent.created_at,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    BroadcastEvent.station_location,
+                    BroadcastEvent.station_category,
+                    BroadcastEvent.content,
+                )
+                .select_from(BroadcastEvent)
+                .outerjoin(User, BroadcastEvent.user_id == User.id)
+                .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+                .where(
+                    BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+                    BroadcastEvent.is_deleted == False,
+                )
+            )
+
+            if team_id is not None:
+                stmt = stmt.where(BroadcastEvent.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                s_datetime = dt.datetime.combine(s_date, dt.time.min)
+                e_datetime = dt.datetime.combine(e_date, dt.time.max)
+                stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(BroadcastEvent.content.contains(keyword) | BroadcastEvent.station_location.contains(keyword))
+
+            stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                category_names = {
+                    "policy": "🏛️最新政策",
+                    "deployment": "📋会议部署",
+                    "intelligence": "🔍情报信息",
+                }
+                cat_label = category_names.get(r.station_category, "驻点播报")
+                # 如果是重大会议部署，仅在明细导出中展示其会议主题部分，所有注释必须使用中文
+                clean_desc = r.content or "—"
+                if r.station_category == 'deployment' and clean_desc and "【会议主题】" in clean_desc:
+                    import re
+                    match = re.search(r"(【会议主题】[\s\S]*?)(?=【|$)", clean_desc)
+                    if match:
+                        clean_desc = match.group(1).strip()
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                    "reporter_name": r.reporter_name or "—",
+                    "team_name": r.team_name or "—",
+                    "customer_name": f"【{r.station_location or '—'}】({cat_label})",
+                    "description": clean_desc,
+                })
+            df = pd.DataFrame(list_data)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "播报日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "驻点地点(子分类)",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "驻点前线播报明细"
+
+        elif kpi_type == "middle_office_report":
+            from app.models.broadcast import BroadcastEvent
+            from app.models.organization import Team
+            from app.models.user import User
+            import datetime as dt
+
+            stmt = (
+                select(
+                    BroadcastEvent.id,
+                    BroadcastEvent.created_at,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    BroadcastEvent.station_location,
+                    BroadcastEvent.station_category,
+                    BroadcastEvent.content,
+                )
+                .select_from(BroadcastEvent)
+                .outerjoin(User, BroadcastEvent.user_id == User.id)
+                .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+                .where(
+                    BroadcastEvent.event_type == 'middle_office_report',
+                    BroadcastEvent.is_deleted == False,
+                )
+            )
+
+            if team_id is not None:
+                stmt = stmt.where(BroadcastEvent.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                s_datetime = dt.datetime.combine(s_date, dt.time.min)
+                e_datetime = dt.datetime.combine(e_date, dt.time.max)
+                stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(BroadcastEvent.content.contains(keyword))
+
+            stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                raw_content = r.content or ""
+                cleaned_msg = raw_content
+                sub_cat = r.station_category or "—"
+                if not r.station_category and raw_content.startswith("【") and "】" in raw_content:
+                    end_idx = raw_content.find("】")
+                    sub_cat = raw_content[1:end_idx].strip()
+                    cleaned_msg = raw_content[end_idx + 1:].strip()
+                
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                    "reporter_name": r.reporter_name or "—",
+                    "team_name": r.team_name or "—",
+                    "station_category": sub_cat,
+                    "description": cleaned_msg,
+                })
+            df = pd.DataFrame(list_data)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "播报日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "station_category": "二级分类",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "中台播报明细"
+
+        elif kpi_type == "happiness_committee":
+            from app.models.broadcast import BroadcastEvent
+            from app.models.organization import Team
+            from app.models.user import User
+            import datetime as dt
+
+            stmt = (
+                select(
+                    BroadcastEvent.id,
+                    BroadcastEvent.created_at,
+                    User.name.label("reporter_name"),
+                    Team.name.label("team_name"),
+                    BroadcastEvent.station_location,
+                    BroadcastEvent.station_category,
+                    BroadcastEvent.content,
+                )
+                .select_from(BroadcastEvent)
+                .outerjoin(User, BroadcastEvent.user_id == User.id)
+                .outerjoin(Team, BroadcastEvent.team_id == Team.id)
+                .where(
+                    BroadcastEvent.event_type == 'happiness_committee',
+                    BroadcastEvent.is_deleted == False,
+                )
+            )
+
+            if team_id is not None:
+                stmt = stmt.where(BroadcastEvent.team_id == team_id)
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                s_datetime = dt.datetime.combine(s_date, dt.time.min)
+                e_datetime = dt.datetime.combine(e_date, dt.time.max)
+                stmt = stmt.where(BroadcastEvent.created_at >= s_datetime, BroadcastEvent.created_at <= e_datetime)
+            if reporter_name:
+                stmt = stmt.where(User.name == reporter_name)
+            if keyword:
+                stmt = stmt.where(BroadcastEvent.content.contains(keyword))
+
+            stmt = stmt.order_by(BroadcastEvent.created_at.desc(), BroadcastEvent.id.desc())
+            rows = (await db.execute(stmt)).all()
+
+            list_data = []
+            for r in rows:
+                raw_content = r.content or ""
+                cleaned_msg = raw_content
+                sub_cat = r.station_category or "—"
+                if not r.station_category and raw_content.startswith("【") and "】" in raw_content:
+                    end_idx = raw_content.find("】")
+                    sub_cat = raw_content[1:end_idx].strip()
+                    cleaned_msg = raw_content[end_idx + 1:].strip()
+                
+                list_data.append({
+                    "id": r.id,
+                    "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+                    "reporter_name": r.reporter_name or "—",
+                    "team_name": r.team_name or "—",
+                    "station_category": sub_cat,
+                    "description": cleaned_msg,
+                })
+            df = pd.DataFrame(list_data)
+            if not df.empty:
+                df.drop(columns=['id'], errors='ignore', inplace=True)
+                df.rename(columns={
+                    "report_date": "播报日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "station_category": "二级分类",
+                    "description": "播报内容"
+                }, inplace=True)
+            sheet_name = "幸福委播报明细"
+
         else:
             raise HTTPException(status_code=400, detail="无效的 KPI 类型")
 
@@ -4147,15 +5155,22 @@ async def generate_daily_report(
 
     # 尝试直连 CRM 补充此统计区间内新增有效线索 (与填报取最大)
     crm_user_ids = []
+    user_names = []
     if team_id:
-        users_res = await db.execute(select(User.crm_user_id).where(User.team_id == team_id))
-        crm_user_ids = [uid for (uid,) in users_res.all() if uid]
+        users_res = await db.execute(select(User.crm_user_id, User.name).where(User.team_id == team_id))
+        rows = users_res.all()
+        crm_user_ids = [row[0] for row in rows if row[0]]
+        user_names = [row[1] for row in rows if row[1]]
     else:
-        users_res = await db.execute(select(User.crm_user_id).where(User.crm_user_id != None))
-        crm_user_ids = [uid for (uid,) in users_res.all() if uid]
+        users_res = await db.execute(select(User.crm_user_id, User.name).where(User.crm_user_id != None))
+        rows = users_res.all()
+        crm_user_ids = [row[0] for row in rows if row[0]]
+        user_names = [row[1] for row in rows if row[1]]
 
     crm_leads_cnt = 0
     crm_potential_leads_cnt = 0
+    crm_recv_cnt = 0
+    crm_recv_amt = 0.0
     if crm_user_ids:
         import pymysql
         try:
@@ -4194,6 +5209,21 @@ async def generate_daily_report(
             """, (start_time, end_time))
             crm_potential_leads_cnt = cur.fetchone()["count"]
 
+            # 查询昨日/今日回款合同及回款金额 (按与签订合同一致的统计区间 start_time 到 end_time 统计，过滤签约人为本组成员)
+            if user_names:
+                names_str = ", ".join([f"'{n}'" for n in user_names])
+                cur.execute(f"""
+                    SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
+                    FROM zdcrm_contract_receive_money_view r
+                    INNER JOIN contract c ON r.contract_id = c.id
+                    WHERE c.signer IN ({names_str})
+                      AND r.receive_date BETWEEN %s AND %s
+                """, (start_time, end_time))
+                recv_res = cur.fetchone()
+                if recv_res:
+                    crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
+                    crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
+
             cur.close()
             crm_conn.close()
         except Exception as crm_err:
@@ -4215,6 +5245,7 @@ async def generate_daily_report(
             f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+            f"昨日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
             f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
             f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
             f"赢战百日！"
@@ -4236,6 +5267,7 @@ async def generate_daily_report(
                 f"今日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"今日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"今日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"今日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"今日工作小结\n"
@@ -4258,6 +5290,7 @@ async def generate_daily_report(
                 f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"昨日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"赢战百日！"
@@ -4277,6 +5310,7 @@ async def get_personal_weekly_detail(
     target_date: date | None = Query(None, description="数据日期"),
     is_all: bool = Query(False, description="是否拉取全部明细"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     根据员工姓名和指标类别，拉取该员工已审核的数据明细。默认拉取当周（对应日期所在周的周一到周日），若is_all为True则拉取全周期。
@@ -4610,7 +5644,51 @@ async def get_personal_weekly_detail(
                 "description": row.description or ""
             })
             
-    return details_list
+    elif category == "station_reports":
+        # 驻点播报明细：event_type == EventType.STATION_REPORT.value 且 is_deleted == False
+        from app.models.broadcast import BroadcastEvent, EventType
+        stmt = (
+            select(
+                BroadcastEvent.id,
+                BroadcastEvent.created_at,
+                BroadcastEvent.station_location,
+                BroadcastEvent.station_category,
+                BroadcastEvent.content
+            )
+            .where(
+                BroadcastEvent.user_id == user_obj.id,
+                BroadcastEvent.event_type == EventType.STATION_REPORT.value,
+                BroadcastEvent.is_deleted == False
+            )
+        )
+        if not is_all:
+            import datetime as dt
+            start_datetime = dt.datetime.combine(start_of_week, dt.time.min)
+            end_datetime = dt.datetime.combine(end_of_week, dt.time.max)
+            stmt = stmt.where(
+                BroadcastEvent.created_at >= start_datetime,
+                BroadcastEvent.created_at <= end_datetime
+            )
+        stmt = stmt.order_by(BroadcastEvent.created_at.desc())
+        res = await db.execute(stmt)
+        for row in res.all():
+            category_names = {
+                "policy": "🏛️最新政策",
+                "deployment": "📋会议部署",
+                "intelligence": "🔍情报信息",
+            }
+            cat_label = category_names.get(row.station_category, "驻点播报")
+            details_list.append({
+                "id": row.id,
+                "date": row.created_at.strftime("%Y-%m-%d") if row.created_at else "",
+                "customer_name": f"【{row.station_location or '—'}】({cat_label})",
+                "description": row.content or ""
+            })
+            
+    # 对查询结果批量注入点赞数、评论数和点赞状态等社交信息，所有注释必须使用中文
+    target_type = "broadcast_event" if category == "station_reports" else "report_detail"
+    details_list_social = await populate_social_info(db, current_user.id, details_list, target_type)
+    return details_list_social
 
 
 @router.get("/personal-goals", summary="获取所有个人奋斗目标大盘透视数据")

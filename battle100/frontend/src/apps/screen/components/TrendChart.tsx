@@ -26,18 +26,37 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
     validLeads: []
   }
 
-  const trend = weeklyTrend || defaultTrend
-  const dates = trend.dates
-  const contracts = trend.newContracts
-  
-  // 基础目标与挑战目标累计（若后端无数据则使用原逻辑的平均分解进行兜底：基础 6200/15，挑战 8000/15）
-  const baseTargets = trend.newContractsTarget && trend.newContractsTarget.length > 0
-    ? trend.newContractsTarget
-    : dates.map((_, idx) => Math.round((idx + 1) * (6200 / 15) * 100) / 100)
+  // 计算当前战役所处的真实周次 (2026-06-01 为第一周第一天)，所有注释必须使用中文
+  const getCampaignWeek = () => {
+    const startDate = new Date(2026, 5, 1); // 2026-06-01 (JS中月份从0开始，5表示6月)
+    const today = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (todayZero < startDate) return 1;
+    const diffTime = todayZero.getTime() - startDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const week = Math.floor(diffDays / 7) + 1;
+    return Math.min(Math.max(week, 1), 15);
+  }
 
-  const challengeTargets = trend.newContractsChallengeTarget && trend.newContractsChallengeTarget.length > 0
+  const currentWeek = getCampaignWeek()
+  const maxDisplayWeek = Math.min(Math.max(3, currentWeek + 1), 15)
+
+  const trend = weeklyTrend || defaultTrend
+  
+  // 根据当前进度局部截取并放大展示，所有注释必须使用中文
+  const dates = trend.dates.slice(0, maxDisplayWeek)
+  const contracts = trend.newContracts.slice(0, maxDisplayWeek)
+  
+  const baseTargetsFull = trend.newContractsTarget && trend.newContractsTarget.length > 0
+    ? trend.newContractsTarget
+    : trend.dates.map((_, idx) => Math.round((idx + 1) * (6200 / 15) * 100) / 100)
+  const baseTargets = baseTargetsFull.slice(0, maxDisplayWeek)
+
+  const challengeTargetsFull = trend.newContractsChallengeTarget && trend.newContractsChallengeTarget.length > 0
     ? trend.newContractsChallengeTarget
-    : dates.map((_, idx) => Math.round((idx + 1) * (8000 / 15) * 100) / 100)
+    : trend.dates.map((_, idx) => Math.round((idx + 1) * (8000 / 15) * 100) / 100)
+  const challengeTargets = challengeTargetsFull.slice(0, maxDisplayWeek)
 
   // 根据当前主题，计算 ECharts 配色方案
   let axisTextColor = '#4a2a2a'
@@ -45,8 +64,8 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
   let tooltipBg = 'rgba(255, 255, 255, 0.96)'
   let tooltipBorder = '#d4af37'
   let tooltipTextColor = '#3c1515'
-  let lineColor = '#b71c1c'
-  let areaColorStart = 'rgba(183,28,28,0.2)'
+  let lineColor = '#1677ff'
+  let areaColorStart = 'rgba(22,119,255,0.15)'
   let targetLineColor = '#fa8c16'
   let challengeLineColor = '#ff4d4f'
 
@@ -54,20 +73,20 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
     axisTextColor = 'rgba(255,255,255,0.7)'
     gridLineColor = 'rgba(255,255,255,0.06)'
     tooltipBg = 'rgba(30, 8, 8, 0.95)'
-    tooltipBorder = '#ff4d4f'
+    tooltipBorder = '#40a9ff'
     tooltipTextColor = '#ffffff'
-    lineColor = '#ff4d4f'
-    areaColorStart = 'rgba(255,77,79,0.25)'
+    lineColor = '#40a9ff'
+    areaColorStart = 'rgba(64,169,255,0.2)'
     targetLineColor = '#fa8c16'
     challengeLineColor = '#ffd700'
   } else if (theme === 'theme-gold') {
     axisTextColor = '#5c4c2d'
     gridLineColor = 'rgba(184,134,11,0.15)'
     tooltipBg = 'rgba(255, 255, 255, 0.96)'
-    tooltipBorder = '#b8860b'
+    tooltipBorder = '#1890ff'
     tooltipTextColor = '#4a3c1c'
-    lineColor = '#8b6508'
-    areaColorStart = 'rgba(184,134,11,0.25)'
+    lineColor = '#096dd9'
+    areaColorStart = 'rgba(24,144,255,0.2)'
     targetLineColor = '#fa8c16'
     challengeLineColor = '#d46b08'
   }
@@ -170,7 +189,7 @@ const TrendChart: React.FC<TrendChartProps> = ({ theme = 'theme-light-red', week
         style={{
           margin: '0 0 0.8rem 0', // 压缩底部边距
           fontSize: '1.15rem', // 对齐中间栏标题字号
-          color: lineColor,
+          color: theme === 'theme-gold' ? '#8b6508' : '#b71c1c',
           borderBottom: '2px solid var(--border-color)',
           paddingBottom: '0.6rem', // 对齐中间栏标题间隙
           fontWeight: 'bold',

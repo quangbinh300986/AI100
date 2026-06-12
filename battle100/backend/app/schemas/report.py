@@ -197,6 +197,15 @@ class WeeklyCrmSummaryItem(BaseModel):
     sales_highlights: Optional[str] = None
     delivery_blockers: Optional[str] = None
     sales_blockers: Optional[str] = None
+    
+    # 7个新增CRM明细指标字段
+    crm_active_projects: Optional[str] = None
+    crm_milestone_tasks: Optional[str] = None
+    crm_suspended_projects: Optional[str] = None
+    crm_no_contract_warning: Optional[str] = None
+    crm_unbilled_warning: Optional[str] = None
+    crm_unreceived_warning: Optional[str] = None
+    crm_health_diagnosis: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

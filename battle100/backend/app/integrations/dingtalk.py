@@ -293,7 +293,9 @@ class DingTalkClient:
         user_name: Optional[str] = None,
         team_name: Optional[str] = None,
         dingtalk_users: Optional[list[str]] = None,
-        attachment_urls: Optional[list] = None
+        attachment_urls: Optional[list] = None,
+        project_name: Optional[str] = None,
+        customer_name: Optional[str] = None
     ) -> Optional[str]:
         """
         统一的消息播报推送服务，支持 Webhook、自建群发及工作通知，并将战报排版成精美的 Markdown 卡片
@@ -314,38 +316,43 @@ class DingTalkClient:
             "goal_achieved": "目标达成",
             "daily_summary": "每日战报汇总",
             "weekly_summary": "每周战报汇总",
-            "ranking_update": "战队排名更新"
+            "ranking_update": "战队排名更新",
+            "happiness_committee": "幸福委播报",
+            "middle_office_report": "中台播报",
+            "marketing_report": "营销内部播报"
         }
         type_name = event_type_names.get(event_type, "最新战报")
         
-        # 提取项目名称与客户名称
-        project_name_val = None
-        proj_match = re.search(r"关联项目【([^】]+)】", content)
-        if proj_match:
-            project_name_val = proj_match.group(1)
+        # 提取项目名称与客户名称 (优先采用入参字段，无则正则兜底)
+        project_name_val = project_name if (project_name and project_name != "未定") else None
         if not project_name_val:
-            proj_match = re.search(r"确定([^】]+)项目走完合同流程", content)
+            proj_match = re.search(r"关联项目【([^】]+)】", content)
             if proj_match:
                 project_name_val = proj_match.group(1)
-        if not project_name_val:
-            proj_match = re.search(r"确定([^】]+)项目中地承接", content)
-            if proj_match:
-                project_name_val = proj_match.group(1)
+            if not project_name_val:
+                proj_match = re.search(r"确定([^】]+)项目走完合同流程", content)
+                if proj_match:
+                    project_name_val = proj_match.group(1)
+                if not project_name_val:
+                    proj_match = re.search(r"确定([^】]+)项目中地承接", content)
+                    if proj_match:
+                        project_name_val = proj_match.group(1)
 
-        customer_name_val = None
-        cust_match = re.search(r"对象为【([^】]+)】", content)
-        if cust_match:
-            customer_name_val = cust_match.group(1)
+        customer_name_val = customer_name
         if not customer_name_val:
-            cust_match = re.search(r"客户为\s*([^，!。]+)", content)
+            cust_match = re.search(r"对象为【([^】]+)】", content)
             if cust_match:
-                customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
-        if not customer_name_val:
-            cust_match = re.search(r"业主单位：\s*([^，!。]+)", content)
-            if cust_match:
-                customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
+                customer_name_val = cust_match.group(1)
+            if not customer_name_val:
+                cust_match = re.search(r"客户为\s*([^，!。]+)", content)
+                if cust_match:
+                    customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
+            if not customer_name_val:
+                cust_match = re.search(r"业主单位：\s*([^，!。]+)", content)
+                if cust_match:
+                    customer_name_val = cust_match.group(1).replace("【", "").replace("】", "")
 
-        # 2. 格式化精美 Markdown 内容
+        # 2. 格式化精美 Markdown 内容，所有注释必须使用中文
         cleaned_content = content
         if "【战报播报】" in cleaned_content:
             cleaned_content = cleaned_content.replace("【战报播报】", "")
@@ -356,10 +363,24 @@ class DingTalkClient:
             cleaned_content = re.sub(r"，?关联项目【[^】]+】", "", cleaned_content)
             cleaned_content = cleaned_content.replace("，，", "，")
 
+        # 提取并在上面展示二级分类，从消息正文中剥离，所有注释必须使用中文
+        sub_category = None
+        if cleaned_content.startswith("【") and "】" in cleaned_content:
+            end_idx = cleaned_content.find("】")
+            sub_category = cleaned_content[1:end_idx].strip()
+            cleaned_content = cleaned_content[end_idx+1:].strip()
+
         markdown_text = f"### 🎉 战报播报 | 赢战百日\n\n"
         markdown_text += f"**恭喜战友，再传捷报！**\n\n"
         markdown_text += f"---\n"
         markdown_text += f"* **战报类型**：{type_name}\n"
+        if sub_category:
+            if event_type == "happiness_committee":
+                markdown_text += f"* **幸福委专委**：{sub_category}\n"
+            elif event_type == "middle_office_report":
+                markdown_text += f"* **中台部门**：{sub_category}\n"
+            else:
+                markdown_text += f"* **子分类**：{sub_category}\n"
         if user_name:
             markdown_text += f"* **推进战友**：{user_name}\n"
         if project_name_val:
@@ -457,16 +478,14 @@ class DingTalkClient:
         is_urgent: bool = False,
         detail_url: Optional[str] = None,
         attachment_urls: Optional[list] = None,
+        reporter_name: Optional[str] = None,
     ) -> Optional[str]:
         """
         发送驻点播报的 ActionCard 消息到钉钉群，支持加签验证和紧急@所有人
         """
-        if category == "policy":
-            webhook_url = "https://oapi.dingtalk.com/robot/send?access_token=5bd92dbee70063fe2033d880524ecb7c78cbcfcc58a659a98cf7d9d0f1e0e516"
-            secret = "SEC8c0ac0f5f3a6e65ddbfa23ee98c1bb00ceee149d251d7e3325315e038d0ae6dd"
-        else:
-            webhook_url = settings.DINGTALK_WEBHOOK_URL
-            secret = settings.DINGTALK_WEBHOOK_SECRET
+        # 统一将所有驻点人员播报向“驻点人员政策文件播报”群发送，所有注释必须使用中文
+        webhook_url = "https://oapi.dingtalk.com/robot/send?access_token=5bd92dbee70063fe2033d880524ecb7c78cbcfcc58a659a98cf7d9d0f1e0e516"
+        secret = "SEC8c0ac0f5f3a6e65ddbfa23ee98c1bb00ceee149d251d7e3325315e038d0ae6dd"
 
         if not webhook_url:
             return None
@@ -490,13 +509,23 @@ class DingTalkClient:
             
             urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
             at_text = " @所有人" if is_urgent else ""
-            keyword_tag = "【政策文件播报】" if category == "policy" else "【驻点播报 | 赢战百日】"
+            # 统一关键词为“政策文件播报”以通过钉钉安全校验，并在后面拼装各分类子名称以保全分类信息，所有注释必须使用中文
+            if category == "policy":
+                keyword_tag = "【政策文件播报 | 政策文件】"
+            elif category == "deployment":
+                keyword_tag = "【政策文件播报 | 会议部署】"
+            elif category == "intelligence":
+                keyword_tag = "【政策文件播报 | 情报信息】"
+            else:
+                keyword_tag = "【政策文件播报 | 驻点快报】"
             
             # 构建文本内容，将解压密码直接展示在群消息中
             markdown_text = f"### {keyword_tag}{urgent_tag}{category_label}{at_text}\n\n"
             markdown_text += f"---\n"
             markdown_text += f"* **驻点地点**：{location}\n"
             markdown_text += f"* **播报标题**：{title}\n"
+            if reporter_name:
+                markdown_text += f"* **播报人**：{reporter_name}\n"
             markdown_text += f"---\n\n"
             markdown_text += f"> {summary.replace('\n', '  \n> ')}\n\n"
             
@@ -596,7 +625,7 @@ class DingTalkClient:
                 logger.error(f"发送 ActionCard Webhook 失败: {data.get('errmsg') or data}")
                 return None
         except Exception as e:
-            logger.error(f"send_station_report_actioncard 发生异常: {e}")
+            logger.error(f"send_station_report_actioncard 发生异常: {e}", exc_info=True)
             return None
 
     async def get_department_users(self, dept_id: int = 1) -> list[dict]:
@@ -627,6 +656,144 @@ class DingTalkClient:
         except Exception as e:
             logger.error(f"get_department_users 发生异常: {e}")
             return []
+
+    async def get_user_by_mobile(self, mobile: str) -> Optional[str]:
+        """
+        通过手机号获取员工的钉钉 userid，所有注释必须使用中文
+        :param mobile: 手机号字符串
+        :return: 钉钉 userid
+        """
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            url = f"{self.BASE_URL}/topapi/v2/user/getbymobile"
+            params = {"access_token": token}
+            json_data = {"mobile": mobile}
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+                
+            if data.get("errcode") == 0:
+                return data.get("result", {}).get("userid")
+            else:
+                logger.error(f"根据手机号查询钉钉userid失败: {data.get('errmsg')}")
+                return None
+        except Exception as e:
+            logger.error(f"get_user_by_mobile 发生异常: {e}")
+            return None
+
+    async def save_report(self, template_id: str, userid: str, contents: list[dict], to_userids: list[str] = None) -> tuple[bool, str]:
+        """
+        填报工作日志（周报）到钉钉，所有注释必须使用中文
+        :param template_id: 日志模板唯一标识ID
+        :param userid: 员工的钉钉 userid
+        :param contents: 填报表单内容列表
+        :param to_userids: 接收人 userid 列表
+        :return: (是否保存成功, 错误提示信息)
+        """
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            url = f"{self.BASE_URL}/topapi/report/create"
+            params = {"access_token": token}
+            
+            # contents 的格式转为 OapiReportContentVo 格式列表
+            # key, value, sort, type, content_type，所有注释必须使用中文
+            # 引入排序索引映射以与钉钉后台模板严格保持一致，防止发生 400002 参数错误
+            sort_map = {
+                "本周目标计划": 1,
+                "本周实际完成": 2,
+                "达成情况": 3,
+                "本周亮点": 4,
+                "本周卡点": 5,
+                "是否需要上级支持": 6,
+                "下周目标": 7,
+                "周报日期": 8
+            }
+            
+            formatted_contents = []
+            for i, c in enumerate(contents):
+                key_name = c.get("key")
+                formatted_contents.append({
+                    "key": key_name,
+                    "content": c.get("value"),  # 钉钉官方字段为 content，映射自本系统传入的 value
+                    "sort": sort_map.get(key_name, i + 1),
+                    "type": 1,
+                    "content_type": "markdown"
+                })
+                
+            # 获取模板默认发送群，所有注释必须使用中文
+            to_cids = []
+            try:
+                # 1. 获取用户可见的模板列表以匹配 template_id 对应的名称
+                list_url = f"{self.BASE_URL}/topapi/report/template/listbyuserid"
+                list_data = {
+                    "userid": userid,
+                    "offset": 0,
+                    "size": 100
+                }
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    list_resp = await client.post(list_url, params=params, json=list_data)
+                    list_res = list_resp.json()
+                    
+                template_name = None
+                if list_res.get("errcode") == 0:
+                    template_list = list_res.get("result", {}).get("template_list", [])
+                    for t in template_list:
+                        if t.get("report_code") == template_id:
+                            template_name = t.get("name")
+                            break
+                            
+                # 2. 如果找到了模板名称，获取模板详情以拿到默认发送群 ID
+                if template_name:
+                    detail_url = f"{self.BASE_URL}/topapi/report/template/getbyname"
+                    detail_data = {
+                        "userid": userid,
+                        "template_name": template_name
+                    }
+                    async with httpx.AsyncClient(timeout=self.timeout) as client:
+                        detail_resp = await client.post(detail_url, params=params, json=detail_data)
+                        detail_res = detail_resp.json()
+                        
+                    if detail_res.get("errcode") == 0:
+                        convs = detail_res.get("result", {}).get("default_received_convs", [])
+                        to_cids = [c.get("conversation_id") for c in convs if c.get("conversation_id")]
+                        logger.info(f"获取模板 [{template_name}] 默认发送群成功: {to_cids}")
+                else:
+                    logger.warning(f"未能匹配到 template_id={template_id} 对应的模板名称")
+            except Exception as ex:
+                logger.error(f"获取模板默认发送群失败: {ex}", exc_info=True)
+
+            json_data = {
+                "create_report_param": {
+                    "template_id": template_id,
+                    "userid": userid,
+                    "contents": formatted_contents,
+                    "to_userids": to_userids or [],
+                    "to_chat": False,
+                    "dd_from": "battle100"
+                }
+            }
+            if to_cids:
+                json_data["create_report_param"]["to_cids"] = to_cids
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+                
+            errcode = data.get("errcode")
+            if errcode == 0:
+                return True, "已成功同步填报至您的钉钉工作日志"
+            else:
+                errmsg = data.get("sub_msg") or data.get("errmsg") or "未知错误"
+                logger.error(f"填报钉钉工作日志失败: {errmsg}")
+                return False, f"钉钉平台返回错误: {errmsg} (代码: {errcode})"
+        except Exception as e:
+            logger.error(f"save_report 发生异常: {e}")
+            return False, f"调用钉钉接口异常: {str(e)}"
 
 
 # 全局钉钉客户端单例

@@ -1,0 +1,51 @@
+{
+  "all_today_hours": [
+    {
+      "id": "6a36d99343feed3b0532c21611abb57d",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:32",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:32",
+      "create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "remark": null,
+      "province": null,
+      "province_code": null,
+      "city": null,
+      "city_code": null,
+      "district": null,
+      "district_code": null,
+      "user_id": "xiangbinqiang_nts9",
+      "start_time": "2026-06-09 00:00:00",
+      "end_time": "2026-06-10 00:00:00",
+      "work_hour": 1.0,
+      "sync_zdpm_success": "1",
+      "project_id": null,
+      "title": "广东省国土资源技术中心（广东省基础地理信息中心）"
+    },
+    {
+      "id": "6eb50c65188e2af955eba87d9fbf0501",
+      "is_del": "0",
+      "create_by": "xiangbinqiang_nts9",
+      "create_time": "2026-06-09 21:58:44",
+      "update_by": "xiangbinqiang_nts9",
+      "update_time": "2026-06-09 21:58:44",
+      "create_dept": "b8e4a84b114141799550c61f7f8cf199",
+      "remark": null,
+      "province": null,
+      "province_code": null,
+      "city": null,
+      "city_code": null,
+      "district": null,
+      "district_code": null,
+      "user_id": "xiangbinqiang_nts9",
+      "start_time": "2026-06-09 00:00:00",
+      "end_time": "2026-06-10 00:00:00",
+      "work_hour": 1.0,
+      "sync_zdpm_success": "1",
+      "project_id": null,
+      "title": "深汕合作区农业农村和海洋渔业局"
+    }
+  ],
+  "all_yesterday_hours": []
+}

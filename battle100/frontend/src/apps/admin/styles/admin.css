@@ -89,3 +89,10 @@ body {
   background-color: #fff3cf !important;
 }
 
+/* 解决周报汇总表格中长文本单元格 Tooltip 狂闪抖动的问题 */
+.tooltip-no-pointer-events,
+.ant-tooltip:has(.tooltip-no-pointer-events) {
+  pointer-events: none !important;
+}
+
+

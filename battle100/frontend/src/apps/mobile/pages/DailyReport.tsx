@@ -4,11 +4,142 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox } from 'antd-mobile'
+import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox, CascadePicker } from 'antd-mobile'
 import { CheckCircleFill, CloseCircleFill, AddOutline, DeleteOutline, SearchOutline } from 'antd-mobile-icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
+
+// 区域级联选择配置配置，包含广东省主要市区及各个区县，以及北京市和外省
+const REGION_OPTIONS = [
+  {
+    value: '广东省',
+    label: '广东省',
+    children: [
+      {
+        value: '广州市',
+        label: '广州市',
+        children: [
+          { value: '越秀区', label: '越秀区' },
+          { value: '荔湾区', label: '荔湾区' },
+          { value: '海珠区', label: '海珠区' },
+          { value: '天河区', label: '天河区' },
+          { value: '白云区', label: '白云区' },
+          { value: '黄埔区', label: '黄埔区' },
+          { value: '番禺区', label: '番禺区' },
+          { value: '花都区', label: '花都区' },
+          { value: '南沙区', label: '南沙区' },
+          { value: '从化区', label: '从化区' },
+          { value: '增城区', label: '增城区' },
+        ],
+      },
+      {
+        value: '佛山市',
+        label: '佛山市',
+        children: [
+          { value: '禅城区', label: '禅城区' },
+          { value: '南海区', label: '南海区' },
+          { value: '顺德区', label: '顺德区' },
+          { value: '三水区', label: '三水区' },
+          { value: '高明区', label: '高明区' },
+        ],
+      },
+      {
+        value: '深圳市',
+        label: '深圳市',
+        children: [
+          { value: '福田区', label: '福田区' },
+          { value: '罗湖区', label: '罗湖区' },
+          { value: '南山区', label: '南山区' },
+          { value: '宝安区', label: '宝安区' },
+          { value: '龙岗区', label: '龙岗区' },
+          { value: '盐田区', label: '盐田区' },
+          { value: '龙华区', label: '龙华区' },
+          { value: '坪山区', label: '坪山区' },
+          { value: '光明区', label: '光明区' },
+          { value: '大鹏新区', label: '大鹏新区' },
+        ]
+      },
+      {
+        value: '清远市',
+        label: '清远市',
+        children: [
+          { value: '清城区', label: '清城区' },
+          { value: '清新区', label: '清新区' },
+          { value: '佛冈县', label: '佛冈县' },
+          { value: '阳山县', label: '阳山县' },
+          { value: '连山壮族瑶族自治县', label: '连山壮族瑶族自治县' },
+          { value: '连南瑶族自治县', label: '连南瑶族自治县' },
+          { value: '英德市', label: '英德市' },
+          { value: '连州市', label: '连州市' },
+        ],
+      },
+      {
+        value: '湛江市',
+        label: '湛江市',
+        children: [
+          { value: '赤坎区', label: '赤坎区' },
+          { value: '霞山区', label: '霞山区' },
+          { value: '坡头区', label: '坡头区' },
+          { value: '麻章区', label: '麻章区' },
+          { value: '遂溪县', label: '遂溪县' },
+          { value: '徐闻县', label: '徐闻县' },
+          { value: '廉江市', label: '廉江市' },
+          { value: '雷州市', label: '雷州市' },
+          { value: '吴川市', label: '吴川市' },
+        ],
+      },
+      {
+        value: '茂名市',
+        label: '茂名市',
+        children: [
+          { value: '茂南区', label: '茂南区' },
+          { value: '电白区', label: '电白区' },
+          { value: '高州市', label: '高州市' },
+          { value: '化州市', label: '化州市' },
+          { value: '信宜市', label: '信宜市' },
+        ],
+      },
+      {
+        value: '云浮市',
+        label: '云浮市',
+        children: [
+          { value: '云城区', label: '云城区' },
+          { value: '云安区', label: '云安区' },
+          { value: '新兴县', label: '新兴县' },
+          { value: '郁南县', label: '郁南县' },
+          { value: '罗定市', label: '罗定市' },
+        ],
+      },
+    ],
+  },
+  {
+    value: '北京市',
+    label: '北京市',
+    children: [
+      { value: '东城区', label: '东城区' },
+      { value: '西城区', label: '西城区' },
+      { value: '朝阳区', label: '朝阳区' },
+      { value: '丰台区', label: '丰台区' },
+      { value: '石景山区', label: '石景山区' },
+      { value: '海淀区', label: '海淀区' },
+      { value: '门头沟区', label: '门头沟区' },
+      { value: '房山区', label: '房山区' },
+      { value: '通州区', label: '通州区' },
+      { value: '顺义区', label: '顺义区' },
+      { value: '昌平区', label: '昌平区' },
+      { value: '大兴区', label: '大兴区' },
+      { value: '怀柔区', label: '怀柔区' },
+      { value: '平谷区', label: '平谷区' },
+      { value: '密云区', label: '密云区' },
+      { value: '延庆区', label: '延庆区' },
+    ]
+  },
+  {
+    value: '外省',
+    label: '外省'
+  }
+]
 
 // 战报动作类型选项 (与大屏完全对齐)
 const ACTION_TYPE_OPTIONS = [
@@ -26,6 +157,24 @@ export default function DailyReport() {
   const [actionType, setActionType] = useState<string>('contract')
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // 营销内部播报相关计算与受控处理，所有注释必须使用中文
+  const showMarketingReport = user?.position_type === 'marketing' || user?.role === 'target_officer' || user?.role === 'admin'
+  const actionOptions = [
+    { label: '已完成合同签订 (90%)', value: 'contract' },
+    { label: '铁三角联动', value: 'triangle' },
+    { label: '客户幸福动作', value: 'happiness' },
+    { label: '驻点人员播报', value: 'station_report' },
+    ...(showMarketingReport ? [{ label: '营销内部播报', value: 'marketing_report' }] : [])
+  ]
+
+  const handleMarketingFieldChange = (name: string, value: any) => {
+    setFormData(prev => {
+      const next = { ...prev, [name]: value }
+      updateMarketingContent(next)
+      return next
+    })
+  }
 
   // 接口数据池
   const [users, setUsers] = useState<any[]>([])
@@ -67,6 +216,9 @@ export default function DailyReport() {
   const [showDetails, setShowDetails] = useState(false)
   const [pendingPayload, setPendingPayload] = useState<any>(null)
 
+  // 区域级联控制状态，所有注释必须使用中文
+  const [regionVisible, setRegionVisible] = useState(false)
+
   // 表单数据
   const [formData, setFormData] = useState({
     crmOpportunityId: '',
@@ -86,7 +238,16 @@ export default function DailyReport() {
     content: '',
     employeeName: '',
     copartners: [] as string[],
-    marketingCopartners: [] as string[]
+    marketingCopartners: [] as string[],
+    // 营销内部播报专属字段
+    marketingCategory: '',
+    marketingRegion: ['广东省', '广州市', '荔湾区'] as string[],
+    marketingSection: '',
+    marketingAssistors: [] as string[],
+    marketingContracts: [] as string[],
+    marketingProgress: '',
+    marketingIsImportant: 'no',
+    marketingHelpNeeded: ''
   })
 
   // 移动端客户幸福动作折叠面板的状态
@@ -97,6 +258,25 @@ export default function DailyReport() {
 
   // 驻点播报专用附件文件状态
   const [stationFiles, setStationFiles] = useState<File[]>([])
+
+  // 驻点播报细化字段状态
+  const [policyLevel, setPolicyLevel] = useState('省级')
+  const [policyOpportunity, setPolicyOpportunity] = useState('')
+  const [policyRisk, setPolicyRisk] = useState('')
+  const [policyOther, setPolicyOther] = useState('')
+
+  const [meetingSubject, setMeetingSubject] = useState('')
+  const [meetingTimePlace, setMeetingTimePlace] = useState('')
+  const [meetingHost, setMeetingHost] = useState('')
+  const [meetingProject, setMeetingProject] = useState('')
+  const [meetingFunds, setMeetingFunds] = useState('')
+  const [meetingInstructions, setMeetingInstructions] = useState('')
+  const [meetingDeadline, setMeetingDeadline] = useState('')
+
+  const [intelligenceType, setIntelligenceType] = useState('peer') // peer, personnel, competitor
+  const [intelligenceContent, setIntelligenceContent] = useState('')
+  const [intelligenceSource, setIntelligenceSource] = useState('')
+  const [intelligenceReliability, setIntelligenceReliability] = useState('中')
 
   const customerSearchTimerRef = useRef<any>(null)
   
@@ -164,6 +344,8 @@ export default function DailyReport() {
         
         await loadCrmCustomers()
         await loadCrmProjectsSearch()
+        // 页面默认选中为 contract (90%)，因此在初始化时主动拉取一次合同数据列表
+        await loadCrmProjects(90)
       } catch (err) {
         console.error('初始化移动端基础数据失败', err)
       }
@@ -208,7 +390,16 @@ export default function DailyReport() {
       content: '',
       employeeName: resolvedName,
       copartners: [],
-      marketingCopartners: []
+      marketingCopartners: [],
+      // 营销内部播报专属字段
+      marketingCategory: '',
+      marketingRegion: ['广东省', '广州市', '荔湾区'],
+      marketingSection: '',
+      marketingAssistors: [],
+      marketingContracts: [],
+      marketingProgress: '',
+      marketingIsImportant: 'no',
+      marketingHelpNeeded: ''
     })
 
     if (val === 'contract') {
@@ -223,6 +414,9 @@ export default function DailyReport() {
       loadCrmProjectsSearch()
     } else if (val === 'station_report') {
       setStationFiles([])
+    } else if (val === 'marketing_report') {
+      loadCrmCustomers()
+      loadCrmProjects(90)
     }
   }
 
@@ -421,8 +615,43 @@ export default function DailyReport() {
     setFormData(prev => ({ ...prev, content: generated }))
   }
 
+  // 营销内部播报文本生成，所有注释必须使用中文
+  const updateMarketingContent = (currentForm: typeof formData) => {
+    const isImportant = currentForm.marketingIsImportant === 'yes'
+    let regionStr = '广东省'
+    if (Array.isArray(currentForm.marketingRegion)) {
+      regionStr = currentForm.marketingRegion.join('/')
+    } else if (typeof currentForm.marketingRegion === 'string') {
+      regionStr = currentForm.marketingRegion
+    }
+
+    let generated = ''
+    if (currentForm.marketingCategory === 'daily_work') {
+      generated = `【日常工作】\n` +
+        `* **区域**：${regionStr}\n` +
+        `* **业主单位**：${currentForm.customerName || '未指定'}\n` +
+        `* **科/股室**：${currentForm.marketingSection || '无'}\n` +
+        `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+        `* **协助人**：${(currentForm.marketingAssistors && currentForm.marketingAssistors.length > 0) ? currentForm.marketingAssistors.join(', ') : '无'}\n` +
+        `* **当前进展**：\n${currentForm.marketingProgress || '无'}\n\n` +
+        `* **需协助事项**：\n${currentForm.marketingHelpNeeded || '无'}`
+    } else if (currentForm.marketingCategory === 'payment_followup') {
+      generated = `【回款跟进】\n` +
+        `* **区域**：${regionStr}\n` +
+        `* **业主单位**：${currentForm.customerName || '未指定'}\n` +
+        `* **科/股室**：${currentForm.marketingSection || '无'}\n` +
+        `* **关联合同**：${(currentForm.marketingContracts && currentForm.marketingContracts.length > 0) ? currentForm.marketingContracts.join(', ') : '无'}\n` +
+        `* **是否重点**：${isImportant ? '是 🔴' : '否'}\n` +
+        `* **当前进展**：\n${currentForm.marketingProgress || '无'}\n\n` +
+        `* **需协助事项**：\n${currentForm.marketingHelpNeeded || '无'}`
+    }
+
+    setFormData(prev => ({ ...prev, content: generated }))
+  }
+
   // 真正执行提交的接口
   const executeSubmit = async (payload: any) => {
+    if (submitting) return
     setSubmitting(true)
     try {
       const res = await post<any>('/broadcast', payload)
@@ -445,13 +674,10 @@ export default function DailyReport() {
 
   // 提交接口
   const handleSubmit = async () => {
+    if (submitting) return
     if (actionType === 'station_report') {
       if (!formData.projectName?.trim()) {
         Toast.show({ icon: 'fail', content: '请输入标题' })
-        return
-      }
-      if (!formData.content?.trim()) {
-        Toast.show({ icon: 'fail', content: '请输入正文内容' })
         return
       }
       if (!formData.customerName?.trim()) {
@@ -462,18 +688,119 @@ export default function DailyReport() {
         Toast.show({ icon: 'fail', content: '请选择驻点播报分类' })
         return
       }
+
+      let finalContent = ''
+      let finalTitle = formData.projectName || ''
+      const isUrgent = formData.happinessScore === 100
+      const urgentStr = isUrgent ? '【紧急】' : ''
+
+      if (formData.actionDescription === 'policy') {
+        if (!policyLevel) {
+          Toast.show({ icon: 'fail', content: '请选择政策层级' })
+          return
+        }
+        let points = []
+        if (policyOpportunity?.trim()) {
+          points.push(`1. 业务机会：\n${policyOpportunity.trim()}`)
+        }
+        if (policyRisk?.trim()) {
+          points.push(`2. 风险点：\n${policyRisk.trim()}`)
+        }
+        if (policyOther?.trim()) {
+          points.push(`3. 其他要点：\n${policyOther.trim()}`)
+        }
+
+        finalContent = `【政策层级】\n${policyLevel}`
+        if (points.length > 0) {
+          finalContent += `\n\n【核心要点】\n${points.join('\n\n')}`
+        }
+
+        const levelStr = `[${policyLevel}]`
+        if (!finalTitle.startsWith('【政策】') && !finalTitle.startsWith('【最新政策】')) {
+          finalTitle = `【政策】${urgentStr}${levelStr}${finalTitle}`
+        }
+      } else if (formData.actionDescription === 'deployment') {
+        if (!meetingSubject?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入会议主题' })
+          return
+        }
+        if (!meetingTimePlace?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入会议召开时间与地点' })
+          return
+        }
+        if (!meetingHost?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入主持人或出席领导' })
+          return
+        }
+        let points = []
+        if (meetingProject?.trim()) {
+          points.push(`1. 项目方面：\n${meetingProject.trim()}`)
+        }
+        if (meetingFunds?.trim()) {
+          points.push(`2. 资金方面：\n${meetingFunds.trim()}`)
+        }
+        if (meetingInstructions?.trim()) {
+          points.push(`3. 领导批示或核心决议：\n${meetingInstructions.trim()}`)
+        }
+        if (meetingDeadline?.trim()) {
+          points.push(`4. 时间要求：\n${meetingDeadline.trim()}`)
+        }
+
+        finalContent = `【会议主题】\n${meetingSubject}\n\n` +
+          `【时间地点】\n${meetingTimePlace}\n\n` +
+          `【主持/出席领导】\n${meetingHost}`
+
+        if (points.length > 0) {
+          finalContent += `\n\n【会议要点】\n${points.join('\n\n')}`
+        }
+
+        if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】')) {
+          finalTitle = `【会议】${urgentStr}${finalTitle}`
+        }
+      } else if (formData.actionDescription === 'intelligence') {
+        if (!intelligenceType) {
+          Toast.show({ icon: 'fail', content: '请选择情报类型' })
+          return
+        }
+        if (!intelligenceContent?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入具体情报内容' })
+          return
+        }
+        if (!intelligenceSource?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入情报来源' })
+          return
+        }
+
+        const typeMap: Record<string, string> = {
+          peer: '同行',
+          personnel: '人事',
+          competitor: '对手',
+        }
+        const typeLabel = typeMap[intelligenceType] || '通用'
+
+        finalContent = `【情报类型】\n${typeLabel}\n\n` +
+          `【情报来源与可靠性】\n${intelligenceSource} (可靠性评估：${intelligenceReliability})\n\n` +
+          `【具体内容】\n${intelligenceContent}`
+
+        if (!finalTitle.startsWith('【情报') && !finalTitle.startsWith('【重大情报')) {
+          finalTitle = `【情报-${typeLabel}】${urgentStr}${finalTitle}`
+        }
+      } else {
+        if (!formData.content?.trim()) {
+          Toast.show({ icon: 'fail', content: '请输入正文内容' })
+          return
+        }
+        finalContent = formData.content || ''
+      }
       
       setSubmitting(true)
       try {
         const formDataPayload = new FormData()
         formDataPayload.append('station_category', formData.actionDescription)
         formDataPayload.append('station_location', formData.customerName)
-        formDataPayload.append('title', formData.projectName)
-        formDataPayload.append('content', formData.content)
-        if (formData.recommendAction) {
-          formDataPayload.append('summary', formData.recommendAction)
-        }
-        formDataPayload.append('is_urgent', String(formData.happinessScore === 100))
+        formDataPayload.append('title', finalTitle)
+        formDataPayload.append('content', finalContent)
+        formDataPayload.append('is_urgent', String(isUrgent))
         formDataPayload.append('push_channel', 'all')
         
         if (stationFiles && stationFiles.length > 0) {
@@ -496,6 +823,34 @@ export default function DailyReport() {
       } finally {
         setSubmitting(false)
       }
+      return
+    }
+
+    if (actionType === 'marketing_report') {
+      if (!formData.customerName) {
+        Toast.show({ icon: 'fail', content: '请选择业主单位' })
+        return
+      }
+      if (!formData.marketingProgress?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入事项当前进展' })
+        return
+      }
+      if (!formData.content?.trim()) {
+        Toast.show({ icon: 'fail', content: '最终生成战报文本不能为空' })
+        return
+      }
+
+      const payload: any = {
+        event_type: 'marketing_report',
+        content: formData.content,
+        push_channel: 'all',
+        action_type: 'marketing_report',
+        customer_name: formData.customerName,
+        employee_name: user?.realName || user?.name || user?.username || '',
+        team_id: user?.teamId || null
+      }
+      
+      await executeSubmit(payload)
       return
     }
 
@@ -702,7 +1057,7 @@ export default function DailyReport() {
           * 选择填报动作类型
         </div>
         <Selector
-          options={ACTION_TYPE_OPTIONS}
+          options={actionOptions}
           value={[actionType]}
           onChange={(arr) => arr[0] && handleActionTypeChange(arr[0])}
           style={{
@@ -729,7 +1084,7 @@ export default function DailyReport() {
                 <Input
                   value={formData.customerName}
                   onChange={(val) => setFormData(prev => ({ ...prev, customerName: val }))}
-                  placeholder="请输入驻点地点，例如：茂名、广州"
+                  placeholder="请输入驻点区域+客户名称，例：廉江市自然资源局"
                   style={{
                     fontSize: 13,
                     border: '1px solid #e8e8e8',
@@ -772,21 +1127,198 @@ export default function DailyReport() {
                 />
               </Form.Item>
 
-              <Form.Item label="正文内容 (必填)">
-                <TextArea
-                  value={formData.content}
-                  onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
-                  placeholder="请输入具体政策或线索等播报正文内容..."
-                  rows={4}
-                  style={{
-                    fontSize: 13,
-                    border: '1px solid #e8e8e8',
-                    borderRadius: '6px',
-                    padding: '6px 10px',
-                    background: '#fff'
-                  }}
-                />
-              </Form.Item>
+              {/* 最新政策精细录入卡片 */}
+              {formData.actionDescription === 'policy' && (
+                <div style={{ background: '#fafafa', border: '1px solid #1677ff', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 'bold', color: '#1677ff', marginBottom: 8 }}>🏛️ 最新政策要素</div>
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>政策层级 (必选)</div>
+                  <Selector
+                    options={[
+                      { label: '国家级', value: '国家级' },
+                      { label: '省级', value: '省级' },
+                      { label: '市级', value: '市级' },
+                      { label: '县区级', value: '县区级' },
+                      { label: '其它', value: '其它' }
+                    ]}
+                    value={[policyLevel]}
+                    onChange={(arr) => setPolicyLevel(arr[0] || '省级')}
+                    style={{
+                      '--font-size': '11px',
+                      '--active-background-color': '#e6f7ff',
+                      '--active-border-color': '#1677ff',
+                      marginBottom: 8
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>业务机会 (选填)</div>
+                  <TextArea
+                    value={policyOpportunity}
+                    onChange={(val) => setPolicyOpportunity(val)}
+                    placeholder="例：1. XX项目可能在XX月启动招标"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>风险点 (选填)</div>
+                  <TextArea
+                    value={policyRisk}
+                    onChange={(val) => setPolicyRisk(val)}
+                    placeholder="例：2. 预算可能缩减，或者对原方案有调整风险"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>其他要点 (选填)</div>
+                  <TextArea
+                    value={policyOther}
+                    onChange={(val) => setPolicyOther(val)}
+                    placeholder="例：3. 其他需要注意的通知事项"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff' }}
+                  />
+                </div>
+              )}
+
+              {/* 重大会议部署精细录入卡片 */}
+              {formData.actionDescription === 'deployment' && (
+                <div style={{ background: '#fafafa', border: '1px solid #722ed1', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 'bold', color: '#722ed1', marginBottom: 8 }}>📋 重大会议部署要素</div>
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>会议主题 (必填)</div>
+                  <Input
+                    value={meetingSubject}
+                    onChange={(val) => setMeetingSubject(val)}
+                    placeholder="例：XXX工作部署会"
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>时间/地点 (必填)</div>
+                  <Input
+                    value={meetingTimePlace}
+                    onChange={(val) => setMeetingTimePlace(val)}
+                    placeholder="例：6月8日，3楼第一会议室"
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>主持/出席领导 (必填)</div>
+                  <Input
+                    value={meetingHost}
+                    onChange={(val) => setMeetingHost(val)}
+                    placeholder="例：分管副局长李某某"
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>项目方面要点 (选填)</div>
+                  <TextArea
+                    value={meetingProject}
+                    onChange={(val) => setMeetingProject(val)}
+                    placeholder="1、项目方面：...（名称、规模、主体）"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>资金方面要点 (选填)</div>
+                  <TextArea
+                    value={meetingFunds}
+                    onChange={(val) => setMeetingFunds(val)}
+                    placeholder="2、资金方面：...（额度、投向）"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>领导批示或决议 (选填)</div>
+                  <TextArea
+                    value={meetingInstructions}
+                    onChange={(val) => setMeetingInstructions(val)}
+                    placeholder="3、领导批示或核心决议"
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>时间要求 (选填)</div>
+                  <TextArea
+                    value={meetingDeadline}
+                    onChange={(val) => setMeetingDeadline(val)}
+                    placeholder="4、时间要求：..."
+                    rows={2}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff' }}
+                  />
+                </div>
+              )}
+
+              {/* 重大情报信息精细录入卡片 */}
+              {formData.actionDescription === 'intelligence' && (
+                <div style={{ background: '#fafafa', border: '1px solid #fa8c16', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 'bold', color: '#fa8c16', marginBottom: 8 }}>🔍 重大情报信息要素</div>
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>情报类型 (必选)</div>
+                  <Selector
+                    options={[
+                      { label: '同行项目', value: 'peer' },
+                      { label: '领导变动', value: 'personnel' },
+                      { label: '竞争对手', value: 'competitor' }
+                    ]}
+                    value={[intelligenceType]}
+                    onChange={(arr) => setIntelligenceType(arr[0] || 'peer')}
+                    style={{
+                      '--font-size': '11px',
+                      '--active-background-color': '#fef7e9',
+                      '--active-border-color': '#fa8c16',
+                      marginBottom: 8
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
+                    {intelligenceType === 'personnel'
+                      ? '人物与变动 (必填)'
+                      : intelligenceType === 'competitor'
+                      ? '对手与动向 (必填)'
+                      : '项目概况 (必填)'}
+                  </div>
+                  <TextArea
+                    value={intelligenceContent}
+                    onChange={(val) => setIntelligenceContent(val)}
+                    placeholder={
+                      intelligenceType === 'personnel'
+                        ? '输入领导变动的具体职位、姓名、分管方向等'
+                        : intelligenceType === 'competitor'
+                        ? '输入竞争对手的近期市场活动及主要走势等'
+                        : '输入同行在某地开展新型项目的具体规模、主体、模式等'
+                    }
+                    rows={3}
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>情报来源 (必填)</div>
+                  <Input
+                    value={intelligenceSource}
+                    onChange={(val) => setIntelligenceSource(val)}
+                    placeholder="例：XX单位XX人透露、现场实地观察"
+                    style={{ fontSize: 12, border: '1px solid #e8e8e8', borderRadius: 4, padding: 4, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>可靠性评估 (必选)</div>
+                  <Selector
+                    options={[
+                      { label: '高', value: '高' },
+                      { label: '中', value: '中' },
+                      { label: '低', value: '低' }
+                    ]}
+                    value={[intelligenceReliability]}
+                    onChange={(arr) => setIntelligenceReliability(arr[0] || '中')}
+                    style={{
+                      '--font-size': '11px',
+                      '--active-background-color': '#fef7e9',
+                      '--active-border-color': '#fa8c16'
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* 兜底正文 */}
+              {!['policy', 'deployment', 'intelligence'].includes(formData.actionDescription) && (
+                <Form.Item label="正文内容 (必填)">
+                  <TextArea
+                    value={formData.content}
+                    onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
+                    placeholder="请输入具体政策或线索等播报正文内容..."
+                    rows={4}
+                    style={{
+                      fontSize: 13,
+                      border: '1px solid #e8e8e8',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      background: '#fff'
+                    }}
+                  />
+                </Form.Item>
+              )}
 
               <Form.Item label="内容摘要 (选填，不填则自动生成)">
                 <TextArea
@@ -851,6 +1383,231 @@ export default function DailyReport() {
                     : '注意：文件将作为原始附件直接上传，不进行加密'}
                 </div>
               </Form.Item>
+            </Form>
+          </div>
+        )}
+
+        {/* 营销内部播报 */}
+        {actionType === 'marketing_report' && (
+          <div style={{ padding: '8px' }}>
+            <div style={{ borderBottom: '1px solid #f0f0f0', paddingBottom: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 'bold', color: '#722ed1' }}>
+                📢 营销内部播报内容提报
+              </span>
+            </div>
+
+            <Form layout="vertical">
+              <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>营销播报分类</span>}>
+                <Selector
+                  options={[
+                    { label: '日常工作', value: 'daily_work' },
+                    { label: '回款跟进', value: 'payment_followup' }
+                  ]}
+                  value={[formData.marketingCategory]}
+                  onChange={(arr) => {
+                    const val = arr[0] || ''
+                    handleMarketingFieldChange('marketingCategory', val)
+                  }}
+                  style={{
+                    '--font-size': '13px',
+                    '--active-background-color': '#f9f0ff',
+                    '--active-border-color': '#722ed1'
+                  }}
+                />
+              </Form.Item>
+
+              {formData.marketingCategory && (
+                <>
+                  <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>区域</span>}>
+                    <Button
+                      onClick={() => setRegionVisible(true)}
+                      style={{ width: '100%', textAlign: 'left', fontSize: 13, height: 38, borderRadius: 6, borderColor: '#d9d9d9', color: '#595959' }}
+                    >
+                      {formData.marketingRegion && formData.marketingRegion.length > 0
+                        ? formData.marketingRegion.join(' / ')
+                        : '请选择省/市/区'}
+                    </Button>
+                    <CascadePicker
+                      title='请选择省/市/区'
+                      options={REGION_OPTIONS}
+                      visible={regionVisible}
+                      value={formData.marketingRegion}
+                      onClose={() => setRegionVisible(false)}
+                      onConfirm={(val) => {
+                        handleMarketingFieldChange('marketingRegion', val as string[])
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>业主单位 (CRM 客户)</span>}>
+                    <div style={{ display: 'flex', alignItems: 'center', background: '#f5f5f5', borderRadius: 8, padding: '4px 10px', marginBottom: 8, border: '1px solid #e8e8e8' }}>
+                      <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+                      <Input
+                        placeholder="输入关键字检索并选择业主..."
+                        value={customerSearch}
+                        onChange={(val) => {
+                          setCustomerSearch(val)
+                          handleCustomerSearch(val)
+                        }}
+                        style={{ fontSize: 13 }}
+                      />
+                    </div>
+                    <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, background: '#fff', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }}>
+                      {crmCustomers.length === 0 ? (
+                        <div style={{ padding: '8px 12px', fontSize: 12, color: '#bfbfbf', textAlign: 'center' }}>无匹配的客户，可直接输入搜索词自动检索</div>
+                      ) : (
+                        crmCustomers.map((cust) => {
+                          const isSelected = formData.customerName === cust
+                          return (
+                            <div
+                              key={cust}
+                              onClick={() => {
+                                handleMarketingFieldChange('customerName', cust)
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                borderBottom: '1px solid #f5f5f5',
+                                background: isSelected ? '#f9f0ff' : '#fff',
+                                fontSize: 13,
+                                color: isSelected ? '#722ed1' : '#262626',
+                                fontWeight: isSelected ? 'bold' : 'normal'
+                              }}
+                            >
+                              {cust}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </Form.Item>
+
+                  <Form.Item label="科/股室 (选填)">
+                    <Input
+                      placeholder="请输入科/股室，例：开发利用科"
+                      value={formData.marketingSection}
+                      onChange={(val) => handleMarketingFieldChange('marketingSection', val)}
+                      style={{
+                        fontSize: 13,
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        background: '#fff'
+                      }}
+                    />
+                  </Form.Item>
+
+                  {formData.marketingCategory === 'daily_work' && (
+                    <Form.Item label="协助人 (选填)">
+                      <div style={{ display: 'flex', alignItems: 'center', background: '#f5f5f5', borderRadius: 8, padding: '4px 10px', marginBottom: 8, border: '1px solid #e8e8e8' }}>
+                        <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+                        <Input
+                          placeholder="搜索人员名字..."
+                          value={copartnerSearch}
+                          onChange={setCopartnerSearch}
+                          style={{ fontSize: 13 }}
+                        />
+                      </div>
+                      <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #e8e8e8', borderRadius: 8, padding: 8, background: '#fff', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }}>
+                        <Checkbox.Group
+                          value={formData.marketingAssistors}
+                          onChange={(val) => handleMarketingFieldChange('marketingAssistors', val as string[])}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {users
+                              .filter(u => u.name.toLowerCase().includes(copartnerSearch.toLowerCase()))
+                              .map(u => (
+                                <Checkbox key={u.id} value={u.name} style={{ '--font-size': '13px' }}>
+                                  {u.name}
+                                </Checkbox>
+                              ))}
+                          </div>
+                        </Checkbox.Group>
+                      </div>
+                    </Form.Item>
+                  )}
+
+                  {formData.marketingCategory === 'payment_followup' && (
+                    <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>关联合同项目 (可多选)</span>}>
+                      <div style={{ display: 'flex', alignItems: 'center', background: '#f5f5f5', borderRadius: 8, padding: '4px 10px', marginBottom: 8, border: '1px solid #e8e8e8' }}>
+                        <SearchOutline style={{ color: '#999', marginRight: 6 }} />
+                        <Input
+                          placeholder="搜索合同名称..."
+                          value={projectSearch}
+                          onChange={setProjectSearch}
+                          style={{ fontSize: 13 }}
+                        />
+                      </div>
+                      <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #e8e8e8', borderRadius: 8, padding: 8, background: '#fff', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }}>
+                        <Checkbox.Group
+                          value={formData.marketingContracts}
+                          onChange={(val) => handleMarketingFieldChange('marketingContracts', val as string[])}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {crmProjects
+                              .filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
+                              .map(p => (
+                                <Checkbox key={p.id} value={p.name} style={{ '--font-size': '13px' }}>
+                                  {p.name} (业主：{p.customer_name})
+                                </Checkbox>
+                              ))}
+                          </div>
+                        </Checkbox.Group>
+                      </div>
+                    </Form.Item>
+                  )}
+
+                  <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>事项当前进展</span>}>
+                    <TextArea
+                      placeholder="请输入当前事项进展情况..."
+                      value={formData.marketingProgress}
+                      onChange={(val) => handleMarketingFieldChange('marketingProgress', val)}
+                      rows={4}
+                      style={{
+                        fontSize: 13,
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        background: '#fff'
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item label={<span><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>是否重点信息</span>}>
+                    <Selector
+                      options={[
+                        { label: '是', value: 'yes' },
+                        { label: '否', value: 'no' }
+                      ]}
+                      value={[formData.marketingIsImportant]}
+                      onChange={(arr) => {
+                        const val = arr[0] || 'no'
+                        handleMarketingFieldChange('marketingIsImportant', val)
+                      }}
+                      style={{
+                        '--font-size': '13px',
+                        '--active-background-color': '#f9f0ff',
+                        '--active-border-color': '#722ed1'
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item label="需协助事项 (选填)">
+                    <TextArea
+                      placeholder="请输入需要协调解决或上级支持的事项..."
+                      value={formData.marketingHelpNeeded}
+                      onChange={(val) => handleMarketingFieldChange('marketingHelpNeeded', val)}
+                      rows={3}
+                      style={{
+                        fontSize: 13,
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        background: '#fff'
+                      }}
+                    />
+                  </Form.Item>
+                </>
+              )}
             </Form>
           </div>
         )}
@@ -993,20 +1750,18 @@ export default function DailyReport() {
                         <span style={{ fontSize: 12, flex: 2, textAlign: 'right', fontWeight: 'bold' }}>
                           {alloc.amount}万
                         </span>
-                        {alloc.user_id !== user?.id && (
-                          <Button
-                            size="mini"
-                            fill="none"
-                            color="danger"
-                            onClick={() => {
-                              const copy = deliveryAllocations.filter((_, i) => i !== idx)
-                              setDeliveryAllocations(copy)
-                              recalculateAllocations(formData.amount, copy, marketingAllocations)
-                            }}
-                          >
-                            <DeleteOutline />
-                          </Button>
-                        )}
+                        <Button
+                          size="mini"
+                          fill="none"
+                          color="danger"
+                          onClick={() => {
+                            const copy = deliveryAllocations.filter((_, i) => i !== idx)
+                            setDeliveryAllocations(copy)
+                            recalculateAllocations(formData.amount, copy, marketingAllocations)
+                          }}
+                        >
+                          <DeleteOutline />
+                        </Button>
                       </div>
                     )
                   })}

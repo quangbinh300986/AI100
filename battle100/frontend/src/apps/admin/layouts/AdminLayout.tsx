@@ -10,6 +10,7 @@ import {
   UserOutlined,
   SettingOutlined,
   CalendarOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -83,7 +84,8 @@ const AdminLayout: React.FC = () => {
       '2': ['admin', 'team_leader'],
       '3': ['admin', 'target_officer', 'digital_specialist'],
       '4': ['admin'],
-      '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing']
+      '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing'],
+      '6': ['admin', 'team_leader', 'target_officer', 'digital_specialist']
     }
     
     const checkPermission = (menuKey: string, permName: string) => {
@@ -102,6 +104,9 @@ const AdminLayout: React.FC = () => {
     
     if (path.includes('/admin/weekly-reports') && !checkPermission('5', 'view_weekly_reports')) {
       message.warning('无权访问周复盘汇总页面')
+      navigate('/admin/dashboard')
+    } else if (path.includes('/admin/team-weekly-reports') && !checkPermission('6', 'view_team_weekly_reports')) {
+      message.warning('无权访问团队整体周复盘页面')
       navigate('/admin/dashboard')
     } else if (path.includes('/admin/reports') && !checkPermission('2', 'view_reports')) {
       message.warning('无权访问播报管理页面')
@@ -146,6 +151,7 @@ const AdminLayout: React.FC = () => {
     const path = location.pathname
     if (path.includes('/admin/dashboard')) return '1'
     if (path.includes('/admin/weekly-reports')) return '5'
+    if (path.includes('/admin/team-weekly-reports')) return '6'
     if (path.includes('/admin/reports')) return '2'
     if (path.includes('/admin/goals')) return '3'
     if (path.includes('/admin/settings')) return '4'
@@ -170,6 +176,9 @@ const AdminLayout: React.FC = () => {
       case '5':
         navigate('/admin/weekly-reports')
         break
+      case '6':
+        navigate('/admin/team-weekly-reports')
+        break
     }
   }
 
@@ -188,7 +197,8 @@ const AdminLayout: React.FC = () => {
     '2': ['admin', 'team_leader'],
     '3': ['admin', 'target_officer', 'digital_specialist'],
     '4': ['admin'],
-    '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing']
+    '5': ['admin', 'team_leader', 'target_officer', 'digital_specialist', 'staff', 'marketing_staff', 'tech_marketing'],
+    '6': ['admin', 'team_leader', 'target_officer', 'digital_specialist']
   }
 
   // 映射菜单 key 到动态权限标识
@@ -197,7 +207,8 @@ const AdminLayout: React.FC = () => {
     '2': 'view_reports',
     '3': 'view_goals',
     '4': 'view_settings',
-    '5': 'view_weekly_reports'
+    '5': 'view_weekly_reports',
+    '6': 'view_team_weekly_reports'
   }
 
   // 基于动态权限与默认角色双轨兜底渲染菜单项
@@ -216,6 +227,11 @@ const AdminLayout: React.FC = () => {
       key: '5',
       icon: <CalendarOutlined />,
       label: '个人周复盘汇总',
+    },
+    {
+      key: '6',
+      icon: <TeamOutlined />,
+      label: '团队整体周复盘',
     },
     {
       key: '3',
@@ -316,7 +332,7 @@ const AdminLayout: React.FC = () => {
                 <Avatar icon={<UserOutlined />} />
                 <span>{user?.realName || user?.name || user?.username || '管理员'}</span>
                 <span style={{ fontSize: '12px', color: '#8c8c8c' }}>
-                  ({user?.role === 'admin' ? '系统管理员' : user?.role === 'target_officer' ? '目标官' : user?.role === 'digital_specialist' ? '数字专员' : '战队长'})
+                  ({user?.role === 'admin' ? '系统管理员' : user?.role === 'target_officer' ? '目标官' : user?.role === 'digital_specialist' ? '数字专员' : user?.role === 'team_leader' ? '战队长' : '队员'})
                 </span>
               </Space>
             </Dropdown>

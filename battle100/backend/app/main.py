@@ -201,6 +201,26 @@ app = FastAPI(
     description="中地顾问百日奋战冲刺管理系统API后端",
 )
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+import os
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    log_dir = r"c:\APP\AI100\battle100\backend\scratch"
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "error.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        traceback.print_exc(file=f)
+    
+    logger.error(f"全局捕获到异常: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器内部错误: {str(exc)}"}
+    )
+
+
 # CORS 配置
 app.add_middleware(
     CORSMiddleware,
