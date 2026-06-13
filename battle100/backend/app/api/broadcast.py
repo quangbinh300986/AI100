@@ -974,7 +974,7 @@ async def list_broadcasts(
     current_user: User = Depends(get_current_user),
 ):
     """获取播报列表（支持分页、关联战队、用户查询及模糊搜索）"""
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
 
@@ -1009,7 +1009,7 @@ async def list_broadcasts(
     # 过滤条件 (主列表默认过滤掉已删除/进入回收站的战报)
     query = query.where(BroadcastEvent.is_deleted == False)
     if team_id:
-        query = query.where(BroadcastEvent.team_id == team_id)
+        query = query.where(or_(BroadcastEvent.team_id == team_id, DbUser.team_id == team_id))
     if event_type:
         query = query.where(BroadcastEvent.event_type == event_type)
     if keyword:
@@ -1018,7 +1018,9 @@ async def list_broadcasts(
     # 计算总数
     count_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.is_deleted == False)
     if team_id:
-        count_stmt = count_stmt.where(BroadcastEvent.team_id == team_id)
+        count_stmt = count_stmt.outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id).where(
+            or_(BroadcastEvent.team_id == team_id, DbUser.team_id == team_id)
+        )
     if event_type:
         count_stmt = count_stmt.where(BroadcastEvent.event_type == event_type)
     if keyword:
@@ -2175,7 +2177,7 @@ async def export_broadcasts(
     from fastapi.responses import StreamingResponse
     import pandas as pd
     import io
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
 
@@ -2205,7 +2207,7 @@ async def export_broadcasts(
 
     # 过滤条件
     if team_id:
-        query = query.where(BroadcastEvent.team_id == team_id)
+        query = query.where(or_(BroadcastEvent.team_id == team_id, DbUser.team_id == team_id))
     if event_type:
         query = query.where(BroadcastEvent.event_type == event_type)
     if keyword:
