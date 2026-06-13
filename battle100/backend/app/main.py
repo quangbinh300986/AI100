@@ -221,10 +221,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# CORS 配置
+# CORS 配置，使用正则表达式允许所有 HTTP/HTTPS 域名的跨域请求与 WebSocket 连接，解决反向代理下的 403 问题
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
