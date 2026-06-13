@@ -3,13 +3,17 @@
 # 本地服务器执行：重建发布、备份数据库并传送至云服务器
 # -----------------------------------------------------------------------------
 
-echo "=== [1/3] 开始在本地数据库重建发布关系 (battle_pub) ==="
+echo "=== [1/3] 开始在本地数据库重建发布关系 (battle_pub) 并清理旧复制槽 ==="
 
-# 连入本地 AI100 数据库，重建发布关系，自动且天然包含该数据库中的所有表
+# 连入本地 AI100 数据库，重建发布关系，自动且天然包含该数据库中的所有表，并清理旧订阅残留的复制槽
 docker exec -i supabase-db psql -U postgres -d AI100 <<EOF
 DROP PUBLICATION IF EXISTS battle_pub;
-
 CREATE PUBLICATION battle_pub FOR ALL TABLES;
+
+-- 如果存在旧的复制槽，则先将其删除，防止云端重新激活订阅时因槽已存在而报错
+SELECT pg_drop_replication_slot('battle_sub') 
+FROM pg_replication_slots 
+WHERE slot_name = 'battle_sub';
 EOF
 
 if [ $? -eq 0 ]; then
