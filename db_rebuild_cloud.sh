@@ -3,58 +3,21 @@
 # 云服务器执行：清理旧数据、按本地备份还原、重新激活增量逻辑订阅
 # -----------------------------------------------------------------------------
 
-echo "=== [1/5] 开始清理云端旧订阅及 22 张核心业务表 ==="
+echo "=== [1/5] 开始清理旧订阅并彻底重建独立的 AI100 数据库 ==="
 
-# 连接到云端 supabase-db 容器，以超级管理员用户执行 SQL 清理旧表
-# 注：如果您的云端容器名不是 supabase-db，请修改为真实的容器名
+# 1. 尝试连接到已有 AI100 数据库删除逻辑订阅（若 AI100 尚未创建，报错将被忽略）
+docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 -c "DROP SUBSCRIPTION IF EXISTS battle_sub;" 2>/dev/null || true
+
+# 2. 连接到默认 postgres 数据库，彻底删除并重新创建全新的 AI100 数据库
 docker exec -i --user postgres supabase-db psql -U supabase_admin -d postgres <<EOF
--- 1. 删除已有的旧订阅
-DROP SUBSCRIPTION IF EXISTS battle_sub;
-
--- 2. 级联物理删除 22 张旧业务与配置表，确保结构和数据彻底清空
-DROP TABLE IF EXISTS 
-    weekly_reports, 
-    group_weekly_reports, 
-    happiness_standards, 
-    lead_conversions, 
-    committee_members, 
-    committees, 
-    audit_logs, 
-    role_permissions, 
-    weekly_targets, 
-    personal_goals, 
-    team_goals, 
-    broadcast_events, 
-    report_details, 
-    daily_reports, 
-    zones, 
-    teams, 
-    users,
-    kpi_likes,
-    kpi_comments,
-    llm_providers,
-    llm_models,
-    agent_routes
-CASCADE;
-
--- 3. 级联删除所有的自定义枚举类型，确保备份还原时能重新创建包含最新值的类型结构
-DROP TYPE IF EXISTS 
-    detailtype, 
-    eventtype, 
-    goaltype, 
-    positiontype, 
-    pushchannel, 
-    pushstatus, 
-    reportstatus, 
-    teamgoalcategory, 
-    userrole 
-CASCADE;
+DROP DATABASE IF EXISTS "AI100";
+CREATE DATABASE "AI100";
 EOF
 
 if [ $? -eq 0 ]; then
-    echo "✔ 云端核心表清理成功！"
+    echo "✔ 独立数据库 AI100 重新创建成功！"
 else
-    echo "❌ 云端核心表清理失败，请检查数据库连接状态！"
+    echo "❌ 重建 AI100 数据库失败，请检查云端数据库权限及连接状态！"
     exit 1
 fi
 
@@ -77,8 +40,8 @@ fi
 
 echo "✔ 找到备份文件: $SQL_PATH，开始导入..."
 
-# 将备份还原至云端数据库 (使用标准输入重定向解决容器内找不到宿主机文件的问题)
-docker exec -i --user postgres supabase-db psql -U supabase_admin -d postgres < "$SQL_PATH"
+# 将备份还原至云端刚刚创建的 AI100 数据库
+docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 < "$SQL_PATH"
 
 if [ $? -eq 0 ]; then
     echo "✔ 备份数据还原成功！"
@@ -90,7 +53,7 @@ fi
 echo "=== [3/5] 补建可能缺失的新表（防止 pg_dump 未包含） ==="
 
 # 显式创建 5 张新增表，IF NOT EXISTS 保证已存在的不会重复创建
-docker exec -i --user postgres supabase-db psql -U supabase_admin -d postgres <<EOF
+docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 <<EOF
 
 -- kpi_likes 点赞表
 CREATE TABLE IF NOT EXISTS kpi_likes (
@@ -167,7 +130,7 @@ fi
 echo "=== [4/5] 开始重新创建逻辑订阅连接 ==="
 
 # 重新建立订阅，启用增量实时同步（端口设为确认的 5432）
-docker exec -i --user postgres supabase-db psql -U supabase_admin -d postgres <<EOF
+docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 <<EOF
 CREATE SUBSCRIPTION battle_sub 
 CONNECTION 'host=175.178.74.222 port=5432 user=postgres dbname=AI100 password=e2bc56caf5860bc0ab930d787730ede4' 
 PUBLICATION battle_pub 
@@ -185,7 +148,7 @@ echo "=== [5/5] 验证同步就绪状态 ==="
 sleep 3
 
 # 查询各表同步状态，显示 s 或 r 代表正常
-docker exec -i --user postgres supabase-db psql -U supabase_admin -d postgres -P pager=off <<EOF
+docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 -P pager=off <<EOF
 SELECT srrelid::regclass AS relname, srsubstate FROM pg_subscription_rel;
 EOF
 
