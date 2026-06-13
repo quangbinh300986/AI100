@@ -5,37 +5,15 @@
 
 echo "=== [1/3] 开始在本地数据库重建发布关系 (battle_pub) ==="
 
-# 连入本地 AI100 数据库，重建发布，包含所有 22 张核心业务与配置表
+# 连入本地 AI100 数据库，重建发布关系，自动且天然包含该数据库中的所有表
 docker exec -i supabase-db psql -U postgres -d AI100 <<EOF
 DROP PUBLICATION IF EXISTS battle_pub;
 
-CREATE PUBLICATION battle_pub FOR TABLE 
-    users, 
-    teams, 
-    zones, 
-    daily_reports, 
-    report_details, 
-    broadcast_events, 
-    team_goals, 
-    personal_goals, 
-    weekly_targets, 
-    role_permissions, 
-    audit_logs, 
-    committees, 
-    committee_members, 
-    lead_conversions, 
-    happiness_standards,
-    weekly_reports,
-    group_weekly_reports,
-    kpi_likes,
-    kpi_comments,
-    llm_providers,
-    llm_models,
-    agent_routes;
+CREATE PUBLICATION battle_pub FOR ALL TABLES;
 EOF
 
 if [ $? -eq 0 ]; then
-    echo "✔ 本地发布重建成功: battle_pub (包含 22 张表)"
+    echo "✔ 本地发布重建成功: battle_pub (天然自动包含所有业务表)"
 else
     echo "❌ 本地发布重建失败，请检查容器及数据库连接！"
     exit 1

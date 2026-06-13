@@ -3,7 +3,7 @@
 # 云服务器执行：清理旧数据、按本地备份还原、重新激活增量逻辑订阅
 # -----------------------------------------------------------------------------
 
-echo "=== [1/5] 开始清理旧订阅并彻底重建独立的 AI100 数据库 ==="
+echo "=== [1/4] 开始清理旧订阅并彻底重建独立的 AI100 数据库 ==="
 
 # 1. 尝试连接到已有 AI100 数据库删除逻辑订阅（若 AI100 尚未创建，报错将被忽略）
 docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 -c "DROP SUBSCRIPTION IF EXISTS battle_sub;" 2>/dev/null || true
@@ -21,7 +21,7 @@ else
     exit 1
 fi
 
-echo "=== [2/5] 开始从本地备份文件还原表结构与存量数据 ==="
+echo "=== [2/4] 开始从本地备份文件还原表结构与存量数据 ==="
 
 # 自动检测备份文件路径 (优先使用刚刚 scp 传输到 /tmp 目录下的最新备份)
 SQL_PATH=""
@@ -49,85 +49,7 @@ else
     echo "❌ 备份数据还原失败！"
     exit 1
 fi
-
-echo "=== [3/5] 补建可能缺失的新表（防止 pg_dump 未包含） ==="
-
-# 显式创建 5 张新增表，IF NOT EXISTS 保证已存在的不会重复创建
-docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 <<EOF
-
--- kpi_likes 点赞表
-CREATE TABLE IF NOT EXISTS kpi_likes (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER NOT NULL,
-    target_type VARCHAR(50) NOT NULL,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- kpi_comments 评论表
-CREATE TABLE IF NOT EXISTS kpi_comments (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER NOT NULL,
-    target_type VARCHAR(50) NOT NULL,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- llm_providers 大模型提供商配置表
-CREATE TABLE IF NOT EXISTS llm_providers (
-    id VARCHAR(100) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    type VARCHAR(50) NOT NULL DEFAULT 'openai',
-    base_url VARCHAR(255) NOT NULL DEFAULT '',
-    api_key VARCHAR(1000) NOT NULL DEFAULT '',
-    enabled BOOLEAN NOT NULL DEFAULT false,
-    is_custom BOOLEAN NOT NULL DEFAULT false,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    website_official VARCHAR(255) NOT NULL DEFAULT '',
-    website_api_key VARCHAR(255) NOT NULL DEFAULT '',
-    website_docs VARCHAR(255) NOT NULL DEFAULT '',
-    website_models VARCHAR(255) NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- llm_models 大模型模型配置表
-CREATE TABLE IF NOT EXISTS llm_models (
-    id VARCHAR(200) PRIMARY KEY,
-    provider_id VARCHAR(100) NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
-    model_id VARCHAR(200) NOT NULL,
-    name VARCHAR(200) NOT NULL,
-    group_name VARCHAR(100),
-    enabled BOOLEAN NOT NULL DEFAULT false,
-    capabilities JSON NOT NULL DEFAULT '[]',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- agent_routes 智能体路由配置表
-CREATE TABLE IF NOT EXISTS agent_routes (
-    agent_role VARCHAR(100) PRIMARY KEY,
-    provider_id VARCHAR(100) NOT NULL,
-    model_id VARCHAR(200) NOT NULL,
-    agent_name VARCHAR(100),
-    agent_description VARCHAR(500),
-    system_prompt TEXT,
-    user_prompt TEXT,
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-EOF
-
-if [ $? -eq 0 ]; then
-    echo "✔ 新增表结构补建完成！"
-else
-    echo "❌ 新增表结构补建失败！"
-    exit 1
-fi
-
-echo "=== [4/5] 开始重新创建逻辑订阅连接 ==="
+echo "=== [3/4] 开始重新创建逻辑订阅连接 ==="
 
 # 重新建立订阅，启用增量实时同步（端口设为确认的 5432）
 docker exec -i --user postgres supabase-db psql -U supabase_admin -d AI100 <<EOF
@@ -144,7 +66,7 @@ else
     exit 1
 fi
 
-echo "=== [5/5] 验证同步就绪状态 ==="
+echo "=== [4/4] 验证同步就绪状态 ==="
 sleep 3
 
 # 查询各表同步状态，显示 s 或 r 代表正常
