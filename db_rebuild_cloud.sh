@@ -60,14 +60,14 @@ fi
 
 echo "=== [2/5] 开始从本地备份文件还原表结构与存量数据 ==="
 
-# 自动检测备份文件路径
+# 自动检测备份文件路径 (优先使用刚刚 scp 传输到 /tmp 目录下的最新备份)
 SQL_PATH=""
-if [ -f "./local_AI100_rebuild.sql" ]; then
-    SQL_PATH="./local_AI100_rebuild.sql"
+if [ -f "/tmp/local_AI100_rebuild.sql" ]; then
+    SQL_PATH="/tmp/local_AI100_rebuild.sql"
 elif [ -f "/home/ubuntu/local_AI100_rebuild.sql" ]; then
     SQL_PATH="/home/ubuntu/local_AI100_rebuild.sql"
-elif [ -f "/tmp/local_AI100_rebuild.sql" ]; then
-    SQL_PATH="/tmp/local_AI100_rebuild.sql"
+elif [ -f "./local_AI100_rebuild.sql" ]; then
+    SQL_PATH="./local_AI100_rebuild.sql"
 fi
 
 if [ -z "$SQL_PATH" ]; then
