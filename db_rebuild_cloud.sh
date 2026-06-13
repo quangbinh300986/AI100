@@ -36,6 +36,19 @@ DROP TABLE IF EXISTS
     llm_models,
     agent_routes
 CASCADE;
+
+-- 3. 级联删除所有的自定义枚举类型，确保备份还原时能重新创建包含最新值的类型结构
+DROP TYPE IF EXISTS 
+    detailtype, 
+    eventtype, 
+    goaltype, 
+    positiontype, 
+    pushchannel, 
+    pushstatus, 
+    reportstatus, 
+    teamgoalcategory, 
+    userrole 
+CASCADE;
 EOF
 
 if [ $? -eq 0 ]; then
