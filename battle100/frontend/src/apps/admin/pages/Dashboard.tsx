@@ -1318,7 +1318,7 @@ const Dashboard: React.FC = () => {
         leads: '新增有效商机线索明细',
         tenders: '公司累计中标项目明细',
         potential_leads: '潜力商机线索明细',
-        station_reports: '公司驻点前线播报明细',
+        station_reports: '公司市场信息前线播报明细',
         middle_office_report: '公司中台播报明细',
         happiness_committee: '公司幸福委播报明细'
       }
@@ -2154,6 +2154,10 @@ const Dashboard: React.FC = () => {
         const urgentStr = isUrgent ? '【紧急】' : ''
 
         if (values.stationCategory === 'policy') {
+          if (!fileList || fileList.length === 0) {
+            message.error('最新政策分类必须上传附件！')
+            return
+          }
           if (!values.policyLevel) {
             message.error('请选择政策层级！')
             return
@@ -2205,7 +2209,7 @@ const Dashboard: React.FC = () => {
             finalContent += `\n\n【会议要点】\n${points.join('\n\n')}`
           }
 
-          if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】')) {
+          if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】') && !finalTitle.startsWith('【会议部署】')) {
             finalTitle = `【会议】${urgentStr}${finalTitle}`
           }
         } else if (values.stationCategory === 'intelligence') {
@@ -2238,7 +2242,8 @@ const Dashboard: React.FC = () => {
 
         const formData = new FormData()
         formData.append('station_category', values.stationCategory)
-        formData.append('station_location', values.stationLocation)
+        formData.append('station_location', values.stationLocation || '')
+        formData.append('is_stationed', String(values.isStationed !== false))
         formData.append('title', finalTitle)
         formData.append('content', finalContent)
         if (values.summary) {
@@ -2262,7 +2267,7 @@ const Dashboard: React.FC = () => {
         })
         
         if (res) {
-          message.success('驻点快报发布成功，大屏端与钉钉已同步推送且附件已加密！')
+          message.success('市场信息前线播报发布成功，大屏端与钉钉已同步推送且附件已加密！')
           setBroadcastModalVisible(false)
           setCurrentActionType('')
           setFileList([])
@@ -2664,7 +2669,7 @@ const Dashboard: React.FC = () => {
         }
       case 'station_reports':
         return {
-          title: '📢 周前线驻点播报榜 (TOP 15)',
+          title: '📢 周市场信息前线播报榜 (TOP 15)',
           unit: '次',
           color: '#fa541c',
           list: data?.stationReportsBoard || []
@@ -3048,7 +3053,7 @@ const Dashboard: React.FC = () => {
             onClick={() => handleViewCompanyKpiDetail('station_reports')}
           >
             <Statistic
-              title="📢 驻点前线播报"
+              title="📢 市场信息前线播报"
               value={kpis?.stationReports?.value}
               styles={{ content: { color: '#fa541c', fontSize: 20, fontWeight: 700 } }}
               prefix={<SoundOutlined />}
@@ -3226,7 +3231,7 @@ const Dashboard: React.FC = () => {
                 { id: 'potential_leads', label: '潜力先锋', color: '#eb2f96' },
                 { id: 'happiness', label: '幸福卷王', color: '#52c41a' },
                 { id: 'triangle', label: '铁三角协作', color: '#fa8c16' },
-                { id: 'station_reports', label: '驻点播报', color: '#fa541c' }
+                { id: 'station_reports', label: '市场信息播报', color: '#fa541c' }
               ].map(t => {
                 const isActive = activeRankTab === t.id
                 return (
@@ -3872,7 +3877,7 @@ const Dashboard: React.FC = () => {
               <Select.Option value="contract">已完成合同签订（双方盖章）</Select.Option>
               <Select.Option value="triangle">铁三角联动</Select.Option>
               <Select.Option value="happiness">客户幸福动作</Select.Option>
-              <Select.Option value="station_report">驻点人员播报</Select.Option>
+              <Select.Option value="station_report">市场信息前线播报</Select.Option>
               {(user?.position_type === 'marketing' || user?.role === 'target_officer' || user?.role === 'admin') && (
                 <Select.Option value="marketing_report">营销内部播报</Select.Option>
               )}
@@ -3882,22 +3887,40 @@ const Dashboard: React.FC = () => {
           {currentActionType === 'station_report' && (
             <>
               <Form.Item
-                name="stationLocation"
-                label="驻点地点"
-                rules={[{ required: true, message: '请输入驻点地点（区域+客户名称）' }]}
+                name="isStationed"
+                label="是否为驻点人员"
+                initialValue={true}
               >
-                <Input placeholder="请输入驻点区域+客户名称，例：廉江市自然资源局；黄埔区九佛街道办" />
+                <Radio.Group>
+                  <Radio value={true}>是</Radio>
+                  <Radio value={false}>否</Radio>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.isStationed !== currentValues.isStationed}>
+                {({ getFieldValue }) => {
+                  const isStationed = getFieldValue('isStationed') !== false;
+                  return (
+                    <Form.Item
+                      name="stationLocation"
+                      label="地点"
+                      rules={[{ required: isStationed, message: '请输入地点' }]}
+                    >
+                      <Input placeholder="请输入区域+客户名称，例：廉江市自然资源局；黄埔区九佛街道办" />
+                    </Form.Item>
+                  );
+                }}
               </Form.Item>
 
               <Form.Item
                 name="stationCategory"
-                label="驻点播报分类"
-                rules={[{ required: true, message: '请选择驻点播报分类' }]}
+                label="播报分类"
+                rules={[{ required: true, message: '请选择播报分类' }]}
               >
                 <Select placeholder="请选择分类">
                   <Select.Option value="policy">🏛️ 最新政策</Select.Option>
-                  <Select.Option value="deployment">📋 重大会议部署</Select.Option>
-                  <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
+                  <Select.Option value="deployment">📋 会议部署</Select.Option>
+                  <Select.Option value="intelligence">🔍 情报信息</Select.Option>
                 </Select>
               </Form.Item>
 
@@ -3946,9 +3969,9 @@ const Dashboard: React.FC = () => {
                 </Card>
               )}
 
-              {/* 重大会议部署专属栏目 */}
+              {/* 会议部署专属栏目 */}
               {watchStationCategory === 'deployment' && (
-                <Card size="small" title="📋 重大会议部署要素录入" style={{ marginBottom: 16, borderColor: '#722ed1', background: '#fafafa' }}>
+                <Card size="small" title="📋 会议部署要素录入" style={{ marginBottom: 16, borderColor: '#722ed1', background: '#fafafa' }}>
                   <Form.Item
                     name="meetingSubject"
                     label="会议主题"
@@ -3997,9 +4020,9 @@ const Dashboard: React.FC = () => {
                 </Card>
               )}
 
-              {/* 重大情报信息专属栏目 */}
+              {/* 情报信息专属栏目 */}
               {watchStationCategory === 'intelligence' && (
-                <Card size="small" title="🔍 重大情报信息要素录入" style={{ marginBottom: 16, borderColor: '#fa8c16', background: '#fafafa' }}>
+                <Card size="small" title="🔍 情报信息要素录入" style={{ marginBottom: 16, borderColor: '#fa8c16', background: '#fafafa' }}>
                   <Form.Item
                     name="intelligenceType"
                     label="情报类型"
@@ -5253,7 +5276,7 @@ const Dashboard: React.FC = () => {
               {companyKpiDetailType === 'leads' && <span>🔍 新增有效商机线索明细</span>}
               {companyKpiDetailType === 'tenders' && <span>🏆 公司累计中标项目明细</span>}
               {companyKpiDetailType === 'potential_leads' && <span>🎯 潜力商机线索明细</span>}
-              {companyKpiDetailType === 'station_reports' && <span>📢 公司驻点前线播报明细</span>}
+              {companyKpiDetailType === 'station_reports' && <span>📢 公司市场信息前线播报明细</span>}
             </div>
             
             {/* 标题栏右侧的筛选组合栏，所有注释必须使用中文 */}
@@ -5420,7 +5443,7 @@ const Dashboard: React.FC = () => {
                         {companyKpiDetailType === 'leads' && '🔍 新增有效商机线索累计'}
                         {companyKpiDetailType === 'tenders' && '🏆 公司累计中标项目累计'}
                         {companyKpiDetailType === 'potential_leads' && '🎯 潜在线索确定累计'}
-                        {companyKpiDetailType === 'station_reports' && '📢 公司驻点前线播报累计'}
+                        {companyKpiDetailType === 'station_reports' && '📢 公司市场信息前线播报累计'}
                         {companyKpiDetailType === 'middle_office_report' && '📢 公司中台播报累计'}
                         {companyKpiDetailType === 'happiness_committee' && '😊 公司幸福委播报累计'}
                       </span>
@@ -5696,9 +5719,11 @@ const Dashboard: React.FC = () => {
                           { title: '播报日期', dataIndex: 'report_date', key: 'report_date', width: 110, align: 'center' },
                           { title: '提报人', dataIndex: 'reporter_name', key: 'reporter_name', width: 90, align: 'center' },
                           { title: '所属战队', dataIndex: 'team_name', key: 'team_name', width: 130 },
-                          { title: '驻点地点(子分类)', dataIndex: 'customer_name', key: 'customer_name', width: 180 },
+                          { title: '地点', dataIndex: 'station_location', key: 'station_location', width: 120 },
+                          { title: '分类', dataIndex: 'station_category', key: 'station_category', width: 120, align: 'center' },
+                          { title: '标题', dataIndex: 'title', key: 'title', width: 150 },
                           {
-                            title: '播报内容',
+                            title: '内容',
                             dataIndex: 'description',
                             key: 'description',
                             render: (val: string, record: any) => (

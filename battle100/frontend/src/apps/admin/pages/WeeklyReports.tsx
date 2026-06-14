@@ -26,7 +26,8 @@ import {
   FilterOutlined,
   EyeOutlined,
   DownloadOutlined,
-  SearchOutlined
+  SearchOutlined,
+  ExportOutlined
 } from '@ant-design/icons'
 import { get, post, put, del } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -156,6 +157,10 @@ const WeeklyReports: React.FC = () => {
   )
   const [weeklyReports, setWeeklyReports] = useState<any[]>([])
   const [weeklyLoading, setWeeklyLoading] = useState(false)
+  const [weeklyExportLoading, setWeeklyExportLoading] = useState(false)
+  const [crmExportLoading, setCrmExportLoading] = useState(false)
+  const [weeklyHorizontalExportLoading, setWeeklyHorizontalExportLoading] = useState(false)
+  const [crmHorizontalExportLoading, setCrmHorizontalExportLoading] = useState(false)
 
   // 周复盘汇总表分页状态
   const [weeklyPage, setWeeklyPage] = useState(1)
@@ -263,6 +268,52 @@ const WeeklyReports: React.FC = () => {
       }
     }
   }, [memberOptions])
+
+  // 动态获取导出周报文件的范围前缀，所有注释使用中文
+  const getExportScopeStr = () => {
+    let scopeStr = '公司全体'
+    
+    // 如果筛选了三级巴
+    if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+      let teamName = ''
+      // 优先从选中的 weeklyTeamId 中提取战队名称
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId
+      if (targetTeamId && targetTeamId !== 'all') {
+        const teamOpt = TEAM_OPTIONS.find(opt => String(opt.value) === String(targetTeamId))
+        if (teamOpt) {
+          teamName = teamOpt.label
+        }
+      }
+      
+      // 如果没有选定战队（选的是全部战队），则从 allUsers 中匹配该三级巴所对应的用户的战队
+      if (!teamName && allUsers && allUsers.length > 0) {
+        const matchedUser = allUsers.find((u: any) => u.third_class_bar === weeklyThirdBar && u.team_id)
+        if (matchedUser) {
+          const teamOpt = TEAM_OPTIONS.find(opt => String(opt.value) === String(matchedUser.team_id))
+          if (teamOpt) {
+            teamName = teamOpt.label
+          }
+        }
+      }
+      
+      if (teamName) {
+        scopeStr = `${teamName}_${weeklyThirdBar}`
+      } else {
+        scopeStr = weeklyThirdBar
+      }
+    } else {
+      // 没选三级巴，看看是否选了战队
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId
+      if (targetTeamId && targetTeamId !== 'all') {
+        const teamOpt = TEAM_OPTIONS.find(opt => String(opt.value) === String(targetTeamId))
+        if (teamOpt) {
+          scopeStr = teamOpt.label
+        }
+      }
+    }
+    
+    return scopeStr
+  }
 
   const handleAiOptimizeWeekly = async () => {
     const values = weeklyForm.getFieldsValue()
@@ -1119,6 +1170,170 @@ const WeeklyReports: React.FC = () => {
     }
   }
 
+  // 导出团队周报汇总为 Excel，所有注释使用中文
+  const handleExportWeeklyReports = async () => {
+    setWeeklyExportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/summary/export?start_date=${startDateStr}`
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const response = await get<any>(url, { responseType: 'blob' })
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${getExportScopeStr()}_团队周报汇总_${startDateStr}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success('团队周报导出成功')
+    } catch (err) {
+      console.error('导出周报汇总失败', err)
+      message.error('导出周报汇总失败')
+    } finally {
+      setWeeklyExportLoading(false)
+    }
+  }
+
+  // 导出团队 CRM 汇总为 Excel，所有注释使用中文
+  const handleExportCrmReports = async () => {
+    setCrmExportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/crm-summary/export?start_date=${startDateStr}`
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const response = await get<any>(url, { responseType: 'blob' })
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${getExportScopeStr()}_团队CRM汇总_${startDateStr}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success('团队CRM数据导出成功')
+    } catch (err) {
+      console.error('导出CRM汇总失败', err)
+      message.error('导出CRM汇总失败')
+    } finally {
+      setCrmExportLoading(false)
+    }
+  }
+
+  // 横版导出团队周报汇总为 Excel，所有注释使用中文
+  const handleExportWeeklyHorizontalReports = async () => {
+    setWeeklyHorizontalExportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/summary/export-horizontal?start_date=${startDateStr}`
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const response = await get<any>(url, { responseType: 'blob' })
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${getExportScopeStr()}_团队周报汇总_横版_${startDateStr}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success('团队周报横版导出成功')
+    } catch (err) {
+      console.error('横版导出周报汇总失败', err)
+      message.error('横版导出周报汇总失败')
+    } finally {
+      setWeeklyHorizontalExportLoading(false)
+    }
+  }
+
+  // 横版导出团队 CRM 汇总为 Excel，所有注释使用中文
+  const handleExportCrmHorizontalReports = async () => {
+    setCrmHorizontalExportLoading(true)
+    try {
+      const [mon] = getMondayAndSunday(weeklyDate)
+      const startDateStr = mon.format('YYYY-MM-DD')
+      
+      let url = `/reports/weekly/crm-summary/export-horizontal?start_date=${startDateStr}`
+      const targetTeamId = !isGlobalUser && user?.teamId ? String(user.teamId) : weeklyTeamId;
+      if (targetTeamId && targetTeamId !== 'all') {
+        url += `&team_id=${targetTeamId}`
+      }
+      if (weeklyThirdBar && weeklyThirdBar !== 'all') {
+        url += `&third_class_bar=${encodeURIComponent(weeklyThirdBar)}`
+      }
+      if (searchNames.length > 0) {
+        url += `&user_name=${encodeURIComponent(searchNames.join(','))}`
+      }
+      
+      const response = await get<any>(url, { responseType: 'blob' })
+      const blob = new Blob([response as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${getExportScopeStr()}_团队CRM汇总_横版_${startDateStr}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      message.success('团队CRM横版数据导出成功')
+    } catch (err) {
+      console.error('横版导出CRM汇总失败', err)
+      message.error('横版导出CRM汇总失败')
+    } finally {
+      setCrmHorizontalExportLoading(false)
+    }
+  }
+
   // 加载选定战队与选定周一的 CRM 业务数据汇总 (横板专用的分页拉取)，所有注释必须使用中文
   const loadCrmHorizontalReports = async () => {
     setCrmHorizontalLoading(true)
@@ -1625,6 +1840,34 @@ const WeeklyReports: React.FC = () => {
                   {hasMineReport ? '修改我的周报' : '填写我的周报'}
                 </Button>
               )}
+              <Button
+                icon={<ExportOutlined />}
+                loading={weeklyExportLoading}
+                onClick={handleExportWeeklyReports}
+              >
+                团队周报导出
+              </Button>
+              <Button
+                icon={<ExportOutlined />}
+                loading={crmExportLoading}
+                onClick={handleExportCrmReports}
+              >
+                团队 CRM 信息导出
+              </Button>
+              <Button
+                icon={<ExportOutlined />}
+                loading={weeklyHorizontalExportLoading}
+                onClick={handleExportWeeklyHorizontalReports}
+              >
+                团队周报横版导出
+              </Button>
+              <Button
+                icon={<ExportOutlined />}
+                loading={crmHorizontalExportLoading}
+                onClick={handleExportCrmHorizontalReports}
+              >
+                团队 CRM 信息横版导出
+              </Button>
 
             </Space>
           </Col>

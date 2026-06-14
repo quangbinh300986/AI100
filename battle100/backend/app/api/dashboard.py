@@ -3795,6 +3795,7 @@ async def get_company_kpi_detail(
                 BroadcastEvent.station_location,
                 BroadcastEvent.station_category,
                 BroadcastEvent.content,
+                BroadcastEvent.project_name,  # 关联战报标题
             )
             .select_from(BroadcastEvent)
             .outerjoin(User, BroadcastEvent.user_id == User.id)
@@ -3829,7 +3830,7 @@ async def get_company_kpi_detail(
                 "intelligence": "🔍情报信息",
             }
             cat_label = category_names.get(r.station_category, "驻点播报")
-            # 如果是重大会议部署，仅在大屏指标列表中展示其会议主题部分，所有注释必须使用中文
+            # 如果是会议部署，仅在大屏指标列表中展示其会议主题部分，所有注释必须使用中文
             clean_desc = r.content or "—"
             if r.station_category == 'deployment' and clean_desc and "【会议主题】" in clean_desc:
                 import re
@@ -3842,6 +3843,9 @@ async def get_company_kpi_detail(
                 "reporter_name": r.reporter_name or "—",
                 "team_name": r.team_name or "—",
                 "customer_name": f"【{r.station_location or '—'}】({cat_label})",
+                "station_location": r.station_location or "—",
+                "station_category": cat_label,
+                "title": r.project_name or "—",
                 "description": clean_desc,
             })
         # 批量注入社交统计字段
@@ -4537,6 +4541,7 @@ async def export_company_kpi_detail(
                     BroadcastEvent.station_location,
                     BroadcastEvent.station_category,
                     BroadcastEvent.content,
+                    BroadcastEvent.project_name,  # 关联战报标题
                 )
                 .select_from(BroadcastEvent)
                 .outerjoin(User, BroadcastEvent.user_id == User.id)
@@ -4570,7 +4575,7 @@ async def export_company_kpi_detail(
                     "intelligence": "🔍情报信息",
                 }
                 cat_label = category_names.get(r.station_category, "驻点播报")
-                # 如果是重大会议部署，仅在明细导出中展示其会议主题部分，所有注释必须使用中文
+                # 如果是会议部署，仅在明细导出中展示其会议主题部分，所有注释必须使用中文
                 clean_desc = r.content or "—"
                 if r.station_category == 'deployment' and clean_desc and "【会议主题】" in clean_desc:
                     import re
@@ -4582,7 +4587,9 @@ async def export_company_kpi_detail(
                     "report_date": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
                     "reporter_name": r.reporter_name or "—",
                     "team_name": r.team_name or "—",
-                    "customer_name": f"【{r.station_location or '—'}】({cat_label})",
+                    "station_location": r.station_location or "—",
+                    "station_category": cat_label,
+                    "title": r.project_name or "—",
                     "description": clean_desc,
                 })
             df = pd.DataFrame(list_data)
@@ -4592,10 +4599,12 @@ async def export_company_kpi_detail(
                     "report_date": "播报日期",
                     "reporter_name": "提报人",
                     "team_name": "所属战队",
-                    "customer_name": "驻点地点(子分类)",
-                    "description": "播报内容"
+                    "station_location": "地点",
+                    "station_category": "分类",
+                    "title": "标题",
+                    "description": "内容"
                 }, inplace=True)
-            sheet_name = "驻点前线播报明细"
+            sheet_name = "市场信息前线播报明细"
 
         elif kpi_type == "middle_office_report":
             from app.models.broadcast import BroadcastEvent

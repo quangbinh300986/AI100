@@ -32,7 +32,7 @@ Traceback (most recent call last):
   File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\fastapi\routing.py", line 328, in run_endpoint_function
     return await dependant.call(**values)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\APP\AI100\battle100\backend\app\api\dashboard.py", line 437, in get_dashboard_overview
-    target_date = date.today()
-                  ^^^^
-UnboundLocalError: cannot access local variable 'date' where it is not associated with a value
+  File "C:\APP\AI100\battle100\backend\app\api\reports.py", line 3105, in export_weekly_reports_summary
+    await log_action(
+          ^^^^^^^^^^^
+TypeError: log_action() missing 2 required positional arguments: 'target_module' and 'target_id'

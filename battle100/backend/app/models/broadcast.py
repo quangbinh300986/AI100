@@ -89,6 +89,9 @@ class BroadcastEvent(BaseModel):
     station_location: Mapped[str | None] = mapped_column(
         String(100), nullable=True, comment="驻点地点(如:广州/深圳/茂名)"
     )
+    is_stationed: Mapped[bool] = mapped_column(
+        Boolean, default=True, comment="是否为驻点人员"
+    )
     summary: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="内容摘要(用于钉钉消息预览)"
     )

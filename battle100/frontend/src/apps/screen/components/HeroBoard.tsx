@@ -103,7 +103,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
         }
       case 'station_reports':
         return {
-          title: '📢 周前线驻点播报榜 (当周前线快报次数)',
+          title: '📢 周市场信息前线播报榜 (当周前线快报次数)',
           unit: '次',
           isFloat: false,
           list: stationReportsBoard.length > 0 ? stationReportsBoard : defaultTriangle,
@@ -173,7 +173,7 @@ const HeroBoard: React.FC<HeroBoardProps> = ({
             { id: 'potential_leads', label: '潜力线索战将', gradient: 'linear-gradient(90deg, #eb2f96 0%, #ff85c0 100%)', shadow: 'rgba(235,47,150,0.25)' },
             { id: 'happiness', label: '幸福动作卷王', gradient: 'linear-gradient(90deg, #52c41a 0%, #95de64 100%)', shadow: 'rgba(82,196,26,0.25)' },
             { id: 'triangle', label: '铁三角协作', gradient: 'linear-gradient(90deg, #fa8c16 0%, #ffd591 100%)', shadow: 'rgba(250,140,22,0.25)' },
-            { id: 'station_reports', label: '驻点播报', gradient: 'linear-gradient(90deg, #fa541c 0%, #ff9c6e 100%)', shadow: 'rgba(250,84,28,0.25)' },
+            { id: 'station_reports', label: '市场信息播报', gradient: 'linear-gradient(90deg, #fa541c 0%, #ff9c6e 100%)', shadow: 'rgba(250,84,28,0.25)' },
           ].map((tab) => {
             const isActive = activeTab === tab.id
             return (

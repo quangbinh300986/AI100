@@ -499,13 +499,13 @@ class DingTalkClient:
         
         logger = logging.getLogger("battle100")
         try:
-            # 子分类名称映射
+            # 子分类名称映射，所有注释必须使用中文
             category_names = {
                 "policy": "🏛️ 最新政策",
-                "deployment": "📋 重大会议部署",
-                "intelligence": "🔍 重大情报信息",
+                "deployment": "📋 会议部署",
+                "intelligence": "🔍 情报信息",
             }
-            category_label = category_names.get(category, "📢 驻点人员播报")
+            category_label = category_names.get(category, "📢 市场信息前线播报")
             
             urgent_tag = "🔴 【紧急快报】" if is_urgent else "📢 "
             at_text = " @所有人" if is_urgent else ""

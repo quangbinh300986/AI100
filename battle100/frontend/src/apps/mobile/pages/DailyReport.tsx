@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox, CascadePicker } from 'antd-mobile'
+import { Form, Button, Toast, Selector, Stepper, TextArea, Input, Card, Modal, List, Checkbox, CascadePicker, Switch } from 'antd-mobile'
 import { CheckCircleFill, CloseCircleFill, AddOutline, DeleteOutline, SearchOutline } from 'antd-mobile-icons'
 import { get, post } from '@shared/api/client'
 import { useAuthStore } from '@shared/stores/authStore'
@@ -146,7 +146,7 @@ const ACTION_TYPE_OPTIONS = [
   { label: '已完成合同签订 (90%)', value: 'contract' },
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
-  { label: '驻点人员播报', value: 'station_report' },
+  { label: '市场信息前线播报', value: 'station_report' },
 ]
 
 export default function DailyReport() {
@@ -164,7 +164,7 @@ export default function DailyReport() {
     { label: '已完成合同签订 (90%)', value: 'contract' },
     { label: '铁三角联动', value: 'triangle' },
     { label: '客户幸福动作', value: 'happiness' },
-    { label: '驻点人员播报', value: 'station_report' },
+    { label: '市场信息前线播报', value: 'station_report' },
     ...(showMarketingReport ? [{ label: '营销内部播报', value: 'marketing_report' }] : [])
   ]
 
@@ -260,6 +260,7 @@ export default function DailyReport() {
   const [stationFiles, setStationFiles] = useState<File[]>([])
 
   // 驻点播报细化字段状态
+  const [isStationed, setIsStationed] = useState(true)
   const [policyLevel, setPolicyLevel] = useState('省级')
   const [policyOpportunity, setPolicyOpportunity] = useState('')
   const [policyRisk, setPolicyRisk] = useState('')
@@ -680,12 +681,12 @@ export default function DailyReport() {
         Toast.show({ icon: 'fail', content: '请输入标题' })
         return
       }
-      if (!formData.customerName?.trim()) {
-        Toast.show({ icon: 'fail', content: '请输入驻点地点' })
+      if (isStationed && !formData.customerName?.trim()) {
+        Toast.show({ icon: 'fail', content: '请输入地点' })
         return
       }
       if (!formData.actionDescription?.trim()) {
-        Toast.show({ icon: 'fail', content: '请选择驻点播报分类' })
+        Toast.show({ icon: 'fail', content: '请选择播报分类' })
         return
       }
 
@@ -695,6 +696,10 @@ export default function DailyReport() {
       const urgentStr = isUrgent ? '【紧急】' : ''
 
       if (formData.actionDescription === 'policy') {
+        if (!stationFiles || stationFiles.length === 0) {
+          Toast.show({ icon: 'fail', content: '最新政策分类必须上传附件！' })
+          return
+        }
         if (!policyLevel) {
           Toast.show({ icon: 'fail', content: '请选择政策层级' })
           return
@@ -754,7 +759,7 @@ export default function DailyReport() {
           finalContent += `\n\n【会议要点】\n${points.join('\n\n')}`
         }
 
-        if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】')) {
+        if (!finalTitle.startsWith('【会议】') && !finalTitle.startsWith('【重大会议部署】') && !finalTitle.startsWith('【会议部署】')) {
           finalTitle = `【会议】${urgentStr}${finalTitle}`
         }
       } else if (formData.actionDescription === 'intelligence') {
@@ -797,7 +802,8 @@ export default function DailyReport() {
       try {
         const formDataPayload = new FormData()
         formDataPayload.append('station_category', formData.actionDescription)
-        formDataPayload.append('station_location', formData.customerName)
+        formDataPayload.append('station_location', formData.customerName || '')
+        formDataPayload.append('is_stationed', String(isStationed !== false))
         formDataPayload.append('title', finalTitle)
         formDataPayload.append('content', finalContent)
         formDataPayload.append('is_urgent', String(isUrgent))
@@ -814,7 +820,7 @@ export default function DailyReport() {
         })
         if (res) {
           setSubmitted(true)
-          Toast.show({ icon: 'success', content: '驻点快报发布成功！' })
+          Toast.show({ icon: 'success', content: '市场信息前线播报发布成功！' })
         }
       } catch (err: any) {
         console.error(err)
@@ -1075,12 +1081,20 @@ export default function DailyReport() {
           <div style={{ padding: '8px' }}>
             <div style={{ borderBottom: '1px solid #eee', paddingBottom: 10, marginBottom: 12 }}>
               <span style={{ fontSize: 13, fontWeight: 'bold', color: '#1677ff' }}>
-                🏛️ 驻点人员播报内容填报
+                🏛️ 市场信息前线播报内容填报
               </span>
             </div>
             
             <Form layout="vertical">
-              <Form.Item label="驻点地点 (必填)">
+              <Form.Item label="是否为驻点人员">
+                <Switch
+                  checked={isStationed}
+                  onChange={(val) => setIsStationed(val)}
+                  style={{ '--checked-color': '#1677ff' }}
+                />
+              </Form.Item>
+
+              <Form.Item label={isStationed ? "地点 (必填)" : "地点 (选填)"}>
                 <Input
                   value={formData.customerName}
                   onChange={(val) => setFormData(prev => ({ ...prev, customerName: val }))}
@@ -1095,7 +1109,7 @@ export default function DailyReport() {
                 />
               </Form.Item>
 
-              <Form.Item label="驻点播报分类 (必填)">
+              <Form.Item label="播报分类 (必填)">
                 <Selector
                   options={[
                     { label: '🏛️ 最新政策', value: 'policy' },

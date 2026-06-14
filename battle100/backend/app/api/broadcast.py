@@ -530,6 +530,7 @@ class BroadcastResponse(BaseModel):
     # 驻点人员播报支持
     station_category: Optional[str] = None
     station_location: Optional[str] = None
+    is_stationed: Optional[bool] = True
     summary: Optional[str] = None
     attachment_urls: Optional[list] = None
     is_urgent: Optional[bool] = None
@@ -785,6 +786,7 @@ class BroadcastUpdate(BaseModel):
     # 驻点播报新增字段支持
     station_category: Optional[str] = None
     station_location: Optional[str] = None
+    is_stationed: Optional[bool] = None
     summary: Optional[str] = None
     is_urgent: Optional[bool] = None
     attachment_urls: Optional[list] = None
@@ -1221,6 +1223,15 @@ async def update_broadcast(
         event.station_category = broadcast_in.station_category
     if broadcast_in.station_location is not None:
         event.station_location = broadcast_in.station_location
+    if broadcast_in.is_stationed is not None:
+        event.is_stationed = broadcast_in.is_stationed
+        
+    # 如果最终为驻点人员，需要对地点做必填验证，所有注释必须使用中文
+    if event.event_type == EventType.STATION_REPORT.value:
+        if event.is_stationed is True:
+            if not event.station_location or not event.station_location.strip():
+                raise HTTPException(status_code=400, detail="驻点人员必须填写驻点地点")
+
     if broadcast_in.summary is not None:
         event.summary = broadcast_in.summary
     if broadcast_in.is_urgent is not None:
@@ -2338,8 +2349,9 @@ from app.services.file_encryption import FileEncryptionService
 @router.post("/station-report", summary="创建驻点人员播报")
 async def create_station_report(
     station_category: str = Form(..., description="policy/deployment/lead/intelligence"),
-    station_location: str = Form(..., description="驻点地点"),
+    station_location: Optional[str] = Form(None, description="驻点地点"),
     title: str = Form(..., description="标题"),
+    is_stationed: bool = Form(True, description="是否为驻点人员"),
     content: str = Form(..., description="正文内容"),
     summary: Optional[str] = Form(None, description="摘要"),
     is_urgent: bool = Form(False, description="是否紧急快报"),
@@ -2351,13 +2363,9 @@ async def create_station_report(
 ):
     """
     创建驻点人员播报并免审核发布
-    1. 接收文件，判断并限制总大小在 50MB 以内
-    2. 用 pyzipper 进行 AES-256 加密打包，生成 12 位解压密码
-    3. 上传到 Supabase 存储
-    4. 创建 BroadcastEvent
-    5. 后台触发钉钉 ActionCard 推送，解压密码直接包含在推送消息里
-    6. WebSocket 广播到大屏
     """
+    if is_stationed and (not station_location or not station_location.strip()):
+        raise HTTPException(status_code=400, detail="驻点人员必须填写驻点地点")
     def _log_err():
         import traceback
         import os
@@ -2464,6 +2472,7 @@ async def create_station_report(
         event_time=datetime.now(timezone.utc),
         station_category=station_category,
         station_location=station_location,
+        is_stationed=is_stationed,
         summary=summary or content[:150],
         attachment_urls=attachment_urls,
         attachment_password=password,

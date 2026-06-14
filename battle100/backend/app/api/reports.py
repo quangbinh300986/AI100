@@ -1184,13 +1184,14 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
  
                 # 8.3 已开发票还未到账的项目
                 unreceived_bill_sql = text("""
-                    SELECT DISTINCT p.project_name, br.bill_money, br.un_account_money, br.bill_create_date
+                    SELECT MIN(p.project_name) as project_name, br.bill_money, br.un_account_money, br.bill_create_date
                     FROM contract_un_receive_bill_not_receive br
                     INNER JOIN contract_project cp ON br.contract_id = cp.contract_id
                     INNER JOIN project p ON cp.project_id = p.id
                     WHERE p.project_manager = :real_name
                       AND br.un_account_money > 0
                       AND (p.project_status IS NULL OR (p.project_status != '已归档' AND p.project_status != '已结项'))
+                    GROUP BY br.contract_id, br.bill_money, br.un_account_money, br.bill_create_date
                 """)
                 unreceived_projects = conn.execute(unreceived_bill_sql, {"real_name": real_name}).mappings().all()
                 if unreceived_projects:
@@ -2966,3 +2967,1028 @@ async def sync_weekly_report_to_dingtalk_api(
         raise HTTPException(status_code=500, detail=err_msg)
 
     return {"message": "已成功同步填报至您的钉钉工作日志"}
+
+
+@router.get("/weekly/summary/export", summary="导出小组成员周复盘汇总表")
+async def export_weekly_reports_summary(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """导出周复盘数据大表为 Excel"""
+    from io import BytesIO
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+    from app.models.user import UserRole
+    
+    if current_user.role not in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value] and current_user.team_id is not None:
+        team_id = current_user.team_id
+
+    from app.models.user import User as DbUser
+    
+    query = select(
+        WeeklyReport.id,
+        WeeklyReport.user_id,
+        WeeklyReport.start_date,
+        WeeklyReport.end_date,
+        WeeklyReport.delivery_plan,
+        WeeklyReport.sales_plan,
+        WeeklyReport.delivery_actual,
+        WeeklyReport.sales_actual,
+        WeeklyReport.delivery_rate,
+        WeeklyReport.sales_rate,
+        WeeklyReport.delivery_highlights,
+        WeeklyReport.sales_highlights,
+        WeeklyReport.delivery_blockers,
+        WeeklyReport.sales_blockers,
+        WeeklyReport.delivery_support,
+        WeeklyReport.sales_support,
+        WeeklyReport.next_delivery_plan,
+        WeeklyReport.next_sales_plan,
+        WeeklyReport.status,
+        WeeklyReport.submitted_at,
+        WeeklyReport.created_at,
+        WeeklyReport.updated_at,
+        DbUser.name.label("user_name"),
+        DbUser.position_type.label("user_position_type"),
+        DbUser.role.label("user_role")
+    ).join(DbUser, WeeklyReport.user_id == DbUser.id)
+    
+    if team_id:
+        query = query.where(DbUser.team_id == team_id)
+        
+    if third_class_bar and third_class_bar != "all":
+        query = query.where(DbUser.third_class_bar == third_class_bar)
+        
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            from sqlalchemy import or_
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                query = query.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            query = query.where(DbUser.name.like(f"%{user_name}%"))
+            
+    query = query.where(WeeklyReport.start_date == start_date)
+    query = query.order_by(DbUser.name.asc())
+    
+    res = await db.execute(query)
+    rows = res.all()
+    
+    # 创建 Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "周报汇总"
+    
+    # 写入表头
+    headers = [
+        "成员姓名",
+        "岗位类型",
+        "本周目标计划",
+        "本周实际完成",
+        "达成率",
+        "本周亮点",
+        "本周卡点",
+        "支持协调需求",
+        "下周目标计划",
+        "状态",
+        "提交时间"
+    ]
+    ws.append(headers)
+    
+    from app.models.user import PositionType
+    for row in rows:
+        is_marketing = (
+            row.user_position_type == PositionType.MARKETING.value 
+            or row.user_role in [UserRole.TARGET_OFFICER.value, "marketing_staff", "tech_marketing"]
+        )
+        
+        # 根据角色选择字段
+        weekly_plan = row.sales_plan if is_marketing else row.delivery_plan
+        weekly_actual = row.sales_actual if is_marketing else row.delivery_actual
+        weekly_rate = row.sales_rate if is_marketing else row.delivery_rate
+        weekly_highlights = row.sales_highlights if is_marketing else row.delivery_highlights
+        weekly_blockers = row.sales_blockers if is_marketing else row.delivery_blockers
+        weekly_support = row.sales_support if is_marketing else row.delivery_support
+        weekly_next_plan = row.next_sales_plan if is_marketing else row.next_delivery_plan
+        
+        status_str = "已提交" if row.status == "submitted" else "草稿"
+        submitted_at_str = row.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if row.submitted_at else "—"
+        position_type_str = "营销" if is_marketing else "交付"
+        
+        ws.append([
+            row.user_name,
+            position_type_str,
+            weekly_plan or "—",
+            weekly_actual or "—",
+            weekly_rate or "—",
+            weekly_highlights or "—",
+            weekly_blockers or "—",
+            weekly_support or "—",
+            weekly_next_plan or "—",
+            status_str,
+            submitted_at_str
+        ])
+        
+    # 格式化与美化 Excel 样式
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    font_family = "微软雅黑"
+    
+    # 样式定义
+    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1890FF", end_color="1890FF", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    content_font = Font(name=font_family, size=10)
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left_top = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_side = Side(border_style="thin", color="D9D9D9")
+    thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    
+    # 设置表头样式
+    ws.row_dimensions[1].height = 28
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        
+    # 设置列宽
+    col_widths = {
+        1: 15,  # 成员姓名
+        2: 12,  # 岗位类型
+        3: 38,  # 本周目标计划
+        4: 38,  # 本周实际完成
+        5: 12,  # 达成率
+        6: 38,  # 本周亮点
+        7: 38,  # 本周卡点
+        8: 38,  # 支持协调需求
+        9: 38,  # 下周目标计划
+        10: 12, # 状态
+        11: 22, # 提交时间
+    }
+    for col_idx, width in col_widths.items():
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = width
+
+    # 设置内容样式与动态自适应行高
+    center_cols = {1, 2, 5, 10, 11} # 成员姓名、岗位类型、达成率、状态、提交时间居中，其余靠左顶端对齐
+    for r_idx in range(2, ws.max_row + 1):
+        max_lines = 1
+        for c_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = content_font
+            cell.border = thin_border
+            if c_idx in center_cols:
+                cell.alignment = align_center
+            else:
+                cell.alignment = align_left_top
+                
+            val = cell.value
+            if val and val != "—":
+                val_str = str(val)
+                col_width = col_widths.get(c_idx, 15)
+                char_per_line = max(5, int(col_width * 0.5))
+                segments = val_str.split("\n")
+                lines_count = 0
+                for seg in segments:
+                    seg_len = 0.0
+                    for char in seg:
+                        if ord(char) > 127:
+                            seg_len += 1.0
+                        else:
+                            seg_len += 0.5
+                    lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+                max_lines = max(max_lines, lines_count)
+                
+        ws.row_dimensions[r_idx].height = max(24, max_lines * 16 + 10)
+        
+    # 冻结首行首列 (B2单元格左上角被冻结)
+    ws.freeze_panes = "B2"
+    
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    # 计算文件名范围前缀
+    scope_str = "公司全体"
+    if third_class_bar and third_class_bar != "all":
+        from app.models.organization import Team as DbTeam
+        from app.models.user import User as DbUser
+        team_name_str = ""
+        if team_id:
+            stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        if not team_name_str:
+            stmt_team = select(DbTeam.name).join(DbUser, DbUser.team_id == DbTeam.id).where(DbUser.third_class_bar == third_class_bar).limit(1)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        
+        if team_name_str:
+            scope_str = f"{team_name_str}_{third_class_bar}"
+        else:
+            scope_str = third_class_bar
+    elif team_id:
+        from app.models.organization import Team as DbTeam
+        stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+        res_team = await db.execute(stmt_team)
+        team_name_str = res_team.scalar() or ""
+        if team_name_str:
+            scope_str = team_name_str
+            
+    filename = f"{scope_str}_团队周报汇总_{start_date}.xlsx"
+    filename_encoded = quote(filename)
+    
+    # 审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="EXPORT",
+        target_module="weekly_report",
+        target_id=0,
+        description=f"导出了小组成员周复盘汇总表，日期: {start_date}"
+    )
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
+    )
+
+
+@router.get("/weekly/crm-summary/export", summary="导出团队 CRM 业务数据汇总")
+async def export_weekly_reports_crm_summary(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """导出团队 CRM 业务数据汇总表为 Excel"""
+    from io import BytesIO
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+    from sqlalchemy import or_, and_
+    from app.models.user import User as DbUser, PositionType, UserRole
+    from app.models.organization import Team as DbTeam
+    from fastapi.concurrency import run_in_threadpool
+    import asyncio
+    
+    # 1. 确定当前用户可看的人员范围
+    stmt = select(
+        DbUser.id,
+        DbUser.name,
+        DbUser.third_class_bar,
+        DbUser.position_type,
+        DbUser.role,
+        DbTeam.name.label("team_name")
+    ).outerjoin(DbTeam, DbUser.team_id == DbTeam.id).where(DbUser.is_active == True)
+    
+    if current_user.role in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value]:
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+    else:
+        conditions = [DbUser.id == current_user.id]
+        if current_user.team_id is not None:
+            conditions.append(DbUser.team_id == current_user.team_id)
+        if current_user.third_class_bar:
+            conditions.append(and_(
+                DbUser.third_class_bar == current_user.third_class_bar,
+                DbUser.third_class_bar != None,
+                DbUser.third_class_bar != ""
+            ))
+        stmt = stmt.where(or_(*conditions))
+        
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+            
+    if third_class_bar and third_class_bar != "all":
+        stmt = stmt.where(DbUser.third_class_bar == third_class_bar)
+        
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                stmt = stmt.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            stmt = stmt.where(DbUser.name.like(f"%{user_name}%"))
+            
+    stmt = stmt.order_by(DbUser.name.asc())
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    # 2. 并发拉取 CRM 数据
+    async def fetch_user_crm_data(user_row):
+        is_marketing = (
+            user_row.position_type == PositionType.MARKETING 
+            or user_row.role in [UserRole.TARGET_OFFICER, UserRole.MARKETING_STAFF, UserRole.TECH_MARKETING]
+        )
+        # 调用跨库查询函数
+        crm_data = await run_in_threadpool(
+            sync_extract_crm_data, 
+            user_row.name,
+            start_date, 
+            is_marketing
+        )
+        return {
+            "user_name": user_row.name,
+            "third_class_bar": user_row.third_class_bar,
+            "team_name": user_row.team_name,
+            "crm_active_projects": crm_data.get("crm_active_projects"),
+            "crm_milestone_tasks": crm_data.get("crm_milestone_tasks"),
+            "crm_suspended_projects": crm_data.get("crm_suspended_projects"),
+            "crm_no_contract_warning": crm_data.get("crm_no_contract_warning"),
+            "crm_unbilled_warning": crm_data.get("crm_unbilled_warning"),
+            "crm_unreceived_warning": crm_data.get("crm_unreceived_warning"),
+            "crm_health_diagnosis": crm_data.get("crm_health_diagnosis")
+        }
+        
+    tasks = [fetch_user_crm_data(row) for row in rows]
+    items = await asyncio.gather(*tasks) if tasks else []
+    
+    # 3. 创建 Excel 并写入数据
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "团队CRM信息"
+    
+    headers = [
+        "成员姓名",
+        "三级巴",
+        "归属战队",
+        "正在实施项目进度",
+        "里程碑与交付动作明细",
+        "暂停或异常挂起项目",
+        "预设立立警 (超期未签合同)",
+        "交付卡点 (有进度未开票)",
+        "收欠款预警 (已开票未回款)",
+        "饱和度与健康度诊断"
+    ]
+    ws.append(headers)
+    
+    for item in items:
+        ws.append([
+            item["user_name"],
+            item["third_class_bar"] or "—",
+            item["team_name"] or "—",
+            item["crm_active_projects"] or "—",
+            item["crm_milestone_tasks"] or "—",
+            item["crm_suspended_projects"] or "—",
+            item["crm_no_contract_warning"] or "—",
+            item["crm_unbilled_warning"] or "—",
+            item["crm_unreceived_warning"] or "—",
+            item["crm_health_diagnosis"] or "—"
+        ])
+        
+    # 格式化与美化 Excel 样式
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    font_family = "微软雅黑"
+    
+    # 样式定义
+    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1890FF", end_color="1890FF", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    content_font = Font(name=font_family, size=10)
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left_top = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_side = Side(border_style="thin", color="D9D9D9")
+    thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    
+    # 设置表头样式
+    ws.row_dimensions[1].height = 28
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        
+    # 设置列宽
+    col_widths = {
+        1: 15,  # 成员姓名
+        2: 15,  # 三级巴
+        3: 15,  # 归属战队
+        4: 40,  # 正在实施项目进度
+        5: 40,  # 里里程碑与交付动作明细
+        6: 40,  # 暂停或异常挂起项目
+        7: 40,  # 预设立立警 (超期未签合同)
+        8: 40,  # 交付卡点 (有进度未开票)
+        9: 40,  # 收欠款预警 (已开票未回款)
+        10: 40, # 饱和度与健康度诊断
+    }
+    for col_idx, width in col_widths.items():
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = width
+
+    # 设置内容样式与动态自适应行高
+    center_cols = {1, 2, 3} # 成员姓名、三级巴、归属战队居中，其余靠左顶端对齐
+    for r_idx in range(2, ws.max_row + 1):
+        max_lines = 1
+        for c_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = content_font
+            cell.border = thin_border
+            if c_idx in center_cols:
+                cell.alignment = align_center
+            else:
+                cell.alignment = align_left_top
+                
+            val = cell.value
+            if val and val != "—":
+                val_str = str(val)
+                col_width = col_widths.get(c_idx, 15)
+                char_per_line = max(5, int(col_width * 0.5))
+                segments = val_str.split("\n")
+                lines_count = 0
+                for seg in segments:
+                    seg_len = 0.0
+                    for char in seg:
+                        if ord(char) > 127:
+                            seg_len += 1.0
+                        else:
+                            seg_len += 0.5
+                    lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+                max_lines = max(max_lines, lines_count)
+                
+        ws.row_dimensions[r_idx].height = max(24, max_lines * 16 + 10)
+        
+    # 冻结首行首列 (B2单元格左上角被冻结)
+    ws.freeze_panes = "B2"
+    
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    # 计算文件名范围前缀
+    scope_str = "公司全体"
+    if third_class_bar and third_class_bar != "all":
+        from app.models.organization import Team as DbTeam
+        from app.models.user import User as DbUser
+        team_name_str = ""
+        if team_id:
+            stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        if not team_name_str:
+            stmt_team = select(DbTeam.name).join(DbUser, DbUser.team_id == DbTeam.id).where(DbUser.third_class_bar == third_class_bar).limit(1)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        
+        if team_name_str:
+            scope_str = f"{team_name_str}_{third_class_bar}"
+        else:
+            scope_str = third_class_bar
+    elif team_id:
+        from app.models.organization import Team as DbTeam
+        stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+        res_team = await db.execute(stmt_team)
+        team_name_str = res_team.scalar() or ""
+        if team_name_str:
+            scope_str = team_name_str
+            
+    filename = f"{scope_str}_团队CRM汇总_{start_date}.xlsx"
+    filename_encoded = quote(filename)
+    
+    # 审计日志
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="EXPORT",
+        target_module="weekly_crm_report",
+        target_id=0,
+        description=f"导出了团队 CRM 业务数据汇总表，日期: {start_date}"
+    )
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
+    )
+
+
+@router.get("/weekly/summary/export-horizontal", summary="横版导出小组成员周复盘汇总表")
+async def export_weekly_reports_summary_horizontal(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """横版导出周复盘数据大表为 Excel"""
+    from io import BytesIO
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+    from app.models.user import UserRole
+    
+    if current_user.role not in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value] and current_user.team_id is not None:
+        team_id = current_user.team_id
+
+    from app.models.user import User as DbUser
+    
+    query = select(
+        WeeklyReport.id,
+        WeeklyReport.user_id,
+        WeeklyReport.start_date,
+        WeeklyReport.end_date,
+        WeeklyReport.delivery_plan,
+        WeeklyReport.sales_plan,
+        WeeklyReport.delivery_actual,
+        WeeklyReport.sales_actual,
+        WeeklyReport.delivery_rate,
+        WeeklyReport.sales_rate,
+        WeeklyReport.delivery_highlights,
+        WeeklyReport.sales_highlights,
+        WeeklyReport.delivery_blockers,
+        WeeklyReport.sales_blockers,
+        WeeklyReport.delivery_support,
+        WeeklyReport.sales_support,
+        WeeklyReport.next_delivery_plan,
+        WeeklyReport.next_sales_plan,
+        WeeklyReport.status,
+        WeeklyReport.submitted_at,
+        WeeklyReport.created_at,
+        WeeklyReport.updated_at,
+        DbUser.name.label("user_name"),
+        DbUser.position_type.label("user_position_type"),
+        DbUser.role.label("user_role")
+    ).join(DbUser, WeeklyReport.user_id == DbUser.id)
+    
+    if team_id:
+        query = query.where(DbUser.team_id == team_id)
+        
+    if third_class_bar and third_class_bar != "all":
+        query = query.where(DbUser.third_class_bar == third_class_bar)
+        
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            from sqlalchemy import or_
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                query = query.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            query = query.where(DbUser.name.like(f"%{user_name}%"))
+            
+    query = query.where(WeeklyReport.start_date == start_date)
+    query = query.order_by(DbUser.name.asc())
+    
+    res = await db.execute(query)
+    rows = res.all()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "周报汇总横版"
+    
+    # 构造表头：首列是维度，后面每一列是一个人的名字
+    headers = ["指标/维度"]
+    from app.models.user import PositionType
+    for row in rows:
+        is_marketing = (
+            row.user_position_type == PositionType.MARKETING.value 
+            or row.user_role in [UserRole.TARGET_OFFICER.value, "marketing_staff", "tech_marketing"]
+        )
+        post_str = "营销岗" if is_marketing else "交付岗"
+        headers.append(f"{row.user_name} ({post_str})")
+    
+    ws.append(headers)
+    
+    # 准备 6 行对应 6 个维度
+    dimensions = [
+        ("🎯 本周目标计划", "plan"),
+        ("🔥 本周实际完成", "actual"),
+        ("🏆 本周工作亮点", "highlights"),
+        ("🚧 本周工作卡点/难点", "blockers"),
+        ("🤝 需要支持协调", "support"),
+        ("🚀 下周工作目标", "next_plan")
+    ]
+    
+    for label, key in dimensions:
+        row_cells = [label]
+        for row in rows:
+            is_marketing = (
+                row.user_position_type == PositionType.MARKETING.value 
+                or row.user_role in [UserRole.TARGET_OFFICER.value, "marketing_staff", "tech_marketing"]
+            )
+            val = ""
+            if key == "plan":
+                val = row.sales_plan if is_marketing else row.delivery_plan
+            elif key == "actual":
+                val = row.sales_actual if is_marketing else row.delivery_actual
+            elif key == "highlights":
+                val = row.sales_highlights if is_marketing else row.delivery_highlights
+            elif key == "blockers":
+                val = row.sales_blockers if is_marketing else row.delivery_blockers
+            elif key == "support":
+                val = row.sales_support if is_marketing else row.delivery_support
+            elif key == "next_plan":
+                val = row.next_sales_plan if is_marketing else row.next_delivery_plan
+            
+            row_cells.append(val or "—")
+        ws.append(row_cells)
+        
+    # 格式化与美化 Excel 样式
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    font_family = "微软雅黑"
+    
+    # 样式定义
+    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1890FF", end_color="1890FF", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    content_font = Font(name=font_family, size=10)
+    dim_font = Font(name=font_family, size=10, bold=True, color="333333")
+    dim_fill = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    dim_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    align_left_top = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_side = Side(border_style="thin", color="D9D9D9")
+    thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    
+    # 设置表头样式
+    ws.row_dimensions[1].height = 28
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        
+    # 设置列宽
+    ws.column_dimensions[get_column_letter(1)].width = 24  # 指标/维度
+    for c_idx in range(2, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(c_idx)].width = 45  # 人员内容列
+
+    # 设置内容样式与动态自适应行高
+    for r_idx in range(2, ws.max_row + 1):
+        max_lines = 1
+        
+        # 第一列：维度标签
+        cell_dim = ws.cell(row=r_idx, column=1)
+        cell_dim.font = dim_font
+        cell_dim.fill = dim_fill
+        cell_dim.alignment = dim_align
+        cell_dim.border = thin_border
+        
+        val_dim = cell_dim.value
+        if val_dim and val_dim != "—":
+            val_str = str(val_dim)
+            char_per_line = max(5, int(24 * 0.5))
+            segments = val_str.split("\n")
+            lines_count = 0
+            for seg in segments:
+                seg_len = 0.0
+                for char in seg:
+                    if ord(char) > 127:
+                        seg_len += 1.0
+                    else:
+                        seg_len += 0.5
+                lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+            max_lines = max(max_lines, lines_count)
+        
+        # 后面每一列：成员的周报维度具体内容
+        for c_idx in range(2, len(headers) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = content_font
+            cell.alignment = align_left_top
+            cell.border = thin_border
+            
+            val = cell.value
+            if val and val != "—":
+                val_str = str(val)
+                char_per_line = max(5, int(45 * 0.5))
+                segments = val_str.split("\n")
+                lines_count = 0
+                for seg in segments:
+                    seg_len = 0.0
+                    for char in seg:
+                        if ord(char) > 127:
+                            seg_len += 1.0
+                        else:
+                            seg_len += 0.5
+                    lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+                max_lines = max(max_lines, lines_count)
+                
+        ws.row_dimensions[r_idx].height = max(24, max_lines * 16 + 10)
+        
+    # 冻结首行首列 (B2单元格左上角被冻结)
+    ws.freeze_panes = "B2"
+    
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    # 计算文件名范围前缀
+    scope_str = "公司全体"
+    if third_class_bar and third_class_bar != "all":
+        from app.models.organization import Team as DbTeam
+        from app.models.user import User as DbUser
+        team_name_str = ""
+        if team_id:
+            stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        if not team_name_str:
+            stmt_team = select(DbTeam.name).join(DbUser, DbUser.team_id == DbTeam.id).where(DbUser.third_class_bar == third_class_bar).limit(1)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        
+        if team_name_str:
+            scope_str = f"{team_name_str}_{third_class_bar}"
+        else:
+            scope_str = third_class_bar
+    elif team_id:
+        from app.models.organization import Team as DbTeam
+        stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+        res_team = await db.execute(stmt_team)
+        team_name_str = res_team.scalar() or ""
+        if team_name_str:
+            scope_str = team_name_str
+            
+    filename = f"{scope_str}_团队周报汇总_横版_{start_date}.xlsx"
+    filename_encoded = quote(filename)
+    
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="EXPORT",
+        target_module="weekly_report",
+        target_id=0,
+        description=f"横版导出了小组成员周报，日期: {start_date}"
+    )
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
+    )
+
+
+@router.get("/weekly/crm-summary/export-horizontal", summary="横版导出团队 CRM 业务数据汇总")
+async def export_weekly_reports_crm_summary_horizontal(
+    start_date: date = Query(..., description="周开始日期(周一)"),
+    team_id: int | None = Query(None, description="按战队/小组筛选"),
+    third_class_bar: str | None = Query(None, description="按三级巴筛选"),
+    user_name: str | None = Query(None, description="按人员姓名筛选"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("view_weekly_reports")),
+):
+    """横版导出团队 CRM 业务数据汇总表为 Excel"""
+    from io import BytesIO
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+    from sqlalchemy import or_, and_
+    from app.models.user import User as DbUser, PositionType, UserRole
+    from app.models.organization import Team as DbTeam
+    from fastapi.concurrency import run_in_threadpool
+    import asyncio
+    
+    stmt = select(
+        DbUser.id,
+        DbUser.name,
+        DbUser.third_class_bar,
+        DbUser.position_type,
+        DbUser.role,
+        DbTeam.name.label("team_name")
+    ).outerjoin(DbTeam, DbUser.team_id == DbTeam.id).where(DbUser.is_active == True)
+    
+    if current_user.role in [UserRole.ADMIN.value, UserRole.TARGET_OFFICER.value]:
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+    else:
+        conditions = [DbUser.id == current_user.id]
+        if current_user.team_id is not None:
+            conditions.append(DbUser.team_id == current_user.team_id)
+        if current_user.third_class_bar:
+            conditions.append(and_(
+                DbUser.third_class_bar == current_user.third_class_bar,
+                DbUser.third_class_bar != None,
+                DbUser.third_class_bar != ""
+            ))
+        stmt = stmt.where(or_(*conditions))
+        
+        if team_id:
+            stmt = stmt.where(DbUser.team_id == team_id)
+            
+    if third_class_bar and third_class_bar != "all":
+        stmt = stmt.where(DbUser.third_class_bar == third_class_bar)
+        
+    if user_name:
+        if "," in user_name or "，" in user_name:
+            names = [n.strip() for n in user_name.replace("，", ",").split(",") if n.strip()]
+            if names:
+                stmt = stmt.where(or_(*[DbUser.name.like(f"%{name}%") for name in names]))
+        else:
+            stmt = stmt.where(DbUser.name.like(f"%{user_name}%"))
+            
+    stmt = stmt.order_by(DbUser.name.asc())
+    res = await db.execute(stmt)
+    rows = res.all()
+    
+    async def fetch_user_crm_data(user_row):
+        is_marketing = (
+            user_row.position_type == PositionType.MARKETING 
+            or user_row.role in [UserRole.TARGET_OFFICER, UserRole.MARKETING_STAFF, UserRole.TECH_MARKETING]
+        )
+        crm_data = await run_in_threadpool(
+            sync_extract_crm_data, 
+            user_row.name,
+            start_date, 
+            is_marketing
+        )
+        return {
+            "user_name": user_row.name,
+            "crm_active_projects": crm_data.get("crm_active_projects"),
+            "crm_milestone_tasks": crm_data.get("crm_milestone_tasks"),
+            "crm_suspended_projects": crm_data.get("crm_suspended_projects"),
+            "crm_no_contract_warning": crm_data.get("crm_no_contract_warning"),
+            "crm_unbilled_warning": crm_data.get("crm_unbilled_warning"),
+            "crm_unreceived_warning": crm_data.get("crm_unreceived_warning"),
+            "crm_health_diagnosis": crm_data.get("crm_health_diagnosis")
+        }
+        
+    tasks = [fetch_user_crm_data(row) for row in rows]
+    items = await asyncio.gather(*tasks) if tasks else []
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "CRM汇总横版"
+    
+    # 构造表头：列是人名
+    headers = ["指标/维度"]
+    for item in items:
+        headers.append(item["user_name"])
+    ws.append(headers)
+    
+    dimensions = [
+        ("💻 正在实施项目进度", "crm_active_projects"),
+        ("🎯 里程碑与交付动作", "crm_milestone_tasks"),
+        ("⚠️ 暂停或异常挂起项目", "crm_suspended_projects"),
+        ("🔴 合同超期未签预警", "crm_no_contract_warning"),
+        ("🟡 有进度未开票卡点", "crm_unbilled_warning"),
+        ("🔴 已开票未回款预警", "crm_unreceived_warning"),
+        ("🩺 饱和度与健康度诊断", "crm_health_diagnosis")
+    ]
+    
+    for label, key in dimensions:
+        row_cells = [label]
+        for item in items:
+            row_cells.append(item[key] or "—")
+        ws.append(row_cells)
+        
+    # 格式化与美化 Excel 样式
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    font_family = "微软雅黑"
+    
+    # 样式定义
+    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1890FF", end_color="1890FF", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    content_font = Font(name=font_family, size=10)
+    dim_font = Font(name=font_family, size=10, bold=True, color="333333")
+    dim_fill = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    dim_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    align_left_top = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_side = Side(border_style="thin", color="D9D9D9")
+    thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    
+    # 设置表头样式
+    ws.row_dimensions[1].height = 28
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        
+    # 设置列宽
+    ws.column_dimensions[get_column_letter(1)].width = 24  # 指标/维度
+    for c_idx in range(2, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(c_idx)].width = 45  # 人员内容列
+
+    # 设置内容样式与动态自适应行高
+    for r_idx in range(2, ws.max_row + 1):
+        max_lines = 1
+        
+        # 第一列：维度标签
+        cell_dim = ws.cell(row=r_idx, column=1)
+        cell_dim.font = dim_font
+        cell_dim.fill = dim_fill
+        cell_dim.alignment = dim_align
+        cell_dim.border = thin_border
+        
+        val_dim = cell_dim.value
+        if val_dim and val_dim != "—":
+            val_str = str(val_dim)
+            char_per_line = max(5, int(24 * 0.5))
+            segments = val_str.split("\n")
+            lines_count = 0
+            for seg in segments:
+                seg_len = 0.0
+                for char in seg:
+                    if ord(char) > 127:
+                        seg_len += 1.0
+                    else:
+                        seg_len += 0.5
+                lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+            max_lines = max(max_lines, lines_count)
+        
+        # 后面每一列：成员的 CRM 维度具体内容
+        for c_idx in range(2, len(headers) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = content_font
+            cell.alignment = align_left_top
+            cell.border = thin_border
+            
+            val = cell.value
+            if val and val != "—":
+                val_str = str(val)
+                char_per_line = max(5, int(45 * 0.5))
+                segments = val_str.split("\n")
+                lines_count = 0
+                for seg in segments:
+                    seg_len = 0.0
+                    for char in seg:
+                        if ord(char) > 127:
+                            seg_len += 1.0
+                        else:
+                            seg_len += 0.5
+                    lines_count += max(1, int(seg_len / char_per_line) + (1 if seg_len % char_per_line > 0 else 0))
+                max_lines = max(max_lines, lines_count)
+                
+        ws.row_dimensions[r_idx].height = max(24, max_lines * 16 + 10)
+        
+    # 冻结首行首列 (B2单元格左上角被冻结)
+    ws.freeze_panes = "B2"
+    
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    # 计算文件名范围前缀
+    scope_str = "公司全体"
+    if third_class_bar and third_class_bar != "all":
+        from app.models.organization import Team as DbTeam
+        from app.models.user import User as DbUser
+        team_name_str = ""
+        if team_id:
+            stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        if not team_name_str:
+            stmt_team = select(DbTeam.name).join(DbUser, DbUser.team_id == DbTeam.id).where(DbUser.third_class_bar == third_class_bar).limit(1)
+            res_team = await db.execute(stmt_team)
+            team_name_str = res_team.scalar() or ""
+        
+        if team_name_str:
+            scope_str = f"{team_name_str}_{third_class_bar}"
+        else:
+            scope_str = third_class_bar
+    elif team_id:
+        from app.models.organization import Team as DbTeam
+        stmt_team = select(DbTeam.name).where(DbTeam.id == team_id)
+        res_team = await db.execute(stmt_team)
+        team_name_str = res_team.scalar() or ""
+        if team_name_str:
+            scope_str = team_name_str
+            
+    filename = f"{scope_str}_团队CRM汇总_横版_{start_date}.xlsx"
+    filename_encoded = quote(filename)
+    
+    await log_action(
+        db=db,
+        user=current_user,
+        action_type="EXPORT",
+        target_module="weekly_crm_report",
+        target_id=0,
+        description=f"横版导出了团队 CRM 业务数据，日期: {start_date}"
+    )
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
+    )

@@ -554,7 +554,7 @@ export default function Home() {
     {
       key: 'stationReports',
       type: 'station_reports',
-      title: '驻点前线播报',
+      title: '市场信息前线播报',
       value: `${companyStats.stationReports.value} 次`,
       target: `${companyStats.stationReports.target}次`,
       percentage: companyStats.stationReports.percentage,

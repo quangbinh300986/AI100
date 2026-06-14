@@ -180,10 +180,10 @@ class WeeklyReport(BaseModel):
     
     # 达成情况
     delivery_rate: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="项目达成率"
+        Text, nullable=True, comment="项目达成率"
     )
     sales_rate: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, comment="销售达成率"
+        Text, nullable=True, comment="销售达成率"
     )
     
     # 本周亮点

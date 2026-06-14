@@ -23,7 +23,8 @@ import {
   Checkbox,
   Upload,
   Tabs,
-  DatePicker
+  DatePicker,
+  Radio
 } from 'antd'
 import { HAPPINESS_STANDARDS } from '@shared/data/happinessStandards'
 import {
@@ -69,7 +70,7 @@ const EVENT_TYPE_OPTIONS = [
   { label: '已完成合同签订 (90%)', value: 'contract_signed' },
   { label: '铁三角联动', value: 'triangle' },
   { label: '客户幸福动作', value: 'happiness' },
-  { label: '驻点快报', value: 'station_report' },
+  { label: '市场信息前线播报', value: 'station_report' },
   { label: '中台播报', value: 'middle_office_report' },
   { label: '幸福委播报', value: 'happiness_committee' },
 ]
@@ -941,6 +942,13 @@ const Reports: React.FC = () => {
   const handleEditSubmit = async (values: any) => {
     if (!selectedBroadcast) return
 
+    if (editEventType === 'station_report' && values.station_category === 'policy') {
+      if (!editFileList || editFileList.length === 0) {
+        message.error('最新政策分类必须上传附件！')
+        return
+      }
+    }
+
     // 针对合同新签类型的分摊和进行校验
     if (editEventType === 'contract_signed') {
       const dAllocs = values.delivery_allocations || []
@@ -999,10 +1007,11 @@ const Reports: React.FC = () => {
       }
       if (editEventType === 'station_report') {
         payload.project_name = values.project_name
-        payload.station_location = values.station_location
+        payload.station_location = values.station_location || ''
         payload.station_category = values.station_category
         payload.summary = values.summary
         payload.is_urgent = !!values.is_urgent
+        payload.is_stationed = values.is_stationed !== false
       }
 
       if (['contract_signed', 'happiness', 'triangle', 'potential_lead'].includes(editEventType)) {
@@ -1053,7 +1062,7 @@ const Reports: React.FC = () => {
           label = '客户幸福动作'
           color = 'purple'
         } else if (val === 'station_report') {
-          label = '驻点快报'
+          label = '市场信息前线播报'
           color = 'cyan'
         } else if (val === 'middle_office_report') {
           label = '中台播报'
@@ -1070,7 +1079,7 @@ const Reports: React.FC = () => {
       dataIndex: 'content',
       key: 'content',
       render: (val: string, record: any) => {
-        // 如果是驻点快报的“重大会议部署”分类，且包含“【会议主题】”，则只提取展示会议主题部分以避免展示文本过长，所有注释必须使用中文
+        // 如果是市场信息前线播报的“会议部署”分类，且包含“【会议主题】”，则只提取展示会议主题部分以避免展示文本过长，所有注释必须使用中文
         const displayVal = (record.event_type === 'station_report' && record.station_category === 'deployment' && val && val.includes('【会议主题】'))
           ? (val.match(/(【会议主题】[\s\S]*?)(?=【|$)/)?.[1]?.trim() || val)
           : val;
@@ -1297,7 +1306,8 @@ const Reports: React.FC = () => {
                 station_location: (record as any).station_location || '',
                 station_category: (record as any).station_category || '',
                 summary: (record as any).summary || '',
-                is_urgent: (record as any).is_urgent || false
+                is_urgent: (record as any).is_urgent || false,
+                is_stationed: (record as any).is_stationed !== false
               })
               setEditVisible(true)
             }}
@@ -2071,6 +2081,17 @@ const Reports: React.FC = () => {
           {editEventType === 'station_report' && (
             <>
               <Form.Item
+                name="is_stationed"
+                label="是否为驻点人员"
+                initialValue={true}
+              >
+                <Radio.Group>
+                  <Radio value={true}>是</Radio>
+                  <Radio value={false}>否</Radio>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item
                 name="project_name"
                 label="播报标题"
                 rules={[{ required: true, message: '请输入播报标题' }]}
@@ -2080,24 +2101,31 @@ const Reports: React.FC = () => {
 
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item
-                    name="station_location"
-                    label="驻点地点"
-                    rules={[{ required: true, message: '请输入驻点地点' }]}
-                  >
-                    <Input placeholder="如: 广州/深圳/茂名" />
+                  <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.is_stationed !== currentValues.is_stationed}>
+                    {({ getFieldValue }) => {
+                      const isStationed = getFieldValue('is_stationed') !== false;
+                      return (
+                        <Form.Item
+                          name="station_location"
+                          label="地点"
+                          rules={[{ required: isStationed, message: '请输入地点' }]}
+                        >
+                          <Input placeholder="如: 广州/深圳/茂名" />
+                        </Form.Item>
+                      );
+                    }}
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item
                     name="station_category"
-                    label="驻点播报分类"
-                    rules={[{ required: true, message: '请选择驻点播报分类' }]}
+                    label="播报分类"
+                    rules={[{ required: true, message: '请选择播报分类' }]}
                   >
                     <Select placeholder="请选择分类">
                       <Select.Option value="policy">🏛️ 最新政策</Select.Option>
-                      <Select.Option value="deployment">📋 重大会议部署</Select.Option>
-                      <Select.Option value="intelligence">🔍 重大情报信息</Select.Option>
+                      <Select.Option value="deployment">📋 会议部署</Select.Option>
+                      <Select.Option value="intelligence">🔍 情报信息</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -2695,7 +2723,7 @@ const Reports: React.FC = () => {
                     deployment: '📋 会议部署',
                     intelligence: '🔍 情报信息'
                   }
-                  const label = catMap[record.station_category] || '驻点快报'
+                  const label = catMap[record.station_category] || '市场信息前线播报'
                   return <Tag color="cyan">{label}</Tag>
                 }
                 const typeMap: any = {
