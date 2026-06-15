@@ -561,28 +561,15 @@ export default function DailyReport() {
   }
 
   // 幸福动作文本生成
-  const updateHappinessContent = (
-    score: number,
-    desc: string,
-    customer: string,
-    projName?: string,
-    result?: string,
-    feedback?: string,
-    recommend?: string
-  ) => {
+  const updateHappinessContent = (partial: Partial<typeof formData> = {}) => {
+    const data = { ...formData, ...partial }
     const prefix = '奋战一百天，亮剑破六千！今日'
     const resolvedName = user?.realName || user?.name || user?.username || 'XX'
     
-    // 如果未传入则回退至当前 formData 状态值
-    const activeProj = projName !== undefined ? projName : formData.projectName;
-    const activeResult = result !== undefined ? result : formData.happinessResult;
-    const activeFeedback = feedback !== undefined ? feedback : formData.happinessFeedback;
-    const activeRecommend = recommend !== undefined ? recommend : formData.recommendAction;
-
-    const feedbackLine = activeFeedback ? `\n客户反馈：${activeFeedback}。` : '';
-    const projectPart = activeProj ? `，关联项目【${activeProj}】` : '，关联项目【未定】';
-    const generated = `${prefix}我司【${resolvedName}】做到客户幸福标准【${score}分】动作，对象为【${customer || 'XX'}】${projectPart}，动作描述：${desc || 'XX'}。\n成果：${activeResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${activeRecommend || 'XX'}。\n为客户幸福而奋斗，赢战百日！`
-    setFormData(prev => ({ ...prev, content: generated }))
+    const feedbackLine = data.happinessFeedback ? `\n客户反馈：${data.happinessFeedback}。` : '';
+    const projectPart = data.projectName ? `，关联项目【${data.projectName}】` : '，关联项目【未定】';
+    const generated = `${prefix}我司【${resolvedName}】做到客户幸福标准【${data.happinessScore}分】动作，对象为【${data.customerName || 'XX'}】${projectPart}，动作描述：${data.actionDescription || 'XX'}。\n成果：${data.happinessResult || 'XX'}。${feedbackLine}\n内部可推广复制的做法：${data.recommendAction || 'XX'}。\n为客户幸福而奋斗，赢战百日！`
+    setFormData(prev => ({ ...prev, ...partial, content: generated }))
   }
 
   // 铁三角联动文本生成
@@ -2127,8 +2114,7 @@ export default function DailyReport() {
                 value={projectSearchKeyword}
                 onChange={(val) => {
                   setProjectSearchKeyword(val)
-                  setFormData(prev => ({ ...prev, projectName: val || '未定' }))
-                  updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, val || '未定')
+                  updateHappinessContent({ projectName: val || '未定' })
                   handleProjectSearch(val)
                 }}
                 style={{ fontSize: 13 }}
@@ -2141,8 +2127,7 @@ export default function DailyReport() {
                   <div
                     key={proj}
                     onClick={() => {
-                      setFormData(prev => ({ ...prev, projectName: proj }))
-                      updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, proj)
+                      updateHappinessContent({ projectName: proj })
                       setProjectSearchKeyword('')
                     }}
                     style={{
@@ -2171,8 +2156,7 @@ export default function DailyReport() {
                 value={customerSearch}
                 onChange={(val) => {
                   setCustomerSearch(val)
-                  setFormData(prev => ({ ...prev, customerName: val }))
-                  updateHappinessContent(formData.happinessScore, formData.actionDescription, val)
+                  updateHappinessContent({ customerName: val })
                   handleCustomerSearch(val)
                 }}
                 style={{ fontSize: 13 }}
@@ -2185,8 +2169,7 @@ export default function DailyReport() {
                   <div
                     key={cust}
                     onClick={() => {
-                      setFormData(prev => ({ ...prev, customerName: cust }))
-                      updateHappinessContent(formData.happinessScore, formData.actionDescription, cust)
+                      updateHappinessContent({ customerName: cust })
                       setCustomerSearch('')
                     }}
                     style={{
@@ -2224,8 +2207,7 @@ export default function DailyReport() {
                     <Button
                       size="mini"
                       onClick={() => {
-                        setFormData(prev => ({ ...prev, projectName: '未定' }))
-                        updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, '未定')
+                        updateHappinessContent({ projectName: '未定' })
                       }}
                     >
                       清除
@@ -2261,13 +2243,11 @@ export default function DailyReport() {
                   value={[formData.happinessScore]}
                   onChange={(arr) => {
                     const val = arr[0] ?? 20
-                    setFormData(prev => ({
-                      ...prev,
+                    updateHappinessContent({
                       happinessScore: val,
                       selectedStandards: [],
                       actionDescription: ''
-                    }))
-                    updateHappinessContent(val, '', formData.customerName)
+                    })
                   }}
                 />
               </Form.Item>
@@ -2318,12 +2298,10 @@ export default function DailyReport() {
                                       }
                                       const cleanedList = nextSelected.map(t => t.replace(/[;；]$/, ''))
                                       const joined = cleanedList.join('；')
-                                      setFormData(prev => ({
-                                        ...prev,
+                                      updateHappinessContent({
                                         selectedStandards: nextSelected,
                                         actionDescription: joined
-                                      }))
-                                      updateHappinessContent(formData.happinessScore, joined, formData.customerName)
+                                      })
                                     }}
                                   >
                                     <span style={{ fontSize: 12, color: '#333', lineHeight: '1.4' }}>
@@ -2348,8 +2326,7 @@ export default function DailyReport() {
                   autoSize={{ minRows: 3, maxRows: 8 }}
                   value={formData.actionDescription}
                   onChange={(val) => {
-                    setFormData(prev => ({ ...prev, actionDescription: val }))
-                    updateHappinessContent(formData.happinessScore, val, formData.customerName)
+                    updateHappinessContent({ actionDescription: val })
                   }}
                   style={{
                     fontSize: 13,
@@ -2368,8 +2345,7 @@ export default function DailyReport() {
                   rows={3}
                   value={formData.happinessResult}
                   onChange={(val) => {
-                    setFormData(prev => ({ ...prev, happinessResult: val }))
-                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, val, formData.happinessFeedback, formData.recommendAction)
+                    updateHappinessContent({ happinessResult: val })
                   }}
                   style={{
                     fontSize: 13,
@@ -2388,8 +2364,7 @@ export default function DailyReport() {
                   rows={3}
                   value={formData.happinessFeedback}
                   onChange={(val) => {
-                    setFormData(prev => ({ ...prev, happinessFeedback: val }))
-                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, val, formData.recommendAction)
+                    updateHappinessContent({ happinessFeedback: val })
                   }}
                   style={{
                     fontSize: 13,
@@ -2408,8 +2383,7 @@ export default function DailyReport() {
                   rows={3}
                   value={formData.recommendAction}
                   onChange={(val) => {
-                    setFormData(prev => ({ ...prev, recommendAction: val }))
-                    updateHappinessContent(formData.happinessScore, formData.actionDescription, formData.customerName, formData.happinessResult, formData.happinessFeedback, val)
+                    updateHappinessContent({ recommendAction: val })
                   }}
                   style={{
                     fontSize: 13,
