@@ -6,6 +6,10 @@ git pull
 
 echo "=== 2. 同步开发版后端 Python 依赖 ==="
 cd backend
+if [ -d ".venv" ] && [ ! -f ".venv/bin/python" ] && [ ! -f ".venv/Scripts/python.exe" ]; then
+    echo "⚠️ 检测到虚拟环境 .venv 不完整或已损坏，正在自动清理并重建..."
+    rm -rf .venv
+fi
 uv sync
 # 由于后端服务运行在 --reload 模式下，依赖同步及代码拉取后，后端会自动秒级生效，无需手动重启！
 
