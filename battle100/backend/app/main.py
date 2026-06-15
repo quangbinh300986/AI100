@@ -171,15 +171,18 @@ async def backup_scheduler():
         await asyncio.sleep(12 * 3600)
 
 
+_backup_task = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理系统生命周期事件"""
+    global _backup_task
     # 启动时
     logger.info("系统正在启动...")
     try:
         await init_db()
         # 挂载后台定期备份守护任务，使用 create_task 保证非阻塞主线程启动
-        asyncio.create_task(backup_scheduler())
+        _backup_task = asyncio.create_task(backup_scheduler())
         # 启动 Cherry 大模型自动拉取同步调度器
         start_cherry_sync_scheduler()
     except Exception as e:
@@ -191,6 +194,15 @@ async def lifespan(app: FastAPI):
         stop_cherry_sync_scheduler()
     except Exception as e:
         logger.error(f"停止大模型自动同步调度器失败: {e}")
+    
+    # 显式取消备份自动调度任务，防止 reload 阶段挂起造成进程残留
+    if _backup_task:
+        _backup_task.cancel()
+        try:
+            await _backup_task
+        except asyncio.CancelledError:
+            pass
+            
     await engine.dispose()
 
 

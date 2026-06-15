@@ -8,12 +8,12 @@ echo.
 
 REM 0. 清理可能残留的端口占用进程（8100 和 3100）
 echo 正在检查并清理 8100 和 3100 端口占用...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8100 ^| findstr LISTENING') do (
-    echo 发现 8100 端口被进程 %%a 占用，正在强制终止该进程...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8100') do (
+    echo 发现 8100 端口相关进程 %%a，正在强制终止该进程...
     taskkill /F /PID %%a 2>nul
 )
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3100 ^| findstr LISTENING') do (
-    echo 发现 3100 端口被进程 %%a 占用，正在强制终止该进程...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3100') do (
+    echo 发现 3100 端口相关进程 %%a，正在强制终止该进程...
     taskkill /F /PID %%a 2>nul
 )
 echo 端口清理完毕。
