@@ -567,7 +567,7 @@ class DingTalkClient:
             if download_url:
                 if category == "policy":
                     markdown_text += f"* **附件状态**：🔑 已进行 AES-256 安全加密打包\n"
-                    markdown_text += f"* **解压密码**：**{password}** (下载后使用密码解压)\n"
+                    markdown_text += f"* **解压密码** (双击密码复制)：`{password}`\n"
                 else:
                     markdown_text += f"* **附件状态**：常规附件包 (无解压密码，可直接解压)\n"
             else:
