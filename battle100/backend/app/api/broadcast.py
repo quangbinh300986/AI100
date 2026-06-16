@@ -3040,5 +3040,128 @@ async def list_kpi_comments(
     return comments_list
 
 
+@router.get("/copy-password")
+async def copy_password_page(pwd: str):
+    from fastapi.responses import HTMLResponse
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>复制密码</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                background-color: #f5f7fa;
+            }}
+            .card {{
+                background: white;
+                padding: 30px;
+                border-radius: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                text-align: center;
+                max-width: 85%;
+                width: 320px;
+            }}
+            .btn {{
+                background-color: #007aff;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                font-size: 16px;
+                border-radius: 8px;
+                cursor: pointer;
+                margin-top: 20px;
+                font-weight: bold;
+                width: 100%;
+                box-sizing: border-box;
+            }}
+            .password {{
+                font-size: 22px;
+                font-weight: bold;
+                color: #007aff;
+                background-color: #f0f6ff;
+                padding: 12px;
+                border-radius: 8px;
+                letter-spacing: 1px;
+                margin: 15px 0;
+                border: 2px dashed #007aff;
+                user-select: all;
+                word-break: break-all;
+            }}
+            .success-text {{
+                color: #34c759;
+                font-weight: bold;
+                margin-top: 10px;
+                font-size: 14px;
+            }}
+            .tips {{
+                font-size: 12px;
+                color: #8e8e93;
+                margin-top: 15px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h3 style="margin-top:0; color:#333;">🔑 附件解压密码</h3>
+            <div class="password" id="pwd-box">{pwd}</div>
+            <div class="success-text" id="status">正在尝试自动复制...</div>
+            <button class="btn" onclick="manualCopy()">手动复制密码</button>
+            <div class="tips">如果未能自动复制，请点击上方按钮或长按虚线框内密码复制。</div>
+        </div>
+        <script>
+            function copyToClipboard(text) {{
+                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                    return navigator.clipboard.writeText(text);
+                }} else {{
+                    const textarea = document.createElement("textarea");
+                    textarea.value = text;
+                    textarea.style.position = "fixed";
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    try {{
+                        document.execCommand("copy");
+                        document.body.removeChild(textarea);
+                        return Promise.resolve();
+                    }} catch (err) {{
+                        document.body.removeChild(textarea);
+                        return Promise.reject(err);
+                    }}
+                }}
+            }}
+            
+            const pwd = "{pwd}";
+            copyToClipboard(pwd).then(() => {{
+                document.getElementById("status").innerText = "✅ 密码已自动复制到剪贴板！";
+            }}).catch((err) => {{
+                document.getElementById("status").innerText = "❌ 自动复制失败，请点击下方按钮复制";
+                document.getElementById("status").style.color = "#ff3b30";
+            }});
+
+            function manualCopy() {{
+                copyToClipboard(pwd).then(() => {{
+                    document.getElementById("status").innerText = "✅ 复制成功！";
+                    document.getElementById("status").style.color = "#34c759";
+                    alert("复制成功！\\n密码: " + pwd);
+                }}).catch(() => {{
+                    alert("复制失败，请手动长按虚线框内的密码进行复制。");
+                }});
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
 
 

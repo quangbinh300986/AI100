@@ -589,14 +589,31 @@ class DingTalkClient:
 
             btns = []
             if download_url:
-                btn_title = "📥 下载加密附件" if category == "policy" else "📥 下载附件包"
+                btn_title = "🔑 下载加密附件" if category == "policy" else "🔑 下载附件包"
                 btns.append({
                     "title": btn_title,
                     "actionURL": download_url
                 })
+            
+            # 如果是政策文件且含有密码，则增加一个“一键复制密码”的按钮
+            if category == "policy" and password:
+                # 优先使用公网前端 URL 拼接后端的复制密码公开路由
+                frontend_url = None
+                if getattr(settings, "EXTERNAL_FRONTEND_URL", None):
+                    frontend_url = settings.EXTERNAL_FRONTEND_URL.rstrip('/')
+                elif settings.CORS_ORIGINS and len(settings.CORS_ORIGINS) > 0:
+                    frontend_url = settings.CORS_ORIGINS[0].rstrip('/')
+                
+                if frontend_url:
+                    copy_url = f"{frontend_url}/api/v1/broadcast/copy-password?pwd={password}"
+                    btns.append({
+                        "title": "📋 一键复制密码",
+                        "actionURL": copy_url
+                    })
+
             if detail_url:
                 btns.append({
-                    "title": "📄 查看网页详情",
+                    "title": "📝 查看网页详情",
                     "actionURL": detail_url
                 })
 
