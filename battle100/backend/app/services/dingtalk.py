@@ -180,13 +180,13 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                     SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
-                    WHERE c.signer = :real_name
-                      AND r.receive_date BETWEEN :start_date AND :end_date
+                    WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
+                      AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
                 """)
                 recv_val = conn.execute(recv_sql, {
                     "real_name": user.name,
                     "start_date": start_date_str,
-                    "end_date": sunday.strftime('%Y-%m-%d')
+                    "end_date": end_date_str
                 }).scalar() or 0.0
                 personal_receive = float(recv_val)
                 

@@ -1,4 +1,24 @@
 Traceback (most recent call last):
+  File "C:\APP\AI100\battle100\backend\app\api\broadcast.py", line 872, in search_crm_projects
+    conn = pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\pymysql\connections.py", line 372, in __init__
+    self.connect()
+  File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\pymysql\connections.py", line 701, in connect
+    self._get_server_information()
+  File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\pymysql\connections.py", line 1141, in _get_server_information
+    packet = self._read_packet()
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\pymysql\connections.py", line 772, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\pymysql\connections.py", line 826, in _read_bytes
+    raise err.OperationalError(
+pymysql.err.OperationalError: (2013, 'Lost connection to MySQL server during query')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
   File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
     await self.app(scope, receive, _send)
   File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
@@ -32,7 +52,7 @@ Traceback (most recent call last):
   File "C:\APP\AI100\battle100\backend\.venv\Lib\site-packages\fastapi\routing.py", line 328, in run_endpoint_function
     return await dependant.call(**values)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\APP\AI100\battle100\backend\app\api\reports.py", line 3105, in export_weekly_reports_summary
-    await log_action(
-          ^^^^^^^^^^^
-TypeError: log_action() missing 2 required positional arguments: 'target_module' and 'target_id'
+  File "C:\APP\AI100\battle100\backend\app\api\broadcast.py", line 912, in search_crm_projects
+    logger.error(f"直连 CRM 获取项目列表发生异常: {e}")
+    ^^^^^^
+NameError: name 'logger' is not defined

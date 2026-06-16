@@ -5218,15 +5218,38 @@ async def generate_daily_report(
             """, (start_time, end_time))
             crm_potential_leads_cnt = cur.fetchone()["count"]
 
-            # 查询昨日/今日回款合同及回款金额 (按与签订合同一致的统计区间 start_time 到 end_time 统计，过滤签约人为本组成员)
-            if user_names:
-                names_str = ", ".join([f"'{n}'" for n in user_names])
+            # 查询昨日/今日回款合同及回款金额
+            if team_id:
+                # 战队视角：通过签约人、合同负责人以及合同创建人账号进行多维度联合过滤归属，所有注释必须使用中文
+                conditions = []
+                if user_names:
+                    names_str = ", ".join([f"'{n}'" for n in user_names])
+                    conditions.append(f"c.signer IN ({names_str})")
+                    conditions.append(f"c.contract_head_user IN ({names_str})")
+                if crm_user_ids:
+                    crm_user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+                    conditions.append(f"c.create_by IN ({crm_user_ids_str})")
+                
+                if conditions:
+                    conditions_sql = " OR ".join(conditions)
+                    cur.execute(f"""
+                        SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
+                        FROM zdcrm_contract_receive_money_view r
+                        INNER JOIN contract c ON r.contract_id = c.id
+                        WHERE ({conditions_sql})
+                          AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN %s AND %s
+                    """, (start_time, end_time))
+                    recv_res = cur.fetchone()
+                    if recv_res:
+                        crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
+                        crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
+            else:
+                # 全公司大盘视角：移除人员归属限制，拉取全量到账数据以对齐财务，所有注释必须使用中文
                 cur.execute(f"""
                     SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
-                    WHERE c.signer IN ({names_str})
-                      AND r.receive_date BETWEEN %s AND %s
+                    WHERE DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN %s AND %s
                 """, (start_time, end_time))
                 recv_res = cur.fetchone()
                 if recv_res:

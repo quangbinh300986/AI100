@@ -827,8 +827,8 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
                 FROM zdcrm_contract_receive_money_view r
                 INNER JOIN contract c ON r.contract_id = c.id
-                WHERE c.signer = :real_name
-                  AND r.receive_date BETWEEN :start_date AND :end_date
+                WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
+                  AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
             """)
             recv_val = conn.execute(recv_sql, {
                 "real_name": real_name,
@@ -968,8 +968,8 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                     SELECT r.contract_name, r.receive_money, r.receive_date 
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
-                    WHERE c.signer = :real_name 
-                      AND r.receive_date BETWEEN :start_date AND :end_date
+                    WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
+                      AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
                 """)
                 receives = conn.execute(receive_sql, {
                     "real_name": real_name,
@@ -1685,7 +1685,7 @@ async def update_weekly_report(
 #          战队/三级巴 整体周报与产值统计 API
 # ==========================================
 
-def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], start_date_val: date) -> dict:
+def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], start_date_val: date, is_company_wide: bool = False) -> dict:
     """同步直连 CRM 数据库统计指定成员周内的产值、线索、回款及项目反馈明细"""
     from datetime import timedelta
     from sqlalchemy import text
@@ -1756,19 +1756,44 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                 }).scalar() or 0.0
                 res["production_value"] = float(prod_val) / 10000.0 # 元转万元
                 
-                # 3. 统计 CRM 实际到账回款额（万元，过滤回款落在当周，签约人为本组成员）
-                recv_sql = text(f"""
-                    SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
-                    FROM zdcrm_contract_receive_money_view r
-                    INNER JOIN contract c ON r.contract_id = c.id
-                    WHERE c.signer IN ({names_str})
-                      AND r.receive_date BETWEEN :start_date AND :end_date
-                """)
-                recv_val = conn.execute(recv_sql, {
-                    "start_date": start_date_val.strftime('%Y-%m-%d'),
-                    "end_date": (start_date_val + timedelta(days=6)).strftime('%Y-%m-%d')
-                }).scalar() or 0.0
-                res["receive_value"] = float(recv_val)
+                # 3. 统计 CRM 实际到账回款额（万元，过滤回款落在当周）
+                if is_company_wide:
+                    # 全公司大盘：去除人员归属限制，拉取全量到账流水，所有注释必须使用中文
+                    recv_sql = text(f"""
+                        SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
+                        FROM zdcrm_contract_receive_money_view r
+                        INNER JOIN contract c ON r.contract_id = c.id
+                        WHERE DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                    """)
+                else:
+                    # 战队/小组级视角：支持签约人、合同负责人以及合同创建人账号进行多维度联合过滤归属，所有注释必须使用中文
+                    conditions = []
+                    if user_names:
+                        names_str_escaped = ", ".join([f"'{name}'" for name in user_names])
+                        conditions.append(f"c.signer IN ({names_str_escaped})")
+                        conditions.append(f"c.contract_head_user IN ({names_str_escaped})")
+                    if crm_user_ids:
+                        crm_user_ids_str_escaped = ", ".join([f"'{uid}'" for uid in crm_user_ids if uid])
+                        conditions.append(f"c.create_by IN ({crm_user_ids_str_escaped})")
+                    
+                    if conditions:
+                        conditions_sql = " OR ".join(conditions)
+                        recv_sql = text(f"""
+                            SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
+                            FROM zdcrm_contract_receive_money_view r
+                            INNER JOIN contract c ON r.contract_id = c.id
+                            WHERE ({conditions_sql})
+                              AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                        """)
+                    else:
+                        recv_sql = None
+                
+                if recv_sql:
+                    recv_val = conn.execute(recv_sql, {
+                        "start_date": start_date_str,
+                        "end_date": end_date_str
+                    }).scalar() or 0.0
+                    res["receive_value"] = float(recv_val)
                 
                 # 4. 放宽 Token 至 20K-30K 后，拉取客户拜访与进度反馈原文等真实细节，喂给 AI 大模型
                 detail_texts = []
@@ -2041,11 +2066,13 @@ async def get_group_weekly_metrics(
     local_potential = int(potential_leads_res.scalar() or 0)
     
     # 3. CRM 并发拉取
+    is_company_wide = (team_id is None) and (third_class_bar is None or third_class_bar == "all")
     crm_res = await run_in_threadpool(
         sync_get_group_crm_data,
         user_names,
         crm_user_ids,
-        start_date
+        start_date,
+        is_company_wide
     )
     
     # 合并有效线索与潜力线索：本地录入数 + CRM 端数据
