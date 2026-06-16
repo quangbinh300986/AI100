@@ -1719,7 +1719,7 @@ async def create_broadcast(
                     rep.reviewed_at = target_time
             return rep
 
-        # A. 确定目标员工 ID
+        # A. 确定目标员工 ID，并自动更正播报事件的所有者与所属战队关系
         target_user_id = current_user.id
         if broadcast_in.employee_name:
             user_stmt = select(User).where(User.name == broadcast_in.employee_name)
@@ -1727,6 +1727,9 @@ async def create_broadcast(
             target_user = user_res.scalar_one_or_none()
             if target_user:
                 target_user_id = target_user.id
+                event.user_id = target_user_id
+                if not broadcast_in.team_id:
+                    event.team_id = target_user.team_id
 
         action = broadcast_in.action_type
         
