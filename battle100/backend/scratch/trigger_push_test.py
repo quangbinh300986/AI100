@@ -37,6 +37,12 @@ async def main():
             
         logger.info(f"成功找到播报事件：ID={event.id}, 标题={event.project_name}, 密码={event.attachment_password}")
         
+        # 重新生成一个不含特殊字符的密码
+        from app.services.file_encryption import FileEncryptionService
+        new_password = FileEncryptionService.generate_password()
+        event.attachment_password = new_password
+        logger.info(f"已为播报 ID={event.id} 生成了不含特殊字符的新密码：{new_password}")
+        
         # 强制将状态重置为 PENDING 以便 trigger_broadcast_push 发送它
         event.push_status = PushStatus.PENDING
         db.add(event)

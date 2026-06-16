@@ -16,24 +16,21 @@ class FileEncryptionService:
     @staticmethod
     def generate_password(length: int = 12) -> str:
         """
-        生成随机强密码
-        密码包含大小写字母、数字及特殊字符
+        生成随机强密码（仅包含字母和数字，便于双击全选复制）
         """
         # 排除容易混淆的字符如 l, o, I, O
         letters = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
         digits = "23456789"
-        special = "!@#$%^&*"
         
-        # 确保密码至少包含各个分类中的一个
+        # 确保密码至少包含字母和数字
         password_chars = [
             secrets.choice(letters),
-            secrets.choice(digits),
-            secrets.choice(special)
+            secrets.choice(digits)
         ]
         
         # 填充剩余部分
-        all_chars = letters + digits + special
-        for _ in range(length - 3):
+        all_chars = letters + digits
+        for _ in range(length - 2):
             password_chars.append(secrets.choice(all_chars))
             
         # 打乱字符顺序
