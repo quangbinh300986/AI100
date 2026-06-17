@@ -54,12 +54,12 @@ export default defineConfig({
     proxy: {
       // API代理到新后端端口
       '/api': {
-        target: 'http://localhost:8100',
+        target: 'http://127.0.0.1:8100',
         changeOrigin: true,
       },
       // WebSocket代理到后端
       '/ws': {
-        target: 'ws://localhost:8100',
+        target: 'ws://127.0.0.1:8100',
         ws: true,
         changeOrigin: true,
       },

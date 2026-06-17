@@ -74,43 +74,44 @@ async def dingtalk_login(
 ):
     """
     钉钉免密登录（免登）
-    通过 auth_code 获取钉钉用户信息，在本地匹配用户并生成 token
+    通过 auth_code 获取钉钉用户信息，在本地匹配用户并生成 token，所有注释必须使用中文
     """
-    # 1. 获取钉钉用户信息
-    dd_user = await dingtalk_client.get_user_info_by_code(request.auth_code)
-    if not dd_user:
+    # 1. 仅通过免登授权码获取 userid 与 name，省去获取手机号的网络消耗
+    dd_userid_info = await dingtalk_client.get_userid_by_code(request.auth_code)
+    if not dd_userid_info:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="钉钉免登失败，无法获取用户信息",
         )
         
-    userid = dd_user.get("userid")
-    name = dd_user.get("name")
-    mobile = dd_user.get("mobile")
+    userid = dd_userid_info.get("userid")
+    name = dd_userid_info.get("name")
     
     user = None
     
-    # 2. 优先使用 dingtalk_id 进行匹配
+    # 2. 优先使用 dingtalk_id 进行本地数据库匹配，所有注释必须使用中文
     if userid:
         result = await db.execute(
             select(User).where(User.dingtalk_id == userid)
         )
         user = result.scalar_one_or_none()
         
-    # 3. 如果没匹配到，根据手机号进行匹配
-    if user is None and mobile:
-        result = await db.execute(
-            select(User).where(User.phone == mobile)
-        )
-        user = result.scalar_one_or_none()
-        
-        # 如果手机号匹配成功，自动回写用户的 dingtalk_id，方便下次直接匹配
-        if user:
-            user.dingtalk_id = userid
-            db.add(user)
-            await db.commit()
+    # 3. 惰性反查：如果根据 dingtalk_id 匹配失败，说明可能尚未绑定，此时按需拉取手机号进行绑定，所有注释必须使用中文
+    if user is None and userid:
+        mobile = await dingtalk_client.get_user_mobile(userid)
+        if mobile:
+            result = await db.execute(
+                select(User).where(User.phone == mobile)
+            )
+            user = result.scalar_one_or_none()
             
-    # 4. 如果仍未找到，提示未绑定
+            # 如果手机号匹配成功，自动回写用户的 dingtalk_id，方便下次直接免密登录，所有注释必须使用中文
+            if user:
+                user.dingtalk_id = userid
+                db.add(user)
+                await db.commit()
+                
+    # 4. 如果仍未找到，提示未绑定，所有注释必须使用中文
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

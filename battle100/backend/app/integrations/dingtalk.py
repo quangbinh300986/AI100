@@ -105,6 +105,64 @@ class DingTalkClient:
             logger.error(f"get_user_info_by_code 发生异常: {e}")
             return None
 
+    async def get_userid_by_code(self, auth_code: str) -> Optional[dict]:
+        """
+        通过免登授权码获取用户userid和姓名，避免拉取用户详情导致的网络延时，所有注释必须使用中文
+        :param auth_code: 前端传来的授权码
+        :return: 用户userid和姓名字典，失败返回None
+        """
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            url = f"{self.BASE_URL}/topapi/v2/user/getuserinfo"
+            params = {"access_token": token}
+            json_data = {"code": auth_code}
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, params=params, json=json_data)
+                data = response.json()
+            
+            if data.get("errcode") != 0:
+                logger.error(f"通过免登授权码获取userid失败: {data.get('errmsg')}")
+                return None
+                
+            result = data.get("result", {})
+            return {
+                "userid": result.get("userid"),
+                "name": result.get("name")
+            }
+        except Exception as e:
+            logger.error(f"get_userid_by_code 发生异常: {e}")
+            return None
+
+    async def get_user_mobile(self, userid: str) -> Optional[str]:
+        """
+        根据userid获取用户手机号，仅在需要时按需调用，所有注释必须使用中文
+        :param userid: 钉钉userid
+        :return: 手机号字符串，失败返回None
+        """
+        import logging
+        logger = logging.getLogger("battle100")
+        try:
+            token = await self._get_access_token()
+            user_detail_url = f"{self.BASE_URL}/topapi/v2/user/get"
+            params = {"access_token": token}
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    user_detail_url, 
+                    params=params, 
+                    json={"userid": userid, "language": "zh_CN"}
+                )
+                detail_data = response.json()
+                
+            if detail_data.get("errcode") == 0:
+                return detail_data.get("result", {}).get("mobile")
+            return None
+        except Exception as e:
+            logger.error(f"get_user_mobile 发生异常: {e}")
+            return None
+
     async def send_work_notification(
         self,
         user_id_list: list[str],
