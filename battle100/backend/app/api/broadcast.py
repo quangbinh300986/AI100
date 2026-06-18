@@ -972,6 +972,8 @@ async def list_broadcasts(
     team_id: int | None = Query(None, description="按战队筛选"),
     event_type: str | None = Query(None, description="按事件类型筛选"),
     keyword: str | None = Query(None, description="关键字检索播报内容"),
+    start_date: str | None = Query(None, description="按开始时间筛选"),
+    end_date: str | None = Query(None, description="按结束时间筛选"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -979,6 +981,7 @@ async def list_broadcasts(
     from sqlalchemy import func, or_
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
+    from datetime import datetime
 
     from sqlalchemy.orm import aliased
     UserTeam = aliased(DbTeam)
@@ -1008,25 +1011,39 @@ async def list_broadcasts(
      .outerjoin(UserTeam, DbUser.team_id == UserTeam.id)\
      .order_by(BroadcastEvent.created_at.desc())
 
-    # 过滤条件 (主列表默认过滤掉已删除/进入回收站的战报)
+    # 计算总数的语句
+    count_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.is_deleted == False)
+
+    # 过滤条件 (主列表默认过滤掉已删除/进入回收站的战报)，所有注释必须使用中文
     query = query.where(BroadcastEvent.is_deleted == False)
     if team_id:
         query = query.where(or_(BroadcastEvent.team_id == team_id, DbUser.team_id == team_id))
-    if event_type:
-        query = query.where(BroadcastEvent.event_type == event_type)
-    if keyword:
-        query = query.where(BroadcastEvent.content.contains(keyword))
-
-    # 计算总数
-    count_stmt = select(func.count(BroadcastEvent.id)).where(BroadcastEvent.is_deleted == False)
-    if team_id:
         count_stmt = count_stmt.outerjoin(DbUser, BroadcastEvent.user_id == DbUser.id).where(
             or_(BroadcastEvent.team_id == team_id, DbUser.team_id == team_id)
         )
     if event_type:
+        query = query.where(BroadcastEvent.event_type == event_type)
         count_stmt = count_stmt.where(BroadcastEvent.event_type == event_type)
     if keyword:
+        query = query.where(BroadcastEvent.content.contains(keyword))
         count_stmt = count_stmt.where(BroadcastEvent.content.contains(keyword))
+
+    # 周时间区间筛选，所有注释必须使用中文
+    if start_date:
+        try:
+            start_datetime = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+            query = query.where(BroadcastEvent.created_at >= start_datetime)
+            count_stmt = count_stmt.where(BroadcastEvent.created_at >= start_datetime)
+        except Exception as e:
+            logger.warning(f"解析 start_date 失败: {e}")
+
+    if end_date:
+        try:
+            end_datetime = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+            query = query.where(BroadcastEvent.created_at <= end_datetime)
+            count_stmt = count_stmt.where(BroadcastEvent.created_at <= end_datetime)
+        except Exception as e:
+            logger.warning(f"解析 end_date 失败: {e}")
     
     total = await db.scalar(count_stmt) or 0
 
@@ -2182,11 +2199,13 @@ async def export_broadcasts(
     team_id: int | None = Query(None, description="按战队筛选"),
     event_type: str | None = Query(None, description="按事件类型筛选"),
     keyword: str | None = Query(None, description="关键字检索播报内容"),
+    start_date: str | None = Query(None, description="按开始时间筛选"),
+    end_date: str | None = Query(None, description="按结束时间筛选"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    根据筛选条件，将所有符合条件的战报记录导出为 Excel 文件
+    根据筛选条件，将所有符合条件的战报记录导出为 Excel 文件，所有注释必须使用中文
     """
     from fastapi.responses import StreamingResponse
     import pandas as pd
@@ -2194,6 +2213,7 @@ async def export_broadcasts(
     from sqlalchemy import func, or_
     from app.models.user import User as DbUser
     from app.models.organization import Team as DbTeam
+    from datetime import datetime
 
     from sqlalchemy.orm import aliased
     UserTeam = aliased(DbTeam)
@@ -2226,6 +2246,21 @@ async def export_broadcasts(
         query = query.where(BroadcastEvent.event_type == event_type)
     if keyword:
         query = query.where(BroadcastEvent.content.contains(keyword))
+
+    # 周时间区间筛选，所有注释必须使用中文
+    if start_date:
+        try:
+            start_datetime = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+            query = query.where(BroadcastEvent.created_at >= start_datetime)
+        except Exception as e:
+            logger.warning(f"解析 start_date 失败: {e}")
+
+    if end_date:
+        try:
+            end_datetime = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+            query = query.where(BroadcastEvent.created_at <= end_datetime)
+        except Exception as e:
+            logger.warning(f"解析 end_date 失败: {e}")
 
     res = await db.execute(query)
     rows = res.all()

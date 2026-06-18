@@ -174,6 +174,15 @@ const Reports: React.FC = () => {
   )
   const [filterEventType, setFilterEventType] = useState<string | undefined>(undefined)
   const [filterKeyword, setFilterKeyword] = useState<string>('')
+  const [filterWeek, setFilterWeek] = useState<dayjs.Dayjs | null>(null)
+
+  const getMondayAndSunday = (dateVal: dayjs.Dayjs) => {
+    const day = dateVal.day()
+    const diffToMonday = day === 0 ? -6 : 1 - day
+    const mon = dateVal.add(diffToMonday, 'day').startOf('day')
+    const sun = mon.add(6, 'day').endOf('day')
+    return [mon, sun]
+  }
 
   // 选中的行键值 (用于批量删除)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
@@ -468,6 +477,10 @@ const Reports: React.FC = () => {
       if (filterKeyword) {
         url += `&keyword=${encodeURIComponent(filterKeyword)}`
       }
+      if (filterWeek) {
+        const [mon, sun] = getMondayAndSunday(filterWeek)
+        url += `&start_date=${encodeURIComponent(mon.format('YYYY-MM-DD HH:mm:ss'))}&end_date=${encodeURIComponent(sun.format('YYYY-MM-DD HH:mm:ss'))}`
+      }
 
       const res = await get<any>(url)
       const data = res?.data ? res.data : res
@@ -583,6 +596,11 @@ const Reports: React.FC = () => {
       if (filterKeyword) {
         params.push(`keyword=${encodeURIComponent(filterKeyword)}`)
       }
+      if (filterWeek) {
+        const [mon, sun] = getMondayAndSunday(filterWeek)
+        params.push(`start_date=${encodeURIComponent(mon.format('YYYY-MM-DD HH:mm:ss'))}`)
+        params.push(`end_date=${encodeURIComponent(sun.format('YYYY-MM-DD HH:mm:ss'))}`)
+      }
       url += params.join('&')
 
       const response = await get<any>(url, { responseType: 'blob' })
@@ -611,7 +629,7 @@ const Reports: React.FC = () => {
   useEffect(() => {
     loadBroadcasts()
     loadSummaryStats()
-  }, [page, pageSize, filterTeamId, filterEventType, user])
+  }, [page, pageSize, filterTeamId, filterEventType, filterWeek, user])
 
   useEffect(() => {
     loadUsers()
@@ -1470,6 +1488,18 @@ const Reports: React.FC = () => {
               allowClear
             />
           </Col>
+          <Col xs={24} sm={6} md={4}>
+            <DatePicker
+              picker="week"
+              placeholder="按周筛选播报"
+              style={{ width: '100%' }}
+              value={filterWeek}
+              onChange={(val) => {
+                setFilterWeek(val)
+                setPage(1)
+              }}
+            />
+          </Col>
           <Col>
             <Space>
               <Button type="primary" onClick={() => setPage(1)}>搜索</Button>
@@ -1480,6 +1510,7 @@ const Reports: React.FC = () => {
                   }
                   setFilterEventType(undefined)
                   setFilterKeyword('')
+                  setFilterWeek(null)
                   setPage(1)
                 }}
               >
