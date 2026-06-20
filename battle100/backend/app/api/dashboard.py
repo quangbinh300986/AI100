@@ -1906,11 +1906,36 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     company_summary = await db.execute(
         select(
             func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("total_happiness"),
-            func.coalesce(func.sum(DailyReport.triangle_count), 0).label("total_triangle"),
             func.coalesce(func.sum(DailyReport.leads_count), 0).label("total_leads"),
         ).where(DailyReport.status == ReportStatus.REVIEWED)
     )
     c_row = company_summary.one()
+
+    # 统计去重后全公司的售前铁三角联动次数
+    triangle_details_stmt = select(
+        ReportDetail.id,
+        ReportDetail.description
+    ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).where(
+        DailyReport.status == ReportStatus.REVIEWED,
+        ReportDetail.detail_type == DetailType.TRIANGLE
+    )
+    triangle_details_res = await db.execute(triangle_details_stmt)
+    triangle_rows = triangle_details_res.all()
+    
+    # 内存中按照 broadcast_id 逻辑去重
+    import re
+    broadcast_bids = set()
+    triangle_count_val = 0
+    for r_id, desc_text in triangle_rows:
+        desc_str = desc_text or ""
+        bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc_str)
+        if bid_match:
+            bid = int(bid_match.group(1))
+            if bid not in broadcast_bids:
+                broadcast_bids.add(bid)
+                triangle_count_val += 1
+        else:
+            triangle_count_val += 1
 
     # 获取全公司总签约目标额（仅包含营销新签目标以修正分轨，并保留两位小数）
     total_base_target_res = await db.execute(
@@ -1925,7 +1950,7 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
     val_happiness = int(c_row.total_happiness)
     pct_happiness = round((val_happiness / 3300) * 100, 2)
 
-    val_triangle = int(c_row.total_triangle)
+    val_triangle = triangle_count_val
     pct_triangle = round((val_triangle / 500) * 100, 2)
 
     val_leads = int(c_row.total_leads)
@@ -2025,7 +2050,6 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
             t_kpis_res = await db.execute(
                 select(
                     func.coalesce(func.sum(DailyReport.happiness_actions), 0).label("t_happiness"),
-                    func.coalesce(func.sum(DailyReport.triangle_count), 0).label("t_triangle"),
                     func.coalesce(func.sum(DailyReport.leads_count), 0).label("t_leads"),
                 )
                 .select_from(User)
@@ -2036,6 +2060,33 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
                 )
             )
             t_kpi_row = t_kpis_res.one()
+
+            # 查询去重后战队的售前铁三角联动次数
+            t_triangle_stmt = select(
+                ReportDetail.id,
+                ReportDetail.description
+            ).select_from(ReportDetail).join(DailyReport, ReportDetail.report_id == DailyReport.id).join(
+                User, DailyReport.user_id == User.id
+            ).where(
+                User.team_id == team.id,
+                DailyReport.status == ReportStatus.REVIEWED,
+                ReportDetail.detail_type == DetailType.TRIANGLE
+            )
+            t_triangle_res = await db.execute(t_triangle_stmt)
+            t_triangle_rows = t_triangle_res.all()
+            
+            t_broadcast_bids = set()
+            t_triangle_count_val = 0
+            for r_id, desc_text in t_triangle_rows:
+                desc_str = desc_text or ""
+                bid_match = re.search(r"\[broadcast_id:(\d+)\]", desc_str)
+                if bid_match:
+                    bid = int(bid_match.group(1))
+                    if bid not in t_broadcast_bids:
+                        t_broadcast_bids.add(bid)
+                        t_triangle_count_val += 1
+                else:
+                    t_triangle_count_val += 1
 
             # 计算当前周数以实施本周以前的汇总红黄绿灯规则
             STANDARD_WEEKS = {
@@ -2116,7 +2167,7 @@ async def _get_my_cascade_stats_impl(db: AsyncSession, current_user: User):
                 "delivery_target": round(d_target, 2),
                 "delivery_percentage": d_rate,
                 "happiness_actions": int(t_kpi_row.t_happiness),
-                "iron_triangle": int(t_kpi_row.t_triangle),
+                "iron_triangle": t_triangle_count_val,
                 "valid_leads": int(t_kpi_row.t_leads)
             }
 
