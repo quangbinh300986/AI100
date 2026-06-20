@@ -3807,16 +3807,16 @@ const Dashboard: React.FC = () => {
             >
               <Select placeholder="请选择幸福委二级分类">
                 <Select.Option value="B3-1 使命落地委">B3-1 使命落地委</Select.Option>
-                <Select.Option value="B3-2 铁三角落地委">B3-2 铁三角落地委</Select.Option>
+                <Select.Option value="B3-2 营销铁三角委">B3-2 营销铁三角委</Select.Option>
                 <Select.Option value="B3-3 AI提效委">B3-3 AI提效委</Select.Option>
                 <Select.Option value="B3-4 数字经营委">B3-4 数字经营委</Select.Option>
                 <Select.Option value="B3-5 传灯推广委">B3-5 传灯推广委</Select.Option>
                 <Select.Option value="B3-6 产品研发委">B3-6 产品研发委</Select.Option>
                 <Select.Option value="B3-7 质量风控委">B3-7 质量风控委</Select.Option>
-                <Select.Option value="B3-8 伙伴打造委">B3-8 伙伴打造委</Select.Option>
-                <Select.Option value="B3-9 直连客户委">B3-9 直连客户委</Select.Option>
-                <Select.Option value="B3-10 组织幸福委">B3-10 组织幸福委</Select.Option>
-                <Select.Option value="B3-11 温暖快乐委">B3-11 温暖快乐委</Select.Option>
+                <Select.Option value="B3-8 标杆打造委">B3-8 标杆打造委</Select.Option>
+                <Select.Option value="B3-9 重点客户委">B3-9 重点客户委</Select.Option>
+                <Select.Option value="B3-10 物质幸福委">B3-10 物质幸福委</Select.Option>
+                <Select.Option value="B3-11 精神幸福委">B3-11 精神幸福委</Select.Option>
                 <Select.Option value="B3-12 成长学习委">B3-12 成长学习委</Select.Option>
               </Select>
             </Form.Item>

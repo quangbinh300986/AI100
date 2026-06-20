@@ -1185,16 +1185,16 @@ export default function Home() {
                 columns={2}
                 options={[
                   { label: 'B3-1 使命落地委', value: 'B3-1 使命落地委' },
-                  { label: 'B3-2 铁三角落地委', value: 'B3-2 铁三角落地委' },
+                  { label: 'B3-2 营销铁三角委', value: 'B3-2 营销铁三角委' },
                   { label: 'B3-3 AI提效委', value: 'B3-3 AI提效委' },
                   { label: 'B3-4 数字经营委', value: 'B3-4 数字经营委' },
                   { label: 'B3-5 传灯推广委', value: 'B3-5 传灯推广委' },
                   { label: 'B3-6 产品研发委', value: 'B3-6 产品研发委' },
                   { label: 'B3-7 质量风控委', value: 'B3-7 质量风控委' },
-                  { label: 'B3-8 伙伴打造委', value: 'B3-8 伙伴打造委' },
-                  { label: 'B3-9 直连客户委', value: 'B3-9 直连客户委' },
-                  { label: 'B3-10 组织幸福委', value: 'B3-10 组织幸福委' },
-                  { label: 'B3-11 温暖快乐委', value: 'B3-11 温暖快乐委' },
+                  { label: 'B3-8 标杆打造委', value: 'B3-8 标杆打造委' },
+                  { label: 'B3-9 重点客户委', value: 'B3-9 重点客户委' },
+                  { label: 'B3-10 物质幸福委', value: 'B3-10 物质幸福委' },
+                  { label: 'B3-11 精神幸福委', value: 'B3-11 精神幸福委' },
                   { label: 'B3-12 成长学习委', value: 'B3-12 成长学习委' }
                 ]}
                 value={[middleOfficeForm.secondType]}
