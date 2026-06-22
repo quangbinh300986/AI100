@@ -6,6 +6,7 @@
 from datetime import datetime, timezone, date
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 import logging
+logger = logging.getLogger("battle100")
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
