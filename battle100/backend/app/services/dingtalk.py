@@ -120,6 +120,20 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
     """将周报发送到钉钉机器人"""
     try:
         from app.models.user import PositionType, UserRole
+        
+        # 获取用户所属战队名称
+        team_name = ""
+        if user.team_id:
+            try:
+                from app.database import AsyncSessionLocal
+                from app.models.organization import Team
+                from sqlalchemy import select
+                async with AsyncSessionLocal() as session:
+                    team_obj = await session.get(Team, user.team_id)
+                    if team_obj:
+                        team_name = team_obj.name
+            except Exception as e_team:
+                logger.error(f"读取用户战队信息失败: {e_team}")
         is_marketing = (
             user.position_type == PositionType.MARKETING 
             or user.role in [UserRole.TARGET_OFFICER, UserRole.MARKETING_STAFF, UserRole.TECH_MARKETING]
@@ -300,7 +314,29 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
             }
         }
 
-        signed_url = get_signed_url(DINGTALK_WEBHOOK, DINGTALK_SECRET)
+        # 尝试从环境变量读取战队专属的 Webhook JSON 配置
+        import json
+        import os
+        team_webhooks = {}
+        env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+        if env_config:
+            try:
+                team_webhooks = json.loads(env_config)
+            except Exception as e_cfg:
+                logger.error(f"解析环境变量 TEAM_WEBHOOKS_JSON 失败: {e_cfg}")
+
+        # 如果环境变量有对应战队的 Webhook，就使用专属 Webhook；否则回落到默认的 DINGTALK_WEBHOOK
+        target_webhook = DINGTALK_WEBHOOK
+        target_secret = DINGTALK_SECRET
+        
+        if team_name and team_name in team_webhooks:
+            custom_cfg = team_webhooks[team_name]
+            if custom_cfg.get("webhook"):
+                target_webhook = custom_cfg["webhook"]
+                target_secret = custom_cfg.get("secret") or ""
+                logger.info(f"用户 {user.name} 属于战队 {team_name}，将周报推送至战队专属群 Webhook")
+
+        signed_url = get_signed_url(target_webhook, target_secret)
         
         async with httpx.AsyncClient() as client:
             response = await client.post(signed_url, json=payload)
@@ -367,7 +403,33 @@ async def send_group_weekly_report_to_dingtalk(group_name: str, start_date_val: 
             }
         }
         
-        signed_url = get_signed_url(DINGTALK_WEBHOOK, DINGTALK_SECRET)
+        # 尝试从环境变量读取战队专属的 Webhook JSON 配置
+        import json
+        import os
+        team_webhooks = {}
+        env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+        if env_config:
+            try:
+                team_webhooks = json.loads(env_config)
+            except Exception as e_cfg:
+                logger.error(f"解析环境变量 TEAM_WEBHOOKS_JSON 失败: {e_cfg}")
+
+        # 如果团队名称包含某个战队名称，就推送到该战队专属的 Webhook
+        target_webhook = DINGTALK_WEBHOOK
+        target_secret = DINGTALK_SECRET
+        
+        matched_webhook_cfg = None
+        for t_name, cfg in team_webhooks.items():
+            if t_name in group_name:
+                matched_webhook_cfg = cfg
+                break
+                
+        if matched_webhook_cfg and matched_webhook_cfg.get("webhook"):
+            target_webhook = matched_webhook_cfg["webhook"]
+            target_secret = matched_webhook_cfg.get("secret") or ""
+            logger.info(f"团队 {group_name} 匹配到专属群 Webhook，将整体周报推送至该专属群")
+
+        signed_url = get_signed_url(target_webhook, target_secret)
         
         async with httpx.AsyncClient() as client:
             response = await client.post(signed_url, json=payload, timeout=15.0)
