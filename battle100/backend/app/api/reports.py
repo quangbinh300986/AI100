@@ -606,8 +606,8 @@ async def save_weekly_report(
     )
     
     if status_val == "submitted":
-        from app.services.dingtalk import send_weekly_report_to_dingtalk
-        background_tasks.add_task(send_weekly_report_to_dingtalk, report, current_user)
+        # 取消发送机器人的周报卡片，改为在后台自动向钉钉工作日志提报并由钉钉系统自动投递官方日志卡片（解决大群/专属群消息重复问题）
+        background_tasks.add_task(auto_sync_weekly_report_to_dingtalk_task, report.id, current_user.id)
         
     return report
 
@@ -3022,6 +3022,152 @@ async def sync_weekly_report_to_dingtalk_api(
         raise HTTPException(status_code=500, detail=err_msg)
 
     return {"message": "已成功同步填报至您的钉钉工作日志"}
+
+
+async def auto_sync_weekly_report_to_dingtalk_task(report_id: int, user_id: int):
+    """
+    自动同步周报到钉钉工作日志的后台任务，免去用户手动点击，并自动触发群日志卡片。
+    所有注释必须使用中文。
+    """
+    from app.database import AsyncSessionLocal
+    from app.models.report import WeeklyReport
+    from app.models.user import User as DbUser
+    from app.integrations.dingtalk import dingtalk_client
+    from app.config import settings
+    import json
+    import os
+    import logging
+    from sqlalchemy import select
+
+    logger = logging.getLogger("battle100.reports.auto_sync")
+
+    async with AsyncSessionLocal() as db:
+        try:
+            # 1. 查找周报记录
+            stmt = select(WeeklyReport).where(WeeklyReport.id == report_id)
+            res = await db.execute(stmt)
+            report = res.scalar_one_or_none()
+            if not report:
+                logger.error(f"自动同步周报到钉钉失败: 未找到 ID={report_id} 的周报")
+                return
+
+            # 2. 获取用户
+            db_user_stmt = select(DbUser).where(DbUser.id == user_id)
+            db_user_res = await db.execute(db_user_stmt)
+            db_user = db_user_res.scalar_one_or_none()
+            if not db_user:
+                logger.error(f"自动同步周报到钉钉失败: 未找到 ID={user_id} 的用户")
+                return
+
+            # 3. 确定模板 ID
+            template_id = None
+            team_name = ""
+            if db_user.team_id:
+                from app.models.organization import Team
+                team_obj = await db.get(Team, db_user.team_id)
+                if team_obj:
+                    team_name = team_obj.name
+
+            team_webhooks = {}
+            env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+            if env_config:
+                try:
+                    team_webhooks = json.loads(env_config)
+                except Exception as e_cfg:
+                    logger.error(f"自动同步时解析环境变量 TEAM_WEBHOOKS_JSON 失败: {e_cfg}")
+
+            if team_name and team_name in team_webhooks:
+                custom_cfg = team_webhooks[team_name]
+                if custom_cfg.get("template_id"):
+                    template_id = custom_cfg["template_id"]
+
+            if not template_id:
+                template_id = settings.DINGTALK_WEEKLY_REPORT_TEMPLATE_ID
+
+            if not template_id:
+                logger.error("自动同步周报到钉钉失败: 未配置任何钉钉日志模板ID")
+                return
+
+            if template_id == "19cab0d8aa4c349cb1df85146edac9cf":
+                template_id = "19eab0d8aa4e349cb1df85146edac9cf"
+
+            # 4. 获取钉钉 ID
+            dingtalk_userid = db_user.dingtalk_id
+            if not dingtalk_userid:
+                dingtalk_userid = await dingtalk_client.get_user_by_mobile(db_user.phone)
+                if dingtalk_userid:
+                    db_user.dingtalk_id = dingtalk_userid
+                    await db.commit()
+                else:
+                    logger.error(f"自动同步周报到钉钉失败: 用户 {db_user.name} 的手机号 {db_user.phone} 无法在钉钉中匹配到工号")
+                    return
+
+            # 5. 映射组装表单内容
+            is_marketing = db_user.position_type == "marketing"
+
+            plan_val = report.sales_plan if is_marketing else report.delivery_plan
+            actual_val = report.sales_actual if is_marketing else report.delivery_actual
+            rate_val = report.sales_rate if is_marketing else report.delivery_rate
+            highlights_val = report.sales_highlights if is_marketing else report.delivery_highlights
+            blockers_val = report.sales_blockers if is_marketing else report.delivery_blockers
+            support_val = report.sales_support if is_marketing else report.delivery_support
+            next_plan_val = report.next_sales_plan if is_marketing else report.next_delivery_plan
+
+            start_date_str = report.start_date.strftime('%Y-%m-%d') if hasattr(report.start_date, 'strftime') else str(report.start_date)
+            end_date_str = report.end_date.strftime('%Y-%m-%d') if hasattr(report.end_date, 'strftime') else str(report.end_date)
+
+            contents = [
+                {"key": "本周目标计划", "value": plan_val or ""},
+                {"key": "本周实际完成", "value": actual_val or ""},
+                {"key": "达成情况", "value": rate_val or "100%"},
+                {"key": "本周亮点", "value": highlights_val or "无"},
+                {"key": "本周卡点", "value": blockers_val or "无"},
+                {"key": "是否需要上级支持", "value": support_val or "无"},
+                {"key": "下周目标", "value": next_plan_val or ""},
+                {"key": "周报日期", "value": f"{start_date_str}至{end_date_str}"}
+            ]
+
+            # 6. 计算接收人
+            to_userids = []
+            stmt_admins = select(DbUser.dingtalk_id).where(
+                DbUser.role == "admin",
+                DbUser.dingtalk_id.isnot(None),
+                DbUser.dingtalk_id != ""
+            )
+            res_admins = await db.execute(stmt_admins)
+            admin_ids = res_admins.scalars().all()
+            to_userids.extend(admin_ids)
+
+            has_third_bar = db_user.third_class_bar and db_user.third_class_bar.strip() != "" and db_user.third_class_bar.strip().lower() != "all"
+            if has_third_bar:
+                stmt_teammates = select(DbUser.dingtalk_id).where(
+                    DbUser.third_class_bar == db_user.third_class_bar.strip(),
+                    DbUser.dingtalk_id.isnot(None),
+                    DbUser.dingtalk_id != ""
+                )
+                res_teammates = await db.execute(stmt_teammates)
+                teammate_ids = res_teammates.scalars().all()
+                to_userids.extend(teammate_ids)
+            elif db_user.team_id:
+                stmt_teammates = select(DbUser.dingtalk_id).where(
+                    DbUser.team_id == db_user.team_id,
+                    DbUser.dingtalk_id.isnot(None),
+                    DbUser.dingtalk_id != ""
+                )
+                res_teammates = await db.execute(stmt_teammates)
+                teammate_ids = res_teammates.scalars().all()
+                to_userids.extend(teammate_ids)
+
+            to_userids = list(set([uid for uid in to_userids if uid and uid != dingtalk_userid]))
+
+            # 7. 调用钉钉工作日志填报 API 填报数据
+            success, err_msg = await dingtalk_client.save_report(template_id, dingtalk_userid, contents, to_userids=to_userids)
+            if success:
+                logger.info(f"自动同步周报至钉钉工作日志成功: {db_user.name}")
+            else:
+                logger.error(f"自动同步周报至钉钉工作日志失败: {err_msg}")
+        except Exception as e:
+            logger.error(f"自动同步周报后台任务发生异常: {e}", exc_info=True)
 
 
 @router.get("/weekly/summary/export", summary="导出小组成员周复盘汇总表")
