@@ -195,7 +195,7 @@ async def send_weekly_report_to_dingtalk(report: WeeklyReport, user: User):
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
                     WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
-                      AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                      AND r.create_date BETWEEN :start_date AND :end_date
                 """)
                 recv_val = conn.execute(recv_sql, {
                     "real_name": user.name,

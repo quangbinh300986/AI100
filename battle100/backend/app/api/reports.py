@@ -828,7 +828,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                 FROM zdcrm_contract_receive_money_view r
                 INNER JOIN contract c ON r.contract_id = c.id
                 WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
-                  AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                  AND r.create_date BETWEEN :start_date AND :end_date
             """)
             recv_val = conn.execute(recv_sql, {
                 "real_name": real_name,
@@ -969,7 +969,7 @@ def sync_extract_crm_data(real_name: str, start_date_val: date, is_marketing: bo
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
                     WHERE (c.signer = :real_name OR c.contract_head_user = :real_name)
-                      AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                      AND r.create_date BETWEEN :start_date AND :end_date
                 """)
                 receives = conn.execute(receive_sql, {
                     "real_name": real_name,
@@ -1763,7 +1763,7 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                         SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
                         FROM zdcrm_contract_receive_money_view r
                         INNER JOIN contract c ON r.contract_id = c.id
-                        WHERE DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                        WHERE r.create_date BETWEEN :start_date AND :end_date
                     """)
                 else:
                     # 战队/小组级视角：支持签约人、合同负责人以及合同创建人账号进行多维度联合过滤归属，所有注释必须使用中文
@@ -1783,7 +1783,7 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                             FROM zdcrm_contract_receive_money_view r
                             INNER JOIN contract c ON r.contract_id = c.id
                             WHERE ({conditions_sql})
-                              AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN :start_date AND :end_date
+                              AND r.create_date BETWEEN :start_date AND :end_date
                         """)
                     else:
                         recv_sql = None

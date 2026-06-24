@@ -5288,7 +5288,7 @@ async def generate_daily_report(
                         FROM zdcrm_contract_receive_money_view r
                         INNER JOIN contract c ON r.contract_id = c.id
                         WHERE ({conditions_sql})
-                          AND DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN %s AND %s
+                          AND r.create_date BETWEEN %s AND %s
                     """, (start_time, end_time))
                     recv_res = cur.fetchone()
                     if recv_res:
@@ -5300,7 +5300,7 @@ async def generate_daily_report(
                     SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
-                    WHERE DATE_ADD(r.receive_date, INTERVAL 9 HOUR) BETWEEN %s AND %s
+                    WHERE r.create_date BETWEEN %s AND %s
                 """, (start_time, end_time))
                 recv_res = cur.fetchone()
                 if recv_res:
