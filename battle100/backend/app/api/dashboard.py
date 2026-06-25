@@ -5278,30 +5278,39 @@ async def generate_daily_report(
                 
                 conditions_sql = None
                 if t_name == "广州三战队（大数据）":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD007,%%' OR c.office_code = 'ZD007')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD007,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD007,%%' OR c.office_code = 'ZD007')"
                 elif t_name == "清远战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD020,%%' OR c.office_code = 'ZD020')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD020,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD020,%%' OR c.office_code = 'ZD020')"
                 elif t_name == "广州二战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD004,%%' OR c.office_code = 'ZD004')"
+                    conditions_sql = "((o1.parent_codes LIKE '%%,ZD004,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD004,%%' OR c.office_code = 'ZD004') AND c.office_code NOT IN ('bf6857845da54c72bb1df29cf6289fda', '402881e48695f0e201869ae61ddf05bd', '402881e4860c74ea01862edc56191199'))"
                 elif t_name == "广州一战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD019,%%' OR o.parent_codes LIKE '%%,ZD006,%%' OR o.parent_codes LIKE '%%,ZD003,%%' OR c.office_code IN ('ZD019', 'ZD006', 'ZD003'))"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD019,%%' OR o1.parent_codes LIKE '%%,ZD006,%%' OR o1.parent_codes LIKE '%%,ZD003,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD019,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD006,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD003,%%' OR c.office_code IN ('ZD019', 'ZD006', 'ZD003') OR o2.ORGANIZTREECODES LIKE '%%,bfaae30eec904c879d15bf10a3c04aa2,%%')"
                 elif t_name == "佛山战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD013,%%' OR c.office_code = 'ZD013')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD013,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD013,%%' OR c.office_code = 'ZD013')"
                 elif t_name == "东莞战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,402881e47d4b00d1017d4b97bca2000b,%%' OR c.office_code = '402881e47d4b00d1017d4b97bca2000b')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,402881e47d4b00d1017d4b97bca2000b,%%' OR o2.ORGANIZTREECODES LIKE '%%,402881e47d4b00d1017d4b97bca2000b,%%' OR c.office_code = '402881e47d4b00d1017d4b97bca2000b' OR c.office_code = 'bf6857845da54c72bb1df29cf6289fda' OR o2.ORGANIZTREECODES LIKE '%%,bf6857845da54c72bb1df29cf6289fda,%%')"
                 elif t_name == "湛江战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD012,%%' OR c.office_code = 'ZD012')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD012,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD012,%%' OR c.office_code = 'ZD012' OR c.office_code = '402881e4860c74ea01862edc56191199' OR o2.ORGANIZTREECODES LIKE '%%,402881e4860c74ea01862edc56191199,%%')"
                 elif t_name == "云浮战队":
-                    conditions_sql = "(o.parent_codes LIKE '%%,ZD011,%%' OR c.office_code = 'ZD011')"
+                    conditions_sql = "(o1.parent_codes LIKE '%%,ZD011,%%' OR o1.parent_codes LIKE '%%,ZD010,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD011,%%' OR o2.ORGANIZTREECODES LIKE '%%,ZD010,%%' OR c.office_code IN ('ZD011', 'ZD010', '402881e48695f0e201869ae61ddf05bd') OR o2.ORGANIZTREECODES LIKE '%%,402881e48695f0e201869ae61ddf05bd,%%')"
                 elif t_name == "茂名战队":
-                    conditions_sql = "c.office_code IN ('402881e48185cf30018185d67353000c', '402881e4838933c20183c4fc1e0413e8', 'dd8e09fdf59e48e7af220b917436b71e')"
+                    conditions_sql = "(c.office_code IN ('402881e48185cf30018185d67353000c', '402881e4838933c20183c4fc1e0413e8', 'dd8e09fdf59e48e7af220b917436b71e') OR o2.ORGANIZTREECODES LIKE '%%,dd8e09fdf59e48e7af220b917436b71e,%%')"
 
                 if conditions_sql:
                     cur.execute(f"""
                         SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                         FROM zdcrm_contract_receive_money_view r
                         INNER JOIN contract c ON r.contract_id = c.id
-                        LEFT JOIN js_sys_office o ON c.office_code = o.office_code
+                        LEFT JOIN js_sys_office o1 ON c.office_code = o1.office_code
+                        LEFT JOIN (
+                            SELECT o1.ORGANIZCODE, o1.ORGANIZTREECODES, o1.ORGANIZNAME
+                            FROM zdcrm_history_organization o1
+                            INNER JOIN (
+                                SELECT ORGANIZCODE, MAX(year) as max_year
+                                FROM zdcrm_history_organization
+                                GROUP BY ORGANIZCODE
+                            ) o2 ON o1.ORGANIZCODE = o2.ORGANIZCODE AND o1.year = o2.max_year
+                        ) o2 ON c.office_code = o2.ORGANIZCODE
                         WHERE ({conditions_sql})
                           AND r.create_date BETWEEN %s AND %s
                     """, (start_time, end_time))
