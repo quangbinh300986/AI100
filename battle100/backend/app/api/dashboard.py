@@ -5271,22 +5271,37 @@ async def generate_daily_report(
 
             # 查询昨日/今日回款合同及回款金额
             if team_id:
-                # 战队视角：通过签约人、合同负责人以及合同创建人账号进行多维度联合过滤归属，所有注释必须使用中文
-                conditions = []
-                if user_names:
-                    names_str = ", ".join([f"'{n}'" for n in user_names])
-                    conditions.append(f"c.signer IN ({names_str})")
-                    conditions.append(f"c.contract_head_user IN ({names_str})")
-                if crm_user_ids:
-                    crm_user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
-                    conditions.append(f"c.create_by IN ({crm_user_ids_str})")
+                # 战队视角：改为按战队所属的合同部门（office_code）进行到账采集，所有注释必须使用中文
+                t_name = None
+                team_name_res = await db.execute(select(Team.name).where(Team.id == team_id))
+                t_name = team_name_res.scalar()
                 
-                if conditions:
-                    conditions_sql = " OR ".join(conditions)
+                conditions_sql = None
+                if t_name == "广州三战队（大数据）":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD007,%%' OR c.office_code = 'ZD007')"
+                elif t_name == "清远战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD020,%%' OR c.office_code = 'ZD020')"
+                elif t_name == "广州二战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD004,%%' OR c.office_code = 'ZD004')"
+                elif t_name == "广州一战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD019,%%' OR o.parent_codes LIKE '%%,ZD006,%%' OR o.parent_codes LIKE '%%,ZD003,%%' OR c.office_code IN ('ZD019', 'ZD006', 'ZD003'))"
+                elif t_name == "佛山战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD013,%%' OR c.office_code = 'ZD013')"
+                elif t_name == "东莞战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,402881e47d4b00d1017d4b97bca2000b,%%' OR c.office_code = '402881e47d4b00d1017d4b97bca2000b')"
+                elif t_name == "湛江战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD012,%%' OR c.office_code = 'ZD012')"
+                elif t_name == "云浮战队":
+                    conditions_sql = "(o.parent_codes LIKE '%%,ZD011,%%' OR c.office_code = 'ZD011')"
+                elif t_name == "茂名战队":
+                    conditions_sql = "c.office_code IN ('402881e48185cf30018185d67353000c', '402881e4838933c20183c4fc1e0413e8', 'dd8e09fdf59e48e7af220b917436b71e')"
+
+                if conditions_sql:
                     cur.execute(f"""
                         SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                         FROM zdcrm_contract_receive_money_view r
                         INNER JOIN contract c ON r.contract_id = c.id
+                        LEFT JOIN js_sys_office o ON c.office_code = o.office_code
                         WHERE ({conditions_sql})
                           AND r.create_date BETWEEN %s AND %s
                     """, (start_time, end_time))
@@ -5294,6 +5309,29 @@ async def generate_daily_report(
                     if recv_res:
                         crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
                         crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
+                else:
+                    # 兼容性 fallback: 若无匹配的部门，则使用原来的人员联合过滤
+                    fallback_conds = []
+                    if user_names:
+                        names_str = ", ".join([f"'{n}'" for n in user_names])
+                        fallback_conds.append(f"c.signer IN ({names_str})")
+                        fallback_conds.append(f"c.contract_head_user IN ({names_str})")
+                    if crm_user_ids:
+                        crm_user_ids_str = ", ".join([f"'{uid}'" for uid in crm_user_ids])
+                        fallback_conds.append(f"c.create_by IN ({crm_user_ids_str})")
+                    if fallback_conds:
+                        fallback_sql = " OR ".join(fallback_conds)
+                        cur.execute(f"""
+                            SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
+                            FROM zdcrm_contract_receive_money_view r
+                            INNER JOIN contract c ON r.contract_id = c.id
+                            WHERE ({fallback_sql})
+                              AND r.create_date BETWEEN %s AND %s
+                        """, (start_time, end_time))
+                        recv_res = cur.fetchone()
+                        if recv_res:
+                            crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
+                            crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
             else:
                 # 全公司大盘视角：移除人员归属限制，拉取全量到账数据以对齐财务，所有注释必须使用中文
                 cur.execute(f"""

@@ -1685,7 +1685,7 @@ async def update_weekly_report(
 #          战队/三级巴 整体周报与产值统计 API
 # ==========================================
 
-def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], start_date_val: date, is_company_wide: bool = False) -> dict:
+def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], start_date_val: date, is_company_wide: bool = False, group_name: str | None = None) -> dict:
     """同步直连 CRM 数据库统计指定成员周内的产值、线索、回款及项目反馈明细"""
     from datetime import timedelta
     from sqlalchemy import text
@@ -1766,27 +1766,59 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                         WHERE r.create_date BETWEEN :start_date AND :end_date
                     """)
                 else:
-                    # 战队/小组级视角：支持签约人、合同负责人以及合同创建人账号进行多维度联合过滤归属，所有注释必须使用中文
-                    conditions = []
-                    if user_names:
-                        names_str_escaped = ", ".join([f"'{name}'" for name in user_names])
-                        conditions.append(f"c.signer IN ({names_str_escaped})")
-                        conditions.append(f"c.contract_head_user IN ({names_str_escaped})")
-                    if crm_user_ids:
-                        crm_user_ids_str_escaped = ", ".join([f"'{uid}'" for uid in crm_user_ids if uid])
-                        conditions.append(f"c.create_by IN ({crm_user_ids_str_escaped})")
+                    # 战队/小组级视角：改为支持合同所属部门进行过滤。若匹配不到战队名称则fallback至原有人员联合过滤
+                    # 所有注释必须使用中文
+                    dept_conditions = None
+                    if group_name == "广州三战队（大数据）":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD007,%%' OR c.office_code = 'ZD007')"
+                    elif group_name == "清远战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD020,%%' OR c.office_code = 'ZD020')"
+                    elif group_name == "广州二战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD004,%%' OR c.office_code = 'ZD004')"
+                    elif group_name == "广州一战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD019,%%' OR o.parent_codes LIKE '%%,ZD006,%%' OR o.parent_codes LIKE '%%,ZD003,%%' OR c.office_code IN ('ZD019', 'ZD006', 'ZD003'))"
+                    elif group_name == "佛山战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD013,%%' OR c.office_code = 'ZD013')"
+                    elif group_name == "东莞战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,402881e47d4b00d1017d4b97bca2000b,%%' OR c.office_code = '402881e47d4b00d1017d4b97bca2000b')"
+                    elif group_name == "湛江战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD012,%%' OR c.office_code = 'ZD012')"
+                    elif group_name == "云浮战队":
+                        dept_conditions = "(o.parent_codes LIKE '%%,ZD011,%%' OR c.office_code = 'ZD011')"
+                    elif group_name == "茂名战队":
+                        dept_conditions = "c.office_code IN ('402881e48185cf30018185d67353000c', '402881e4838933c20183c4fc1e0413e8', 'dd8e09fdf59e48e7af220b917436b71e')"
                     
-                    if conditions:
-                        conditions_sql = " OR ".join(conditions)
+                    if dept_conditions:
                         recv_sql = text(f"""
                             SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
                             FROM zdcrm_contract_receive_money_view r
                             INNER JOIN contract c ON r.contract_id = c.id
-                            WHERE ({conditions_sql})
+                            LEFT JOIN js_sys_office o ON c.office_code = o.office_code
+                            WHERE ({dept_conditions})
                               AND r.create_date BETWEEN :start_date AND :end_date
                         """)
                     else:
-                        recv_sql = None
+                        # Fallback 到原有的按人员联合过滤
+                        conditions = []
+                        if user_names:
+                            names_str_escaped = ", ".join([f"'{name}'" for name in user_names])
+                            conditions.append(f"c.signer IN ({names_str_escaped})")
+                            conditions.append(f"c.contract_head_user IN ({names_str_escaped})")
+                        if crm_user_ids:
+                            crm_user_ids_str_escaped = ", ".join([f"'{uid}'" for uid in crm_user_ids if uid])
+                            conditions.append(f"c.create_by IN ({crm_user_ids_str_escaped})")
+                        
+                        if conditions:
+                            conditions_sql = " OR ".join(conditions)
+                            recv_sql = text(f"""
+                                SELECT COALESCE(SUM(r.receive_money), 0) as total_recv
+                                FROM zdcrm_contract_receive_money_view r
+                                INNER JOIN contract c ON r.contract_id = c.id
+                                WHERE ({conditions_sql})
+                                  AND r.create_date BETWEEN :start_date AND :end_date
+                            """)
+                        else:
+                            recv_sql = None
                 
                 if recv_sql:
                     recv_val = conn.execute(recv_sql, {
@@ -2072,7 +2104,8 @@ async def get_group_weekly_metrics(
         user_names,
         crm_user_ids,
         start_date,
-        is_company_wide
+        is_company_wide,
+        group_name
     )
     
     # 合并有效线索与潜力线索：本地录入数 + CRM 端数据

@@ -136,46 +136,15 @@ async def main():
         
         print(f"✅ 已在数据库中生成该成员的真实周报记录，ID: {new_report.id}")
         
-        # 7. 调用钉钉推送逻辑（应自动路由分流至云浮战队群）
-        print("🚀 正在触发钉钉周报分流推送测试...")
+        # 7. 真正调用最新的后台自动同步任务
+        print("🚀 正在触发最新重构的 auto_sync_weekly_report_to_dingtalk_task 后台自动同步逻辑...")
         try:
-            await send_weekly_report_to_dingtalk(new_report, target_user)
-            print("🎉 钉钉周报专属群分流推送已完成，请检查云浮战队钉钉群接收情况！")
-        except Exception as e_send:
-            print(f"❌ 推送失败: {e_send}")
-
-        # 8. 真正调用 save_report 接口向钉钉提交真实的日志
-        print("🚀 正在触发 dingtalk_client.save_report 真实的钉钉日志填报测试...")
-        dingtalk_contents = [
-            {"key": "本周目标计划", "value": new_report.delivery_plan or ""},
-            {"key": "本周实际完成", "value": new_report.delivery_actual or ""},
-            {"key": "达成情况", "value": new_report.delivery_rate or "100%"},
-            {"key": "本周亮点", "value": new_report.delivery_highlights or "无"},
-            {"key": "本周卡点", "value": new_report.delivery_blockers or "无"},
-            {"key": "是否需要上级支持", "value": new_report.delivery_support or "无"},
-            {"key": "下周目标", "value": new_report.next_delivery_plan or ""},
-            {"key": "周报日期", "value": f"{start_d.strftime('%Y-%m-%d')}至{end_d.strftime('%Y-%m-%d')}"}
-        ]
-        
-        # 云浮战队专属模板 ID
-        template_id = "19ef26dfc8405bad04047534b29a4e2e"
-        
-        if target_user.dingtalk_id:
-            try:
-                from app.integrations.dingtalk import dingtalk_client
-                success, msg = await dingtalk_client.save_report(
-                    template_id=template_id,
-                    userid=target_user.dingtalk_id,
-                    contents=dingtalk_contents,
-                    to_userids=[]
-                )
-                print(f"🎉 钉钉 save_report 调用结果: success={success}, msg={msg}")
-                if success:
-                    print("🔔 真实日志填报成功！钉钉将自动在其绑定的默认接收群（云浮战队群）中发送带有‘点赞/评论’的官方日志卡片。")
-            except Exception as e_save:
-                print(f"❌ 调用 save_report 异常: {e_save}")
-        else:
-            print("❌ 该测试成员没有绑定 dingtalk_id，无法测试 save_report")
+            from app.api.reports import auto_sync_weekly_report_to_dingtalk_task
+            await auto_sync_weekly_report_to_dingtalk_task(new_report.id, target_user.id)
+            print("🎉 后台同步测试已执行完毕！请前往云浮战队钉钉群查看效果。")
+            print("💡 预期结果：群内应该且仅会收到一条官方日志卡片通知（带有‘评论/点赞’按钮），而不会再收到多余的机器人 ActionCard 消息。")
+        except Exception as e_sync:
+            print(f"❌ 执行自动同步任务失败: {e_sync}")
 
 if __name__ == "__main__":
     asyncio.run(main())
