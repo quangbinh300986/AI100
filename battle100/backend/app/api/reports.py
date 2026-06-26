@@ -2935,7 +2935,7 @@ async def sync_weekly_report_to_dingtalk_api(
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # 4. 模板 ID 获取与专属模板强制重定向逻辑
+    # 4. 模板 ID 获取与专属模板强制重定向逻辑，所有注释必须使用中文
     custom_template_id = None
     team_name = ""
     if db_user.team_id:
@@ -2949,6 +2949,15 @@ async def sync_weekly_report_to_dingtalk_api(
     import os
     team_webhooks = {}
     env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+    if not env_config:
+        # 防御性读取：若系统未能成功将多行 JSON 加载至环境变量，主动从当前目录下的 .env 文件再次加载，所有注释必须使用中文
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(r"c:\APP\AI100\battle100\backend\.env")
+            env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+        except Exception:
+            pass
+
     if env_config:
         try:
             team_webhooks = json.loads(env_config)
@@ -2975,6 +2984,18 @@ async def sync_weekly_report_to_dingtalk_api(
     # 自动修正拼写错误的模板ID，解决员工复制或手工填写错误问题，所有注释必须使用中文
     if template_id == "19cab0d8aa4c349cb1df85146edac9cf":
         template_id = "19eab0d8aa4e349cb1df85146edac9cf"
+
+    # 在控制台打印大段显眼的调试日志，方便直接排查和核对运行中的实例，所有注释必须使用中文
+    print("\n" + "="*60)
+    print(f"【调试周报同步】收到同步请求，报告ID: {report_id}")
+    print(f"  员工姓名: {db_user.name}")
+    print(f"  所属战队: {team_name} (team_id={db_user.team_id})")
+    print(f"  加载的 TEAM_WEBHOOKS_JSON 长度: {len(env_config) if env_config else 0} 字符")
+    print(f"  解析得到的配置战队数: {len(team_webhooks) if team_webhooks else 0}")
+    print(f"  匹配到的专属模板 ID: '{custom_template_id}'")
+    print(f"  前端传入的模板 ID: '{req.template_id}'")
+    print(f"  最终决定使用的模板 ID: '{template_id}'")
+    print("="*60 + "\n")
 
     # 5. 获取当前用户的钉钉 userid（工号）
     dingtalk_userid = db_user.dingtalk_id
