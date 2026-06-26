@@ -3138,6 +3138,15 @@ async def auto_sync_weekly_report_to_dingtalk_task(report_id: int, user_id: int)
 
             team_webhooks = {}
             env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+            if not env_config:
+                # 防御性读取：若系统未能成功将多行 JSON 加载至环境变量，自动从当前目录下的 .env 文件再次加载，所有注释必须使用中文
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv(r"c:\APP\AI100\battle100\backend\.env")
+                    env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+                except Exception:
+                    pass
+
             if env_config:
                 try:
                     team_webhooks = json.loads(env_config)
