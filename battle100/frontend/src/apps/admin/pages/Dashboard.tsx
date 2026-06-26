@@ -789,7 +789,7 @@ const Dashboard: React.FC = () => {
   const handleShowSyncDingtalkModal = (reportId: number) => {
     setSyncDingtalkReportId(reportId)
     syncDingtalkForm.setFieldsValue({
-      templateId: '19eab0d8aa4e349cb1df85146edac9cf' // 预填默认模板ID
+      templateId: undefined // 留空以由后端自动识别匹配专属战队模板
     })
     setSyncDingtalkVisible(true)
   }
@@ -6038,8 +6038,8 @@ const Dashboard: React.FC = () => {
             description={
               <div style={{ fontSize: '12.5px', lineHeight: '1.6' }}>
                 <p style={{ marginBottom: 4 }}>1. 系统将自动使用您在系统中的<strong>手机号</strong>去匹配对应的钉钉员工账号，免去手动绑定的繁琐操作。</p>
-                <p style={{ marginBottom: 4 }}>2. 匹配成功后，系统会把本周报内容自动整理并填报到您在钉钉绑定的“中台百日奋斗交付周报”中。</p>
-                <p style={{ marginBottom: 0 }}>3. 默认模板 ID 已预填，若公司调整了模板，您可在此输入新的模板 ID。</p>
+                <p style={{ marginBottom: 4 }}>2. 匹配成功后，系统会把本周报内容自动整理并填报到对应的钉钉工作日志中。</p>
+                <p style={{ marginBottom: 0 }}>3. 模板 ID 默认无需填写，系统会自动匹配您的战队专属模板。若无专属模板，则使用默认大盘模板。</p>
               </div>
             }
             type="info"
@@ -6049,9 +6049,9 @@ const Dashboard: React.FC = () => {
           <Form.Item
             name="templateId"
             label={<strong>钉钉日志模板 ID</strong>}
-            rules={[{ required: true, message: '请输入钉钉日志模板 ID' }]}
+            rules={[{ required: false }]}
           >
-            <Input placeholder="请输入钉钉日志模板 ID" maxLength={100} allowClear />
+            <Input placeholder="留空则自动识别战队专属模板，或输入其他模板 ID" maxLength={100} allowClear />
           </Form.Item>
         </Form>
       </Modal>

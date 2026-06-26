@@ -124,7 +124,7 @@ export default function WeeklyReport() {
   // 钉钉同步状态，所有注释必须使用中文
   const [syncDingtalkVisible, setSyncDingtalkVisible] = useState(false)
   const [syncDingtalkReportId, setSyncDingtalkReportId] = useState<number | null>(null)
-  const [syncDingtalkTemplateId, setSyncDingtalkTemplateId] = useState('19eab0d8aa4e349cb1df85146edac9cf')
+  const [syncDingtalkTemplateId, setSyncDingtalkTemplateId] = useState('')
   const [syncDingtalkLoading, setSyncDingtalkLoading] = useState(false)
 
   // 切换星期时立即置空基准值，防止拉取异步空档期错位写入本地缓存
@@ -685,7 +685,7 @@ export default function WeeklyReport() {
           // 正式提交成功，弹出同步至钉钉的 Modal，所有注释必须使用中文
           if (responseData.id) {
             setSyncDingtalkReportId(responseData.id)
-            setSyncDingtalkTemplateId('19eab0d8aa4e349cb1df85146edac9cf')
+            setSyncDingtalkTemplateId('')
             setSyncDingtalkVisible(true)
           } else {
             setTimeout(() => navigate('/m/profile'), 1500)
@@ -1133,7 +1133,7 @@ export default function WeeklyReport() {
               您的个人周报已提交成功！可选择填入钉钉日志模板 ID 进行一键同步填报：
             </div>
             <Input
-              placeholder="请输入钉钉日志模板 ID"
+              placeholder="留空则自动识别战队专属模板，或输入其他模板 ID"
               value={syncDingtalkTemplateId}
               onChange={val => setSyncDingtalkTemplateId(val)}
               style={{
@@ -1145,7 +1145,7 @@ export default function WeeklyReport() {
               }}
             />
             <div style={{ fontSize: '11px', color: '#999', marginTop: '6px' }}>
-              默认模板 ID：19eab0d8aa4e349cb1df85146edac9cf
+              默认大盘 ID：19eab0d8aa4e349cb1df85146edac9cf (留空将自动按所属战队匹配)
             </div>
           </div>
         }

@@ -2928,36 +2928,47 @@ async def sync_weekly_report_to_dingtalk_api(
     if report.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="您无权同步他人的周报记录")
 
-    # 3. 模板 ID 获取
-    template_id = req.template_id
-    if not template_id:
-        # 获取用户所属战队名称，并匹配环境变量中的专属模板 ID
-        team_name = ""
-        if db_user.team_id:
-            from app.models.organization import Team
-            team_obj = await db.get(Team, db_user.team_id)
-            if team_obj:
-                team_name = team_obj.name
-                
-        # 尝试从环境变量读取战队专属的 Webhook JSON 配置
-        import json
-        import os
-        team_webhooks = {}
-        env_config = os.getenv("TEAM_WEBHOOKS_JSON")
-        if env_config:
-            try:
-                team_webhooks = json.loads(env_config)
-            except Exception as e_cfg:
-                pass
-                
-        if team_name and team_name in team_webhooks:
-            custom_cfg = team_webhooks[team_name]
-            if custom_cfg.get("template_id"):
-                template_id = custom_cfg["template_id"]
+    # 3. 获取当前用户的详细记录，提前查询以避免 NameError，所有注释必须使用中文
+    db_user_stmt = select(DbUser).where(DbUser.id == current_user.id)
+    db_user_res = await db.execute(db_user_stmt)
+    db_user = db_user_res.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
 
-    if not template_id:
-        template_id = settings.DINGTALK_WEEKLY_REPORT_TEMPLATE_ID
-        
+    # 4. 模板 ID 获取与专属模板强制重定向逻辑
+    custom_template_id = None
+    team_name = ""
+    if db_user.team_id:
+        from app.models.organization import Team
+        team_obj = await db.get(Team, db_user.team_id)
+        if team_obj:
+            team_name = team_obj.name
+            
+    # 尝试从环境变量读取战队专属的 Webhook JSON 配置，识别战队专属模板
+    import json
+    import os
+    team_webhooks = {}
+    env_config = os.getenv("TEAM_WEBHOOKS_JSON")
+    if env_config:
+        try:
+            team_webhooks = json.loads(env_config)
+        except Exception as e_cfg:
+            pass
+            
+    if team_name and team_name in team_webhooks:
+        custom_cfg = team_webhooks[team_name]
+        if custom_cfg.get("template_id"):
+            custom_template_id = custom_cfg["template_id"]
+
+    # 确定最终使用的模板 ID：如果配置了战队专属模板，则强制重定向使用，确保流向正确
+    if custom_template_id:
+        template_id = custom_template_id
+    else:
+        # 如果未配置战队专属模板，则使用前端传过来的模板 ID；若前端也未传，使用默认大盘模板 ID
+        template_id = req.template_id
+        if not template_id:
+            template_id = settings.DINGTALK_WEEKLY_REPORT_TEMPLATE_ID
+
     if not template_id:
         raise HTTPException(status_code=400, detail="未指定钉钉模板ID，且系统未配置默认模板ID")
         
@@ -2965,13 +2976,7 @@ async def sync_weekly_report_to_dingtalk_api(
     if template_id == "19cab0d8aa4c349cb1df85146edac9cf":
         template_id = "19eab0d8aa4e349cb1df85146edac9cf"
 
-    # 4. 获取当前用户的钉钉 userid（工号）
-    db_user_stmt = select(DbUser).where(DbUser.id == current_user.id)
-    db_user_res = await db.execute(db_user_stmt)
-    db_user = db_user_res.scalar_one_or_none()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
+    # 5. 获取当前用户的钉钉 userid（工号）
     dingtalk_userid = db_user.dingtalk_id
     if not dingtalk_userid:
         # 如果钉钉userid为空，尝试通过手机号在钉钉匹配获取，实现无感绑定
