@@ -679,17 +679,11 @@ export default function WeeklyReport() {
         
         Toast.show({
           icon: 'success',
-          content: submitStatus === 'submitted' ? '周复盘提交成功！' : '草稿保存成功！'
+          content: submitStatus === 'submitted' ? '周复盘提交成功，已自动同步至钉钉！' : '草稿保存成功！'
         })
         if (submitStatus === 'submitted') {
-          // 正式提交成功，弹出同步至钉钉的 Modal，所有注释必须使用中文
-          if (responseData.id) {
-            setSyncDingtalkReportId(responseData.id)
-            setSyncDingtalkTemplateId('')
-            setSyncDingtalkVisible(true)
-          } else {
-            setTimeout(() => navigate('/m/profile'), 1500)
-          }
+          // 正式提交成功，系统已在后端自动同步至钉钉，前端无需再弹出同步 Modal，所有注释必须使用中文
+          setTimeout(() => navigate('/m/profile'), 1500)
         }
       }
     } catch (err) {

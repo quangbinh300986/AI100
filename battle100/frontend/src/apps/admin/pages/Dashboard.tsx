@@ -826,22 +826,14 @@ const Dashboard: React.FC = () => {
       }
       const res = await post<any>('/reports/weekly', payload)
       if (res) {
-        message.success(weeklyStatusToSubmit === 'draft' ? '周复盘草稿已暂存' : '周复盘已正式提交')
+        // 正式提交成功后，后端已通过异步任务自动执行同步，前端不再弹出同步确认框，所有注释必须使用中文
+        message.success(
+          weeklyStatusToSubmit === 'draft' 
+            ? '周复盘草稿已暂存' 
+            : '周复盘已正式提交，系统已为您自动同步至钉钉日志！'
+        )
         setWeeklyWriteVisible(false)
         setHasWeeklyReport(true)
-        // 如果是正式提交，且提交返回了报告ID，询问是否同步至钉钉，所有注释必须使用中文
-        if (weeklyStatusToSubmit === 'submitted' && res.id) {
-          Modal.confirm({
-            title: '📢 同步至钉钉日志',
-            content: '您的个人周报已成功正式提交，是否立即将其同步至钉钉工作日志中？',
-            okText: '立即同步',
-            cancelText: '暂不同步',
-            centered: true,
-            onOk: () => {
-              handleShowSyncDingtalkModal(res.id)
-            }
-          })
-        }
       }
     } catch (err: any) {
       console.error(err)
