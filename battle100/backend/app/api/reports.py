@@ -2429,7 +2429,8 @@ async def async_generate_group_report_task(
                 {"role": "user", "content": user_prompt}
             ]
             
-            ai_content = await provider.chat(messages, max_tokens=8192)
+            # 增加最大输出限制到 16384 个 Token，防止超长团队周报被中途截断，所有注释必须使用中文
+            ai_content = await provider.chat(messages, max_tokens=16384)
             ai_content = re.sub(r"<think>.*?</think>", "", ai_content, flags=re.DOTALL).strip()
 
             # 5. 自动保存到数据库
@@ -2777,8 +2778,8 @@ async def old_generate_group_weekly_report(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
-        # 增加最大输出限制到 8192 个 Token，防止超长团队周报（如多项目大表格及思考内容）被中途截断
-        ai_content = await provider.chat(messages, max_tokens=8192)
+        # 增加最大输出限制到 16384 个 Token，防止超长团队周报（如多项目大表格及思考内容）被中途截断，所有注释必须使用中文
+        ai_content = await provider.chat(messages, max_tokens=16384)
         
         # 自动清洗掉思考过程（针对思考类 LLM 模型输出的 <think>...</think>）
         import re

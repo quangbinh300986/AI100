@@ -218,8 +218,25 @@ class GeminiProvider(LLMProvider):
 
         logger.info(f"发送 Gemini 请求: {model} | 块数量: {len(contents)}")
         
+        req_body = {
+            "contents": contents
+        }
+        
+        # 组装生成配置，映射 max_tokens 到 maxOutputTokens，所有注释必须使用中文
+        gen_config = {}
+        temp = kwargs.get("temperature", self.temperature)
+        if temp is not None:
+            gen_config["temperature"] = temp
+            
+        max_tok = kwargs.get("max_tokens", self.max_tokens)
+        if max_tok is not None:
+            gen_config["maxOutputTokens"] = max_tok
+            
+        if gen_config:
+            req_body["generationConfig"] = gen_config
+            
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json={"contents": contents})
+            response = await client.post(url, json=req_body)
             if response.status_code != 200:
                 logger.error(f"Gemini 请求失败: {response.text}")
                 response.raise_for_status()
