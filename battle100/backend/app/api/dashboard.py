@@ -5197,16 +5197,36 @@ async def generate_daily_report(
 
         # 签订合同
         # 先查出这些日报下的所有合同明细，在内存中进行聚合，防止营销与交付分摊被重复累加
-        all_contracts_stmt = select(ReportDetail).where(
-            ReportDetail.report_id.in_(report_ids),
-            ReportDetail.detail_type == DetailType.CONTRACT
+        all_contracts_stmt = (
+            select(
+                ReportDetail,
+                User.position_type.label("user_pos"),
+                PartnerUser.position_type.label("partner_pos")
+            )
+            .select_from(ReportDetail)
+            .join(DailyReport, ReportDetail.report_id == DailyReport.id)
+            .join(User, DailyReport.user_id == User.id)
+            .outerjoin(PartnerUser, ReportDetail.partner_user_id == PartnerUser.id)
+            .where(
+                ReportDetail.report_id.in_(report_ids),
+                ReportDetail.detail_type == DetailType.CONTRACT
+            )
         )
         all_contracts_res = await db.execute(all_contracts_stmt)
-        all_contracts = all_contracts_res.scalars().all()
+        all_contracts_rows = all_contracts_res.all()
 
         # 分组聚合：以项目商机或播报作为 Key
         contracts_by_project = {}
-        for item in all_contracts:
+        
+        # 为了战队视角，分开统计营销和交付合同个数与金额，所有注释必须使用中文
+        m_contracts = {}
+        d_contracts = {}
+
+        for row in all_contracts_rows:
+            item = row.ReportDetail
+            user_pos = row.user_pos
+            partner_pos = row.partner_pos
+            
             # 优先使用 crm_opportunity_id
             proj_key = item.crm_opportunity_id
             if not proj_key or proj_key == "":
@@ -5223,13 +5243,29 @@ async def generate_daily_report(
             
             desc = item.description or ""
             amt = item.amount or 0.0
+            
+            is_m = False
+            is_d = False
+            
             if "营销新签分摊" in desc:
                 contracts_by_project[proj_key]["marketing_amt"] += amt
+                is_m = True
             elif "交付新签分摊" in desc:
                 contracts_by_project[proj_key]["delivery_amt"] += amt
+                is_d = True
             else:
                 # 兼容旧数据或无分摊的兜底记录
                 contracts_by_project[proj_key]["other_amt"] += amt
+                # 兜底判定
+                if user_pos in [PositionType.MARKETING, PositionType.MANAGEMENT] or partner_pos in [PositionType.MARKETING, PositionType.MANAGEMENT]:
+                    is_m = True
+                if user_pos in [PositionType.TECHNICAL, PositionType.DELIVERY] or partner_pos in [PositionType.TECHNICAL, PositionType.DELIVERY]:
+                    is_d = True
+                    
+            if is_m:
+                m_contracts[proj_key] = m_contracts.get(proj_key, 0.0) + amt
+            if is_d:
+                d_contracts[proj_key] = d_contracts.get(proj_key, 0.0) + amt
 
         signed_contracts_cnt = len(contracts_by_project)
         signed_contracts_amt = 0.0
@@ -5240,6 +5276,11 @@ async def generate_daily_report(
             signed_contracts_amt += proj_amt
         
         signed_contracts_amt = round(signed_contracts_amt, 2)
+        
+        m_signed_cnt = len(m_contracts)
+        m_signed_amt = round(sum(m_contracts.values()), 2)
+        d_signed_cnt = len(d_contracts)
+        d_signed_amt = round(sum(d_contracts.values()), 2)
 
         # 铁三角联动明细列表
         triangle_stmt = select(
@@ -5472,7 +5513,7 @@ async def generate_daily_report(
         t_name = team_info_res[0] if team_info_res else "本战队"
         z_name = team_info_res[1] if team_info_res else ""
 
-        # 区分目标官与数字专员视角
+        # 区分目标官与数字专员视角，战队视角下分别展示营销新签和交付新签的数量与金额，所有注释必须使用中文
         if role == "target_officer":
             # 目标官视角
             text = (
@@ -5481,7 +5522,8 @@ async def generate_daily_report(
                 f"今日确定有效线索：{valid_leads_cnt} 条\n"
                 f"今日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
-                f"今日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"今日签订营销合同数量：{m_signed_cnt} 个，金额{m_signed_amt}万\n"
+                f"今日签订交付合同数量：{d_signed_cnt} 个，金额{d_signed_amt}万\n"
                 f"今日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"今日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"今日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
@@ -5504,7 +5546,8 @@ async def generate_daily_report(
                 f"昨日确定有效线索：{valid_leads_cnt} 条\n"
                 f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
-                f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
+                f"昨日签订营销合同数量：{m_signed_cnt} 个，金额{m_signed_amt}万\n"
+                f"昨日签订交付合同数量：{d_signed_cnt} 个，金额{d_signed_amt}万\n"
                 f"昨日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
