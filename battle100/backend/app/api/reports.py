@@ -1829,7 +1829,7 @@ def sync_get_group_crm_data(user_names: list[str], crm_user_ids: list[str], star
                         else:
                             recv_sql = None
                 
-                if recv_sql:
+                if recv_sql is not None:
                     recv_val = conn.execute(recv_sql, {
                         "start_date": start_date_str,
                         "end_date": end_date_str
