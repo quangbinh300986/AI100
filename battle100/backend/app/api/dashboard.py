@@ -4052,6 +4052,7 @@ async def export_company_kpi_detail(
     week: int | None = Query(None, description="按周筛选 (1-15)"),
     reporter_name: str | None = Query(None, description="按提报人筛选"),
     keyword: str | None = Query(None, description="按客户或描述搜索"),
+    sub_type: str | None = Query(None, description="合同子类型: delivery, marketing"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -4148,65 +4149,38 @@ async def export_company_kpi_detail(
             )
         )
 
-        if team_id is not None:
-            delivery_stmt = delivery_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
-            marketing_stmt = marketing_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
-        
-        if week is not None and week in STANDARD_WEEKS:
-            s_date, e_date = STANDARD_WEEKS[week]
-            delivery_stmt = delivery_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
-            marketing_stmt = marketing_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
-
-        if reporter_name:
-            delivery_stmt = delivery_stmt.where(User.name == reporter_name)
-            marketing_stmt = marketing_stmt.where(User.name == reporter_name)
-
-        if keyword:
-            kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
-            delivery_stmt = delivery_stmt.where(kw_filter)
-            marketing_stmt = marketing_stmt.where(kw_filter)
-
-        delivery_stmt = delivery_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
-        marketing_stmt = marketing_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
-
-        delivery_rows = (await db.execute(delivery_stmt)).all()
-        marketing_rows = (await db.execute(marketing_stmt)).all()
-
-        delivery_list = []
-        for r in delivery_rows:
-            delivery_list.append({
-                "id": r.id,
-                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
-                "reporter_name": r.reporter_name,
-                "team_name": r.team_name or "—",
-                "customer_name": r.customer_name or "—",
-                "amount": r.amount or 0.0,
-                "partner_name": r.partner_name or "—",
-                "description": r.description or "—",
-            })
-        delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
-
-        marketing_list = []
-        for r in marketing_rows:
-            marketing_list.append({
-                "id": r.id,
-                "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
-                "reporter_name": r.reporter_name,
-                "team_name": r.team_name or "—",
-                "customer_name": r.customer_name or "—",
-                "amount": r.amount or 0.0,
-                "partner_name": r.partner_name or "—",
-                "description": r.description or "—",
-            })
-        marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
-
-        df_delivery = pd.DataFrame(delivery_list_clean)
-        df_marketing = pd.DataFrame(marketing_list_clean)
-
-        for df in [df_delivery, df_marketing]:
-            if not df.empty:
-                df.drop(columns=['id'], errors='ignore', inplace=True)
-                df.rename(columns={
+        if sub_type == "marketing":
+            # 仅执行营销查询，所有注释必须使用中文
+            if team_id is not None:
+                marketing_stmt = marketing_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                marketing_stmt = marketing_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                marketing_stmt = marketing_stmt.where(User.name == reporter_name)
+            if keyword:
+                kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+                marketing_stmt = marketing_stmt.where(kw_filter)
+            marketing_stmt = marketing_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            marketing_rows = (await db.execute(marketing_stmt)).all()
+            
+            marketing_list = []
+            for r in marketing_rows:
+                marketing_list.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "partner_name": r.partner_name or "—",
+                    "description": r.description or "—",
+                })
+            marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
+            df_marketing = pd.DataFrame(marketing_list_clean)
+            if not df_marketing.empty:
+                df_marketing.drop(columns=['id'], errors='ignore', inplace=True)
+                df_marketing.rename(columns={
                     "report_date": "签单日期",
                     "reporter_name": "提报人",
                     "team_name": "所属战队",
@@ -4215,10 +4189,121 @@ async def export_company_kpi_detail(
                     "partner_name": "协同搭档",
                     "description": "播报内容"
                 }, inplace=True)
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df_marketing.to_excel(writer, index=False, sheet_name="营销新签明细")
 
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df_delivery.to_excel(writer, index=False, sheet_name="交付新签明细")
-            df_marketing.to_excel(writer, index=False, sheet_name="营销新签明细")
+        elif sub_type == "delivery":
+            # 仅执行交付查询，所有注释必须使用中文
+            if team_id is not None:
+                delivery_stmt = delivery_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                delivery_stmt = delivery_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                delivery_stmt = delivery_stmt.where(User.name == reporter_name)
+            if keyword:
+                kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+                delivery_stmt = delivery_stmt.where(kw_filter)
+            delivery_stmt = delivery_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            delivery_rows = (await db.execute(delivery_stmt)).all()
+            
+            delivery_list = []
+            for r in delivery_rows:
+                delivery_list.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "partner_name": r.partner_name or "—",
+                    "description": r.description or "—",
+                })
+            delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
+            df_delivery = pd.DataFrame(delivery_list_clean)
+            if not df_delivery.empty:
+                df_delivery.drop(columns=['id'], errors='ignore', inplace=True)
+                df_delivery.rename(columns={
+                    "report_date": "签单日期",
+                    "reporter_name": "提报人",
+                    "team_name": "所属战队",
+                    "customer_name": "客户名称",
+                    "amount": "签约金额(万元)",
+                    "partner_name": "协同搭档",
+                    "description": "播报内容"
+                }, inplace=True)
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df_delivery.to_excel(writer, index=False, sheet_name="交付新签明细")
+
+        else:
+            # 交付与营销皆查询并写入，所有注释必须使用中文
+            if team_id is not None:
+                delivery_stmt = delivery_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+                marketing_stmt = marketing_stmt.where((User.team_id == team_id) | (PartnerUser.team_id == team_id))
+            if week is not None and week in STANDARD_WEEKS:
+                s_date, e_date = STANDARD_WEEKS[week]
+                delivery_stmt = delivery_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+                marketing_stmt = marketing_stmt.where(DailyReport.report_date >= s_date, DailyReport.report_date <= e_date)
+            if reporter_name:
+                delivery_stmt = delivery_stmt.where(User.name == reporter_name)
+                marketing_stmt = marketing_stmt.where(User.name == reporter_name)
+            if keyword:
+                kw_filter = (ReportDetail.customer_name.contains(keyword) | ReportDetail.description.contains(keyword))
+                delivery_stmt = delivery_stmt.where(kw_filter)
+                marketing_stmt = marketing_stmt.where(kw_filter)
+            
+            delivery_stmt = delivery_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            marketing_stmt = marketing_stmt.order_by(DailyReport.report_date.desc(), ReportDetail.id.desc())
+            
+            delivery_rows = (await db.execute(delivery_stmt)).all()
+            marketing_rows = (await db.execute(marketing_stmt)).all()
+            
+            delivery_list = []
+            for r in delivery_rows:
+                delivery_list.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "partner_name": r.partner_name or "—",
+                    "description": r.description or "—",
+                })
+            delivery_list_clean = await fetch_and_clean_descriptions(db, delivery_list)
+            
+            marketing_list = []
+            for r in marketing_rows:
+                marketing_list.append({
+                    "id": r.id,
+                    "report_date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "",
+                    "reporter_name": r.reporter_name,
+                    "team_name": r.team_name or "—",
+                    "customer_name": r.customer_name or "—",
+                    "amount": r.amount or 0.0,
+                    "partner_name": r.partner_name or "—",
+                    "description": r.description or "—",
+                })
+            marketing_list_clean = await fetch_and_clean_descriptions(db, marketing_list)
+            
+            df_delivery = pd.DataFrame(delivery_list_clean)
+            df_marketing = pd.DataFrame(marketing_list_clean)
+            
+            for df in [df_delivery, df_marketing]:
+                if not df.empty:
+                    df.drop(columns=['id'], errors='ignore', inplace=True)
+                    df.rename(columns={
+                        "report_date": "签单日期",
+                        "reporter_name": "提报人",
+                        "team_name": "所属战队",
+                        "customer_name": "客户名称",
+                        "amount": "签约金额(万元)",
+                        "partner_name": "协同搭档",
+                        "description": "播报内容"
+                    }, inplace=True)
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df_delivery.to_excel(writer, index=False, sheet_name="交付新签明细")
+                df_marketing.to_excel(writer, index=False, sheet_name="营销新签明细")
 
     else:
         if kpi_type == "happiness":

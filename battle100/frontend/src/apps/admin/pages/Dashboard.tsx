@@ -1223,6 +1223,7 @@ const Dashboard: React.FC = () => {
   const [companyKpiDetailType, setCompanyKpiDetailType] = useState<'contracts' | 'happiness' | 'triangle' | 'leads' | 'tenders' | 'potential_leads' | 'station_reports'>('contracts')
   const [companyKpiDetailData, setCompanyKpiDetailData] = useState<any>(null)
   const [companyExportLoading, setCompanyExportLoading] = useState(false)
+  const [contractsTabKey, setContractsTabKey] = useState<'delivery' | 'marketing'>('delivery')
 
   // 个人周战将榜轮播与手动切换状态，所有注释必须使用中文
   const [activeRankTab, setActiveRankTab] = useState<'marketing_signing' | 'delivery_signing' | 'leads' | 'potential_leads' | 'happiness' | 'triangle' | 'station_reports'>('marketing_signing')
@@ -1314,10 +1315,20 @@ const Dashboard: React.FC = () => {
         middle_office_report: '公司中台播报明细',
         happiness_committee: '公司幸福委播报明细'
       }
-      const title = typeMap[companyKpiDetailType] || '大盘指标明细'
+      let title = typeMap[companyKpiDetailType] || '大盘指标明细'
+      if (companyKpiDetailType === 'contracts') {
+        if (contractsTabKey === 'delivery') {
+          title = '公司累计新签合同额明细_交付'
+        } else {
+          title = '公司累计新签合同额明细_营销'
+        }
+      }
 
       let url = `/dashboard/company-kpi-detail/export?kpi_type=${companyKpiDetailType}`
       const params = []
+      if (companyKpiDetailType === 'contracts') {
+        params.push(`sub_type=${contractsTabKey}`)
+      }
       if (companyFilterTeamId) {
         params.push(`team_id=${companyFilterTeamId}`)
       }
@@ -1365,6 +1376,7 @@ const Dashboard: React.FC = () => {
     setCompanyFilterWeek(undefined)
     setCompanyFilterReporter(undefined)
     setCompanyFilterKeyword('')
+    setContractsTabKey('delivery')
     setCompanyKpiDetailModalVisible(true)
   }
 
@@ -5461,7 +5473,7 @@ const Dashboard: React.FC = () => {
 
               {/* 明细展示表格 */}
               {companyKpiDetailType === 'contracts' ? (
-                <Tabs defaultActiveKey="delivery" type="card">
+                <Tabs activeKey={contractsTabKey} onChange={(key) => setContractsTabKey(key as 'delivery' | 'marketing')} type="card">
                   <Tabs.TabPane tab="交付新签明细" key="delivery">
                     <Table
                       dataSource={companyKpiDetailData.delivery_list}
