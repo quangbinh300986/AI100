@@ -173,6 +173,17 @@ const TeamWeeklyReports: React.FC = () => {
           setGroupReportContent('')
           setHasSavedReport(false)
           setSavedReportTime('')
+          setGroupMetrics({
+            marketing_signed: 0,
+            delivery_signed: 0,
+            win_bids: 0,
+            happiness_count: 0,
+            triangle_count: 0,
+            valid_leads: 0,
+            potential_leads: 0,
+            production_value: 0,
+            receive_value: 0
+          })
           if (autoGenerate) {
             await triggerAiGenerateGroupReport()
           } else {
@@ -186,6 +197,17 @@ const TeamWeeklyReports: React.FC = () => {
           setGroupReportContent('')
           setHasSavedReport(false)
           setSavedReportTime('')
+          setGroupMetrics({
+            marketing_signed: 0,
+            delivery_signed: 0,
+            win_bids: 0,
+            happiness_count: 0,
+            triangle_count: 0,
+            valid_leads: 0,
+            potential_leads: 0,
+            production_value: 0,
+            receive_value: 0
+          })
           if (autoGenerate) {
             await triggerAiGenerateGroupReport()
           } else {

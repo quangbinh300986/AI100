@@ -61,8 +61,9 @@ client.interceptors.response.use(
           console.error('权限不足')
           break
         case 404:
-          // 周报接口返回 404 仅代表当前周尚未填写周报，属正常业务状态，不输出错误日志
-          if (!error.config?.url?.includes('/reports/weekly/mine')) {
+          // 周报接口返回 404 仅代表当前周尚未填写周报，属正常业务状态，不输出错误日志，所有注释必须使用中文
+          const reqUrl = error.config?.url || ''
+          if (!reqUrl.includes('/reports/weekly/mine') && !reqUrl.includes('/reports/weekly/group-report')) {
             console.error('请求资源不存在')
           }
           break
