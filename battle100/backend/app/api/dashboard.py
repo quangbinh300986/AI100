@@ -5423,7 +5423,6 @@ async def generate_daily_report(
                     conditions_sql = "(c.office_code IN ('402881e48185cf30018185d67353000c', '402881e4838933c20183c4fc1e0413e8', 'dd8e09fdf59e48e7af220b917436b71e') OR o2.ORGANIZTREECODES LIKE '%%,dd8e09fdf59e48e7af220b917436b71e,%%')"
 
                 if conditions_sql:
-                    # 战队视角下：拉取本周内到账数据，所有注释必须使用中文
                     cur.execute(f"""
                         SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                         FROM zdcrm_contract_receive_money_view r
@@ -5440,13 +5439,13 @@ async def generate_daily_report(
                         ) o2 ON c.office_code = o2.ORGANIZCODE
                         WHERE ({conditions_sql})
                           AND r.create_date BETWEEN %s AND %s
-                    """, (weekly_start_time, weekly_end_time))
+                    """, (start_time, end_time))
                     recv_res = cur.fetchone()
                     if recv_res:
                         crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
                         crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
                 else:
-                    # 兼容性 fallback: 若无匹配的部门，则使用原来的人员联合过滤（本周范围）
+                    # 兼容性 fallback: 若无匹配的部门，则使用原来的人员联合过滤
                     fallback_conds = []
                     if user_names:
                         names_str = ", ".join([f"'{n}'" for n in user_names])
@@ -5463,19 +5462,19 @@ async def generate_daily_report(
                             INNER JOIN contract c ON r.contract_id = c.id
                             WHERE ({fallback_sql})
                               AND r.create_date BETWEEN %s AND %s
-                        """, (weekly_start_time, weekly_end_time))
+                        """, (start_time, end_time))
                         recv_res = cur.fetchone()
                         if recv_res:
                             crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
                             crm_recv_amt = round(float(recv_res["total_recv"] or 0.0), 2)
             else:
-                # 全公司大盘视角：移除人员归属限制，拉取本周全量到账数据以对齐财务，所有注释必须使用中文
+                # 全公司大盘视角：移除人员归属限制，拉取全量到账数据以对齐财务，所有注释必须使用中文
                 cur.execute(f"""
                     SELECT COUNT(DISTINCT r.contract_id) as contract_cnt, COALESCE(SUM(r.receive_money), 0) as total_recv
                     FROM zdcrm_contract_receive_money_view r
                     INNER JOIN contract c ON r.contract_id = c.id
                     WHERE r.create_date BETWEEN %s AND %s
-                """, (weekly_start_time, weekly_end_time))
+                """, (start_time, end_time))
                 recv_res = cur.fetchone()
                 if recv_res:
                     crm_recv_cnt = int(recv_res["contract_cnt"] or 0)
@@ -5502,7 +5501,7 @@ async def generate_daily_report(
             f"昨日确定潜在线索：{potential_leads_cnt} 条\n"
             f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
             f"昨日签订合同数量：{signed_contracts_cnt} 个，金额{signed_contracts_amt}万\n"
-            f"本周有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
+            f"昨日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
             f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
             f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
             f"赢战百日！"
@@ -5525,7 +5524,7 @@ async def generate_daily_report(
                 f"今日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"今日签订营销合同数量：{m_signed_cnt} 个，金额{m_signed_amt}万\n"
                 f"今日签订交付合同数量：{d_signed_cnt} 个，金额{d_signed_amt}万\n"
-                f"本周有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
+                f"今日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"今日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"今日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"今日工作小结\n"
@@ -5549,7 +5548,7 @@ async def generate_daily_report(
                 f"昨日确定中标合同：{win_contracts_cnt} 个，金额{win_contracts_amt}万\n"
                 f"昨日签订营销合同数量：{m_signed_cnt} 个，金额{m_signed_amt}万\n"
                 f"昨日签订交付合同数量：{d_signed_cnt} 个，金额{d_signed_amt}万\n"
-                f"本周有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
+                f"昨日有回款合同数量：{crm_recv_cnt} 个，金额总共 {crm_recv_amt} 万\n"
                 f"昨日售前铁三角联动次数：{triangle_cnt} 次，服务客户 {triangle_cust_cnt} 个\n"
                 f"昨日客户幸福动作次数：{happiness_cnt} 次，服务客户 {happiness_cust_cnt} 个\n"
                 f"赢战百日！"
