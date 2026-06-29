@@ -5158,6 +5158,10 @@ async def generate_daily_report(
     win_contracts_amt = 0.0
     signed_contracts_cnt = 0
     signed_contracts_amt = 0.0
+    m_signed_cnt = 0
+    m_signed_amt = 0.0
+    d_signed_cnt = 0
+    d_signed_amt = 0.0
     triangle_cnt = 0
     triangle_cust_cnt = 0
     happiness_cnt = 0
